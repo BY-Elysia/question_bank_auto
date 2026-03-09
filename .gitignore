@@ -1,0 +1,12 @@
+output_images/
+output_json/
+read_results/
+uploads/
+
+backend/node_modules/
+backend/dist/
+frontend/node_modules/
+frontend/dist/
+
+.DS_Store
+Thumbs.db
