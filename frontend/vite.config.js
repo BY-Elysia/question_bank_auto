@@ -9,6 +9,7 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:5000',
       '/uploads': 'http://127.0.0.1:5000',
       '/output_images': 'http://127.0.0.1:5000',
+      '/read_results': 'http://127.0.0.1:5000',
     },
   },
 })
