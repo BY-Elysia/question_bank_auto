@@ -3,9 +3,10 @@ import express, { type Request, type Response } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
 import { FRONTEND_DIST_DIR, OUTPUT_DIR, READ_RESULTS_DIR, UPLOAD_DIR } from './config'
+import { registerQuestionBankAssistantRoutes } from './routes/question-bank-assistant-routes'
+import { registerQuestionBankDbRoutes } from './routes/question-bank-db-routes'
 import { registerChapterSessionRoutes } from './routes/chapter-session-routes'
 import { registerPdfRoutes } from './routes/pdf-routes'
-import { registerReadRoutes } from './routes/read-routes'
 import { registerTextbookJsonRoutes } from './routes/textbook-json-routes'
 
 export function createApp() {
@@ -18,9 +19,10 @@ export function createApp() {
   app.use('/read_results', express.static(READ_RESULTS_DIR))
 
   registerPdfRoutes(app)
-  registerReadRoutes(app)
   registerTextbookJsonRoutes(app)
   registerChapterSessionRoutes(app)
+  registerQuestionBankDbRoutes(app)
+  registerQuestionBankAssistantRoutes(app)
 
   if (fs.existsSync(FRONTEND_DIST_DIR)) {
     app.use(express.static(FRONTEND_DIST_DIR))

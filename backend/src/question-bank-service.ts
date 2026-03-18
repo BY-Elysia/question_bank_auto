@@ -17,6 +17,7 @@ import {
   READ_RESULTS_DIR,
   UPLOAD_DIR,
 } from './config'
+import { getArkApiKeyOverride } from './ark-request-context'
 import { chapterSessions, questionSessions } from './state'
 import type {
   ChapterDetectResult,
@@ -1132,18 +1133,6 @@ async function saveTextbookJson(filePath: string, payload: TextbookJsonPayload) 
   await fsp.writeFile(filePath, text, { encoding: 'utf8' })
 }
 
-async function saveReadTextFile(text: string, hint: string) {
-  const safeHint = sanitizeFolderName(hint) || 'doubao_read'
-  const fileName = `${safeHint}_${batchId()}.txt`
-  const absolutePath = path.join(READ_RESULTS_DIR, fileName)
-  await fsp.writeFile(absolutePath, text, { encoding: 'utf8' })
-  return {
-    fileName,
-    absolutePath,
-    url: `/read_results/${fileName}`,
-  }
-}
-
 function getImageMimeByPath(filePath: string) {
   const ext = path.extname(filePath).toLowerCase()
   if (ext === '.png') return 'image/png'
@@ -1162,27 +1151,6 @@ function getImageMimeByFile(file: Express.Multer.File) {
   if (ext === '.webp') return 'image/webp'
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
   return ''
-}
-
-function isWithinDir(targetPath: string, rootDir: string) {
-  const rel = path.relative(rootDir, targetPath)
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
-}
-
-function resolveOutputImagePath(imageUrl: string) {
-  const raw = String(imageUrl || '').trim()
-  if (!raw.startsWith('/output_images/')) {
-    return ''
-  }
-  const relPart = decodeURIComponent(raw.slice('/output_images/'.length))
-  const absPath = path.normalize(path.join(OUTPUT_DIR, relPart))
-  if (!isWithinDir(absPath, OUTPUT_DIR)) {
-    return ''
-  }
-  if (!getImageMimeByPath(absPath)) {
-    return ''
-  }
-  return absPath
 }
 
 async function toImageDataUrl(imagePath: string) {
@@ -1259,7 +1227,15 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function getEffectiveArkApiKey() {
+  return getArkApiKeyOverride() || ARK_API_KEY
+}
+
 async function requestArkRawWithRetry(body: Record<string, unknown>) {
+  const arkApiKey = getEffectiveArkApiKey()
+  if (!arkApiKey) {
+    throw new Error('ARK_API_KEY is missing')
+  }
   const totalAttempts = Math.max(1, ARK_RETRY_TIMES + 1)
   let lastError: unknown = null
 
@@ -1271,7 +1247,7 @@ async function requestArkRawWithRetry(body: Record<string, unknown>) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${ARK_API_KEY}`,
+          Authorization: `Bearer ${arkApiKey}`,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -1319,7 +1295,7 @@ async function requestArkRawWithRetry(body: Record<string, unknown>) {
 }
 
 async function readByDoubao(dataUrls: string[]) {
-  if (!ARK_API_KEY) {
+  if (!getEffectiveArkApiKey()) {
     throw new Error('ARK_API_KEY is missing')
   }
 
@@ -1479,7 +1455,7 @@ async function detectChapterBoundaryAndPendingByDoubao(params: {
     crossPageContext = '',
   } = params
 
-  if (!ARK_API_KEY) {
+  if (!getEffectiveArkApiKey()) {
     throw new Error('ARK_API_KEY is missing')
   }
   if (mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
@@ -1612,7 +1588,7 @@ async function detectChapterAndQuestionsByDoubao(params: {
     retryHint,
   } = params
 
-  if (!ARK_API_KEY) {
+  if (!getEffectiveArkApiKey()) {
     throw new Error('ARK_API_KEY is missing')
   }
   if (mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
@@ -2566,10 +2542,8 @@ export {
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   requestArkRawWithRetry,
-  resolveOutputImagePath,
   sanitizeFileName,
   sanitizeFolderName,
-  saveReadTextFile,
   saveTextbookJson,
   sortImageFileNames,
   toImageDataUrl,

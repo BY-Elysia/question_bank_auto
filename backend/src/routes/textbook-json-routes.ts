@@ -13,7 +13,6 @@ import {
 import { mergeTextbookJsonFiles } from '../json-merge-service'
 import { repairMathFormatInTextbookJson } from '../math-format-repair-service'
 import { attachImagesToQuestionInTextbookJson } from '../question-image-attach-service'
-import { repairLatexInTextbookJson } from '../latex-repair-service'
 import { repairQuestionInTextbookJson } from '../question-repair-service'
 import { upload } from '../upload'
 
@@ -180,33 +179,6 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Repair question failed: ${msg}` })
-  }
-})
-
-router.post('/api/textbook-json/repair-latex', async (req: Request, res: Response) => {
-  try {
-    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
-    const sourceFileName = String(req.body?.sourceFileName || '').trim()
-
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
-
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
-    const fileStat = await fsp.stat(jsonFilePath).catch(() => null)
-    if (!fileStat || !fileStat.isFile()) {
-      return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
-    }
-
-    const result = await repairLatexInTextbookJson({
-      jsonFilePath,
-      sourceFileName,
-    })
-
-    return res.json(result)
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(500).json({ message: `Repair latex failed: ${msg}` })
   }
 })
 
