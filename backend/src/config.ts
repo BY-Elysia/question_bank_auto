@@ -8,7 +8,6 @@ export const OUTPUT_DIR = path.join(APP_ROOT, 'output_images')
 export const OUTPUT_JSON_DIR = path.join(APP_ROOT, 'output_json')
 export const REPAIR_JSON_DIR = path.join(APP_ROOT, 'repair_json')
 export const MERGED_JSON_DIR = path.join(APP_ROOT, 'merged_json')
-export const LATEX_REPAIR_JSON_DIR = path.join(APP_ROOT, 'latex_repair_json')
 export const READ_RESULTS_DIR = path.join(APP_ROOT, 'read_results')
 
 export const PORT = Number(process.env.PORT || 5000)

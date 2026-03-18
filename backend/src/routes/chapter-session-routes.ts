@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { READ_RESULTS_DIR } from '../config'
+import { runWithArkApiKey } from '../ark-request-context'
+import { processChapterSessionImageWithResponsesPrefixCache } from '../question-bank-responses-experiment'
 import {
   appendAutoProcessFailureLog,
   batchId,
@@ -23,6 +25,10 @@ import {
 import { upload } from '../upload'
 
 const router = Router()
+
+function getArkApiKeyFromRequest(req: Request) {
+  return String(req.header('x-ark-api-key') || '').trim()
+}
 
 router.post('/api/chapters/session/init', async (req: Request, res: Response) => {
   try {
@@ -106,15 +112,17 @@ router.post('/api/chapters/session/process-image', upload.fields([
     if (!imageFile) {
       return res.status(400).json({ message: 'image file is required' })
     }
-    const result = await processChapterSessionImage({
-      sessionId,
-      imageDataUrl: toImageDataUrlFromFile(imageFile),
-      imageLabel: imageFile.originalname || '',
-      lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
-      lookaheadImageLabel: lookaheadImageFile?.originalname || '',
-      overrideChapterTitle: String(req.body?.currentChapterTitle || '').trim(),
-      overrideSectionTitle: String(req.body?.currentSectionTitle || '').trim(),
-    })
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      processChapterSessionImage({
+        sessionId,
+        imageDataUrl: toImageDataUrlFromFile(imageFile),
+        imageLabel: imageFile.originalname || '',
+        lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
+        lookaheadImageLabel: lookaheadImageFile?.originalname || '',
+        overrideChapterTitle: String(req.body?.currentChapterTitle || '').trim(),
+        overrideSectionTitle: String(req.body?.currentSectionTitle || '').trim(),
+      }),
+    )
     return res.json(result)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -122,8 +130,45 @@ router.post('/api/chapters/session/process-image', upload.fields([
   }
 })
 
+router.post('/api/chapters/session/process-image-responses', upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'lookaheadImage', maxCount: 1 },
+]), async (req: Request, res: Response) => {
+  try {
+    const sessionId = String(req.body?.sessionId || '').trim()
+    if (!sessionId) {
+      return res.status(400).json({ message: 'sessionId is required' })
+    }
+    if (!chapterSessions.get(sessionId)) {
+      return res.status(404).json({ message: 'session not found, please init first' })
+    }
+    const files = (req.files as Record<string, Express.Multer.File[]> | undefined) || {}
+    const imageFile = files.image?.[0]
+    const lookaheadImageFile = files.lookaheadImage?.[0]
+    if (!imageFile) {
+      return res.status(400).json({ message: 'image file is required' })
+    }
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      processChapterSessionImageWithResponsesPrefixCache({
+        sessionId,
+        imageDataUrl: toImageDataUrlFromFile(imageFile),
+        imageLabel: imageFile.originalname || '',
+        lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
+        lookaheadImageLabel: lookaheadImageFile?.originalname || '',
+        overrideChapterTitle: String(req.body?.currentChapterTitle || '').trim(),
+        overrideSectionTitle: String(req.body?.currentSectionTitle || '').trim(),
+      }),
+    )
+    return res.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Process chapter image with responses prefix cache failed: ${msg}` })
+  }
+})
+
 router.post('/api/chapters/session/auto-run', async (req: Request, res: Response) => {
   try {
+    const arkApiKey = getArkApiKeyFromRequest(req)
     const sessionId = String(req.body?.sessionId || '').trim()
     const imageDirRaw = String(req.body?.imageDir || '').trim()
     const overrideChapterTitle = String(req.body?.currentChapterTitle || '').trim()
@@ -163,15 +208,17 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
         const lookaheadName = index + 1 < names.length ? names[index + 1] : ''
         const lookaheadImagePath = lookaheadName ? path.join(imageDir, lookaheadName) : ''
         const lookaheadImageDataUrl = lookaheadImagePath ? await toImageDataUrl(lookaheadImagePath) : ''
-        const result = await processChapterSessionImage({
-          sessionId,
-          imageDataUrl,
-          imageLabel: name,
-          lookaheadImageDataUrl,
-          lookaheadImageLabel: lookaheadName,
-          overrideChapterTitle: firstImage ? overrideChapterTitle : '',
-          overrideSectionTitle: firstImage ? overrideSectionTitle : '',
-        })
+        const result = await runWithArkApiKey(arkApiKey, () =>
+          processChapterSessionImage({
+            sessionId,
+            imageDataUrl,
+            imageLabel: name,
+            lookaheadImageDataUrl,
+            lookaheadImageLabel: lookaheadName,
+            overrideChapterTitle: firstImage ? overrideChapterTitle : '',
+            overrideSectionTitle: firstImage ? overrideSectionTitle : '',
+          }),
+        )
         firstImage = false
         successCount += 1
         results.push({
@@ -218,6 +265,162 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Auto run failed: ${msg}` })
+  }
+})
+
+router.post('/api/chapters/session/auto-run-stream-responses', async (req: Request, res: Response) => {
+  let streamStarted = false
+  try {
+    const arkApiKey = getArkApiKeyFromRequest(req)
+    const sessionId = String(req.body?.sessionId || '').trim()
+    const imageDirRaw = String(req.body?.imageDir || '').trim()
+    const overrideChapterTitle = String(req.body?.currentChapterTitle || '').trim()
+    const overrideSectionTitle = String(req.body?.currentSectionTitle || '').trim()
+
+    if (!sessionId) {
+      return res.status(400).json({ message: 'sessionId is required' })
+    }
+    if (!imageDirRaw) {
+      return res.status(400).json({ message: 'imageDir is required' })
+    }
+    if (!chapterSessions.get(sessionId)) {
+      return res.status(404).json({ message: 'session not found, please init first' })
+    }
+
+    const imageDir = path.resolve(imageDirRaw)
+    const dirStat = await fsp.stat(imageDir).catch(() => null)
+    if (!dirStat || !dirStat.isDirectory()) {
+      return res.status(400).json({ message: 'imageDir does not exist or is not a directory' })
+    }
+
+    const names = sortImageFileNames((await fsp.readdir(imageDir)).filter((name) => isSupportedImageFileName(name)))
+    if (!names.length) {
+      return res.status(400).json({ message: 'no image files found in imageDir' })
+    }
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    streamStarted = true
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders()
+    }
+
+    writeNdjson(res, {
+      type: 'start',
+      sessionId,
+      imageDir,
+      totalCount: names.length,
+      currentChapterTitle: overrideChapterTitle || chapterSessions.get(sessionId)?.currentChapterTitle || '',
+      currentSectionTitle: overrideSectionTitle || chapterSessions.get(sessionId)?.currentSectionTitle || '',
+      mode: 'responses-prefix-experiment',
+    })
+
+    const results = []
+    let successCount = 0
+    let failedCount = 0
+    let firstImage = true
+
+    for (let index = 0; index < names.length; index += 1) {
+      const name = names[index]
+      const imagePath = path.join(imageDir, name)
+      writeNdjson(res, {
+        type: 'progress',
+        stage: 'processing',
+        currentIndex: index + 1,
+        totalCount: names.length,
+        fileName: name,
+        imagePath,
+        mode: 'responses-prefix-experiment',
+      })
+
+      try {
+        const imageDataUrl = await toImageDataUrl(imagePath)
+        const lookaheadName = index + 1 < names.length ? names[index + 1] : ''
+        const lookaheadImagePath = lookaheadName ? path.join(imageDir, lookaheadName) : ''
+        const lookaheadImageDataUrl = lookaheadImagePath ? await toImageDataUrl(lookaheadImagePath) : ''
+        const result = await runWithArkApiKey(arkApiKey, () =>
+          processChapterSessionImageWithResponsesPrefixCache({
+            sessionId,
+            imageDataUrl,
+            imageLabel: name,
+            lookaheadImageDataUrl,
+            lookaheadImageLabel: lookaheadName,
+            overrideChapterTitle: firstImage ? overrideChapterTitle : '',
+            overrideSectionTitle: firstImage ? overrideSectionTitle : '',
+          }),
+        )
+        firstImage = false
+        successCount += 1
+        const item = {
+          fileName: name,
+          imagePath,
+          status: 'success',
+          currentIndex: index + 1,
+          totalCount: names.length,
+          currentChapterTitle: result.currentChapterTitle,
+          currentSectionTitle: result.currentSectionTitle,
+          question: result.question,
+          prefixCacheExperiment: result.prefixCacheExperiment || null,
+        }
+        results.push(item)
+        writeNdjson(res, {
+          type: 'result',
+          ...item,
+        })
+      } catch (error) {
+        failedCount += 1
+        const msg = error instanceof Error ? error.message : String(error)
+        await appendAutoProcessFailureLog({
+          sessionId,
+          imagePath,
+          error: msg,
+        })
+        const item = {
+          fileName: name,
+          imagePath,
+          status: 'failed',
+          currentIndex: index + 1,
+          totalCount: names.length,
+          error: msg,
+        }
+        results.push(item)
+        writeNdjson(res, {
+          type: 'result',
+          ...item,
+        })
+      }
+    }
+
+    const latestSession = chapterSessions.get(sessionId)
+    const latestQuestionSession = questionSessions.get(sessionId)
+    writeNdjson(res, {
+      type: 'done',
+      sessionId,
+      imageDir,
+      totalCount: names.length,
+      successCount,
+      failedCount,
+      currentChapterTitle: latestSession?.currentChapterTitle || '',
+      currentSectionTitle: latestSession?.currentSectionTitle || '',
+      pending: (latestQuestionSession?.pendingPageDataUrls || []).length > 0,
+      pendingContinueQuestionKey: latestQuestionSession?.pendingContinueQuestionKey || null,
+      failureLogPath: path.join(READ_RESULTS_DIR, 'auto_process_failures.jsonl'),
+      results,
+      mode: 'responses-prefix-experiment',
+    })
+    return res.end()
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (!streamStarted) {
+      return res.status(500).json({ message: `Auto run with responses prefix cache failed: ${msg}` })
+    }
+    writeNdjson(res, {
+      type: 'error',
+      message: `Auto run with responses prefix cache failed: ${msg}`,
+      mode: 'responses-prefix-experiment',
+    })
+    return res.end()
   }
 })
 

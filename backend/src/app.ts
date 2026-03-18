@@ -5,7 +5,6 @@ import path from 'node:path'
 import { FRONTEND_DIST_DIR, OUTPUT_DIR, READ_RESULTS_DIR, UPLOAD_DIR } from './config'
 import { registerChapterSessionRoutes } from './routes/chapter-session-routes'
 import { registerPdfRoutes } from './routes/pdf-routes'
-import { registerReadRoutes } from './routes/read-routes'
 import { registerTextbookJsonRoutes } from './routes/textbook-json-routes'
 
 export function createApp() {
@@ -18,7 +17,6 @@ export function createApp() {
   app.use('/read_results', express.static(READ_RESULTS_DIR))
 
   registerPdfRoutes(app)
-  registerReadRoutes(app)
   registerTextbookJsonRoutes(app)
   registerChapterSessionRoutes(app)
 

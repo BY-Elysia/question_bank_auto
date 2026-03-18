@@ -10,13 +10,11 @@
 当前这版工作台除了主流程，还补上了题库维护能力：
 
 - `结构化处理`：基础教材 JSON、章节会话初始化、单页处理、目录流式自动处理。
-- `页图工作台`：上传 PDF、批量切页、勾选页图、回看输出目录。
+- `页图工作台`：上传 PDF、批量切页、预览页图、回看输出目录。
 - `题目修复`：按章节/小节/题号定点覆盖单题，输出到 `repair_json/`。
 - `图片补充`：给题目补挂图片资源，自动回写 `media`。
-- `LaTeX 修复`：对已有题库 JSON 做公式和块级 LaTeX 清洗，输出到 `latex_repair_json/`。
 - `题库可视化`：按章节树浏览题目与答案，并直接渲染公式。
 - `JSON 合并`：把多个章节 JSON 去重拼接，输出到 `merged_json/`。
-- `豆包读取`：直接上传图片做逐字转写，不进入结构化抽题流程。
 
 运行过程中会用到这些目录：
 
@@ -25,8 +23,7 @@
 - `output_images/`：PDF 转出的页图，按文件夹保存。
 - `repair_json/`：单题修复、公式修复、图片补充后生成的新 JSON。
 - `merged_json/`：多文件去重合并后的结果。
-- `latex_repair_json/`：LaTeX 批量修复后的结果。
-- `read_results/`：模型原始转写文本、自动处理失败日志、待校对日志。
+- `read_results/`：自动处理失败日志、待校对日志等运行记录。
 - 外部 `output_json/`：用户自己指定的 JSON 保存目录，后端只写入，不负责创建。
 
 ## Git 说明
@@ -153,13 +150,11 @@ npm run dev
 工作台入口包括：
 
 - `结构化处理`：基础 JSON 生成、章节会话初始化、手动逐页处理、自动流式跑目录。
-- `页图工作台`：PDF 转图、页图选择、预览和投喂模型前准备。
+- `页图工作台`：PDF 转图、页图预览和输出目录回看。
 - `题目修复`：定点补题或覆盖已有题目。
 - `图片补充`：给指定题目挂载图片资源。
-- `LaTeX 修复`：修理已有 JSON 里的公式格式问题。
 - `题库可视化`：按章节树筛选查看题目、答案和小题结构。
 - `JSON 合并`：把拆分的多个 JSON 文件合并成一个结果文件。
-- `豆包读取`：只做图片转写，不做结构化提取。
 
 ### 1. 基础 JSON 生成
 
@@ -453,24 +448,6 @@ npm run dev
 
 除了题库自动处理主线，后端还提供若干辅助接口。
 
-### `POST /api/doubao/read`
-
-输入已有图片 URL 数组，例如：
-
-```json
-{
-  "imageUrls": ["/output_images/数学分析/1.jpg"]
-}
-```
-
-后端会把这些图片转成 Data URL，调用豆包做逐字转写，并把结果保存为 `read_results/*.txt`。
-
-这个接口只做可见文本转写，不做结构化题库提取。
-
-### `POST /api/doubao/read-files`
-
-前端可以直接上传图片文件给豆包做逐字转写，不经过 PDF 转图目录。
-
 ### `POST /api/textbook-json/repair-question`
 
 按章节、小节和题号定点修复单题，支持多张连续页图片，结果输出到 `repair_json/`。
@@ -482,10 +459,6 @@ npm run dev
 ### `POST /api/textbook-json/attach-images`
 
 给指定题目挂图片并回写 `media`，结果输出到 `repair_json/`。
-
-### `POST /api/textbook-json/repair-latex`
-
-对整份题库 JSON 做确定性 LaTeX 清洗，结果输出到 `latex_repair_json/`。
 
 ### `POST /api/textbook-json/merge`
 

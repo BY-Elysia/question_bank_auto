@@ -153,6 +153,121 @@
           @repair-math-format="handleRepairMathFormat"
         />
 
+        <section v-if="currentQuestionMeta" class="subpanel visualizer-rewrite-panel">
+          <div class="subpanel-head">
+            <h3>按图片重写当前题</h3>
+            <p>当前已选题目会自动带出章节、小节和题号。你只需要上传连续页图片，不用再手工记题号。</p>
+          </div>
+
+          <div class="visualizer-rewrite-meta">
+            <article class="visualizer-rewrite-card">
+              <span>当前题目</span>
+              <strong>{{ currentQuestionMeta.question.title || currentQuestionMeta.question.questionId }}</strong>
+            </article>
+            <article class="visualizer-rewrite-card">
+              <span>自动定位</span>
+              <strong>
+                {{
+                  currentQuestionParts
+                    ? `第 ${currentQuestionParts.chapterNo} 章 / 第 ${currentQuestionParts.sectionNo} 小节 / 第 ${currentQuestionParts.questionNo} 题`
+                    : currentQuestionMeta.question.questionId
+                }}
+              </strong>
+            </article>
+          </div>
+
+          <div class="visualizer-rewrite-upload-wrap">
+            <label class="file-shell visualizer-rewrite-upload">
+              <span>上传重写图片</span>
+              <input
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp"
+                @change="actions.onVisualizerRepairImageChange"
+              />
+            </label>
+          </div>
+
+          <div class="action-row inline-row visualizer-rewrite-actions">
+            <span class="glass-pill" :class="{ 'is-active': state.visualizerRepairImageFiles.length > 0 }">
+              {{
+                state.visualizerRepairImageFiles.length
+                  ? `已选择 ${state.visualizerRepairImageFiles.length} 张图片`
+                  : '可选择多张连续页图片'
+              }}
+            </span>
+            <button
+              class="ghost-button"
+              :disabled="state.visualizerRepairProcessing || !state.visualizerRepairImageFiles.length"
+              @click="actions.clearVisualizerRepairImages"
+            >
+              清空图片
+            </button>
+          </div>
+
+          <div class="action-row">
+            <button
+              class="primary-button"
+              :disabled="state.visualizerRepairProcessing || !state.visualizerRepairImageFiles.length || !state.visualizerServerJsonPath"
+              @click="handleRewriteQuestion"
+            >
+              {{ state.visualizerRepairProcessing ? '重写中...' : '按图片重写当前题' }}
+            </button>
+          </div>
+
+          <div v-if="state.visualizerRewriteResult" class="process-panel">
+            <article class="process-card" :class="{ 'is-success': !state.visualizerRepairError }">
+              <div class="process-card__header">
+                <div>
+                  <strong>
+                    {{ state.visualizerRewriteResult.action === 'replaced' ? '当前题已覆盖重写' : '当前题已补入并写回' }}
+                  </strong>
+                  <p>
+                    {{ state.visualizerRewriteResult.chapterTitle }} / {{ state.visualizerRewriteResult.sectionTitle }}
+                  </p>
+                </div>
+                <span class="process-badge is-done">
+                  {{ state.visualizerRewriteResult.action === 'replaced' ? '覆盖' : '补入' }}
+                </span>
+              </div>
+
+              <div class="process-key-grid">
+                <div>
+                  <span>修复输出文件</span>
+                  <strong>{{ state.visualizerRewriteResult.repairJsonFileName || '未生成' }}</strong>
+                </div>
+                <div>
+                  <span>repair_json 路径</span>
+                  <strong>{{ state.visualizerRewriteResult.repairJsonPath || '未生成' }}</strong>
+                </div>
+                <div>
+                  <span>题目 ID</span>
+                  <strong>{{ state.visualizerRewriteResult.questionId }}</strong>
+                </div>
+                <div>
+                  <span>写入位置</span>
+                  <strong>{{ state.visualizerRewriteResult.insertIndex }}</strong>
+                </div>
+                <div>
+                  <span>上传图片数</span>
+                  <strong>{{ state.visualizerRewriteResult.imageCount }}</strong>
+                </div>
+                <div>
+                  <span>题库总量</span>
+                  <strong>{{ state.visualizerRewriteResult.questionsCount }}</strong>
+                </div>
+              </div>
+
+              <div v-if="state.visualizerRewriteResult.reason" class="process-reason-stack">
+                <div class="process-reason">
+                  <span>模型说明</span>
+                  <p>{{ state.visualizerRewriteResult.reason }}</p>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <div v-else-if="flattenedQuestions.length" class="empty-state">
           <strong>当前筛选条件下没有题目</strong>
           <span>可以切换小节或清空关键词筛选。</span>
@@ -254,6 +369,19 @@ function buildQuestionLabel(groupTitle, question) {
   return `${groupTitle} · ${question.title || question.questionId} · ${question.questionId}`
 }
 
+function parseQuestionIdParts(questionId) {
+  const match = String(questionId || '').trim().match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
+  if (!match) {
+    return null
+  }
+  return {
+    chapterNo: Number(match[1]),
+    sectionNo: Number(match[2]),
+    questionNo: Number(match[3]),
+    childNo: match[4] ? Number(match[4]) : null,
+  }
+}
+
 const flattenedQuestions = computed(() =>
   questionGroups.value.flatMap((group) =>
     group.questions.map((question) => ({
@@ -302,6 +430,10 @@ const currentQuestionMeta = computed(() => {
   return filteredQuestions.value[currentQuestionIndex.value] || null
 })
 
+const currentQuestionParts = computed(() =>
+  parseQuestionIdParts(currentQuestionMeta.value?.question?.questionId || ''),
+)
+
 const repairingTargetType = ref('')
 
 function goPrevQuestion() {
@@ -325,5 +457,16 @@ async function handleRepairMathFormat(payload) {
   } finally {
     repairingTargetType.value = ''
   }
+}
+
+async function handleRewriteQuestion() {
+  const question = currentQuestionMeta.value?.question
+  if (!question) {
+    return
+  }
+  await props.actions.repairQuestionFromVisualizer({
+    questionId: question.questionId,
+    questionTitle: question.title || question.questionId,
+  })
 }
 </script>

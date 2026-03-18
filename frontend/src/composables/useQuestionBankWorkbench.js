@@ -35,13 +35,6 @@ export function useQuestionBankWorkbench() {
     batchId: '',
     outputFolder: '',
     pages: [],
-    selectedImageUrls: [],
-    aiImageFiles: [],
-    reading: false,
-    readError: false,
-    readStatusText: '',
-    readText: '',
-    savedTextUrl: '',
     generatedTextbookJson: '',
     jsonFormError: '',
     jsonSaveStatus: '',
@@ -54,6 +47,8 @@ export function useQuestionBankWorkbench() {
     chapterSessionId: '',
     chapterSessionCurrentChapter: '',
     chapterSessionCurrentSection: '',
+    chapterArkApiKey: '',
+    chapterProcessingMode: 'original',
     chapterSessionStatus: '',
     chapterSessionError: false,
     repairForm: {
@@ -85,10 +80,6 @@ export function useQuestionBankWorkbench() {
     imageAttachStatus: '',
     imageAttachError: false,
     imageAttachResult: null,
-    latexRepairProcessing: false,
-    latexRepairStatus: '',
-    latexRepairError: false,
-    latexRepairResult: null,
     visualizerFileName: '',
     visualizerFileHandle: null,
     visualizerServerJsonPath: '',
@@ -98,6 +89,8 @@ export function useQuestionBankWorkbench() {
     visualizerRepairProcessing: false,
     visualizerRepairStatus: '',
     visualizerRepairError: false,
+    visualizerRepairImageFiles: [],
+    visualizerRewriteResult: null,
     mergeJsonFiles: [],
     mergeOutputFileName: 'merged_textbook.json',
     mergeProcessing: false,
@@ -111,6 +104,7 @@ export function useQuestionBankWorkbench() {
     chapterAutoFiles: [],
     chapterAutoFolderLabel: '',
     chapterAutoRunning: false,
+    chapterAutoStopping: false,
     chapterAutoStatus: '',
     chapterAutoError: false,
     chapterAutoLogs: '',
@@ -129,6 +123,7 @@ export function useQuestionBankWorkbench() {
   })
 
   let selectedPdfSequence = 0
+  let chapterAutoAbortController = null
 
   function createSelectedPdfEntry(file) {
     selectedPdfSequence += 1
@@ -142,7 +137,6 @@ export function useQuestionBankWorkbench() {
     state.batchId = ''
     state.outputFolder = ''
     state.pages = []
-    resetReadState()
   }
 
   function buildTextbookPayload() {
@@ -173,6 +167,59 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function getChapterProcessingProfile() {
+    const isResponsesExperiment = state.chapterProcessingMode === 'responses'
+    return {
+      mode: isResponsesExperiment ? 'responses' : 'original',
+      modeLabel: isResponsesExperiment ? 'Responses前缀缓存实验版' : '原逻辑',
+      processImageEndpoint: isResponsesExperiment
+        ? '/api/chapters/session/process-image-responses'
+        : '/api/chapters/session/process-image',
+    }
+  }
+
+  function setChapterProcessingMode(mode) {
+    if (mode !== 'original' && mode !== 'responses') {
+      return
+    }
+    state.chapterProcessingMode = mode
+  }
+
+  function getChapterArkApiKey() {
+    return String(state.chapterArkApiKey || '').trim()
+  }
+
+  function buildChapterArkHeaders() {
+    const arkApiKey = getChapterArkApiKey()
+    return arkApiKey ? { 'X-Ark-Api-Key': arkApiKey } : {}
+  }
+
+  function ensureChapterArkApiKey() {
+    if (getChapterArkApiKey()) {
+      return true
+    }
+    state.chapterSessionError = true
+    state.chapterSessionStatus = '请先在当前页面填写 API Key，再开始提取'
+    state.chapterAutoError = true
+    state.chapterAutoStatus = '请先在当前页面填写 API Key，再开始提取'
+    return false
+  }
+
+  function isAbortRequestError(error) {
+    return error?.name === 'AbortError' || String(error?.message || '').toLowerCase().includes('aborted')
+  }
+
+  function resetChapterAutoRuntimeState() {
+    state.chapterAutoError = false
+    state.chapterAutoStopping = false
+    state.chapterAutoStatus = ''
+    state.chapterAutoLogs = ''
+    state.chapterAutoProgress = ''
+    state.chapterAutoEntries = []
+    state.chapterAutoSummary = null
+    state.chapterAutoLive = null
+  }
+
   async function loadVisualizerJsonFile(file, fileHandle = null) {
     if (!file) {
       return
@@ -182,6 +229,8 @@ export function useQuestionBankWorkbench() {
     state.visualizerStatus = '解析 JSON 中...'
     state.visualizerRepairError = false
     state.visualizerRepairStatus = ''
+    state.visualizerRepairImageFiles = []
+    state.visualizerRewriteResult = null
 
     try {
       const text = await fileToText(file)
@@ -205,6 +254,8 @@ export function useQuestionBankWorkbench() {
       state.visualizerFileName = ''
       state.visualizerFileHandle = null
       state.visualizerServerJsonPath = ''
+      state.visualizerRepairImageFiles = []
+      state.visualizerRewriteResult = null
       state.visualizerStatus = error instanceof Error ? error.message : '解析 JSON 失败'
     }
   }
@@ -279,6 +330,30 @@ export function useQuestionBankWorkbench() {
       questionNo: Number(match[3]),
       childNo: match[4] ? Number(match[4]) : null,
     }
+  }
+
+  function upsertQuestionInVisualizerPayload(questionToUpsert) {
+    if (!questionToUpsert || typeof questionToUpsert !== 'object') {
+      return false
+    }
+
+    const payload = state.visualizerPayload
+    const questionId = typeof questionToUpsert.questionId === 'string' ? questionToUpsert.questionId.trim() : ''
+    if (!payload || !Array.isArray(payload.questions) || !questionId) {
+      return false
+    }
+
+    const existingIndex = payload.questions.findIndex(
+      (item) => item && typeof item === 'object' && item.questionId === questionId,
+    )
+
+    if (existingIndex >= 0) {
+      payload.questions.splice(existingIndex, 1, questionToUpsert)
+    } else {
+      payload.questions.push(questionToUpsert)
+    }
+
+    return true
   }
 
   function applyVisualizerMathFormatRepairToPayload(params) {
@@ -388,17 +463,168 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  function resetReadState() {
-    state.selectedImageUrls = []
-    state.reading = false
-    state.readError = false
-    state.readStatusText = ''
-    state.readText = ''
-    state.savedTextUrl = ''
+  function onVisualizerRepairImageChange(event) {
+    state.visualizerRepairImageFiles = Array.from(event?.target?.files ?? [])
+    state.visualizerRepairError = false
+    state.visualizerRewriteResult = null
+    if (event?.target) {
+      event.target.value = ''
+    }
+  }
+
+  function clearVisualizerRepairImages() {
+    state.visualizerRepairImageFiles = []
+  }
+
+  async function repairQuestionFromVisualizer(params) {
+    const questionId = String(params?.questionId || '').trim()
+    const questionTitle = String(params?.questionTitle || '').trim()
+
+    if (!state.visualizerServerJsonPath) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '褰撳墠鍙鍖栨枃浠跺皻鏈悓姝ュ埌淇宸ヤ綔鍖猴紝璇烽噸鏂伴€夋嫨涓€娆?JSON 鏂囦欢'
+      return
+    }
+    if (!state.visualizerRepairImageFiles.length) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '璇峰厛涓婁紶鐢ㄤ簬閲嶅啓褰撳墠棰樼洰鐨勫浘鐗?'
+      return
+    }
+
+    const parts = parseQuestionIdParts(questionId)
+    if (!parts) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = `鏃犳硶浠?questionId 瑙ｆ瀽绔犺妭淇℃伅锛?${questionId || 'unknown'}`
+      return
+    }
+
+    state.visualizerRepairProcessing = true
+    state.visualizerRepairError = false
+    state.visualizerRepairStatus = `姝ｅ湪鏍规嵁鍥剧墖閲嶅啓 ${questionTitle || questionId}...`
+    state.visualizerRewriteResult = null
+
+    try {
+      const formData = new FormData()
+      formData.append('jsonFilePath', state.visualizerServerJsonPath)
+      formData.append('sourceFileName', state.visualizerFileName || '')
+      formData.append('chapterNo', String(parts.chapterNo))
+      formData.append('sectionNo', String(parts.sectionNo))
+      formData.append('questionNo', String(parts.questionNo))
+      for (const file of state.visualizerRepairImageFiles) {
+        formData.append('images', file, file.name)
+      }
+
+      const resp = await fetch('/api/textbook-json/repair-question', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '褰撳墠棰樼洰閲嶅啓澶辫触')
+      }
+
+      upsertQuestionInVisualizerPayload(data.question)
+      state.visualizerRewriteResult = {
+        repairJsonPath: String(data.repairJsonPath || ''),
+        repairJsonFileName: String(data.repairJsonFileName || ''),
+        chapterTitle: String(data.chapterTitle || ''),
+        sectionTitle: String(data.sectionTitle || ''),
+        questionId: String(data.questionId || questionId),
+        questionTitle: String(data.questionTitle || questionTitle || questionId),
+        action: String(data.action || ''),
+        insertIndex: Number(data.insertIndex ?? -1),
+        questionsCount: Number(data.questionsCount ?? 0),
+        imageCount: Number(data.imageCount ?? state.visualizerRepairImageFiles.length),
+        reason: String(data.reason || ''),
+      }
+      state.visualizerRepairImageFiles = []
+
+      let syncWarning = ''
+      try {
+        await syncVisualizerJsonToLocalFile()
+      } catch (syncError) {
+        syncWarning = syncError instanceof Error ? syncError.message : '鍥炲啓鏈湴鏂囦欢澶辫触'
+      }
+      state.visualizerRepairStatus = syncWarning
+        ? `宸叉寜鍥剧墖閲嶅啓 ${state.visualizerRewriteResult.questionTitle}锛屼絾鍥炲啓鏈湴鏂囦欢澶辫触锛?${syncWarning}`
+        : `宸叉寜鍥剧墖閲嶅啓 ${state.visualizerRewriteResult.questionTitle}`
+    } catch (error) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = error instanceof Error ? error.message : '褰撳墠棰樼洰閲嶅啓澶辫触'
+    } finally {
+      state.visualizerRepairProcessing = false
+    }
   }
 
   function appendChapterAutoLog(line) {
     state.chapterAutoLogs = state.chapterAutoLogs ? `${state.chapterAutoLogs}\n${line}` : line
+  }
+
+  function buildPrefixCacheUsage(rawUsage) {
+    const usage = rawUsage && typeof rawUsage === 'object' ? rawUsage : {}
+    return {
+      promptTokens: Number(usage.promptTokens ?? 0),
+      completionTokens: Number(usage.completionTokens ?? 0),
+      totalTokens: Number(usage.totalTokens ?? 0),
+      cachedTokens: Number(usage.cachedTokens ?? 0),
+    }
+  }
+
+  function buildPrefixCacheRun(rawRun) {
+    if (!rawRun || typeof rawRun !== 'object') {
+      return null
+    }
+
+    const usage = buildPrefixCacheUsage(rawRun.usage)
+    const seedResponseId = typeof rawRun.seedResponseId === 'string' ? rawRun.seedResponseId.trim() : ''
+    const requestResponseId = typeof rawRun.requestResponseId === 'string' ? rawRun.requestResponseId.trim() : ''
+    const seedSource = typeof rawRun.seedSource === 'string' ? rawRun.seedSource.trim() : ''
+
+    return {
+      enabled: Boolean(seedResponseId),
+      hit: usage.cachedTokens > 0,
+      seedResponseId,
+      requestResponseId,
+      seedSource,
+      usage,
+    }
+  }
+
+  function buildPrefixCacheSummary(prefixCacheExperiment) {
+    if (!prefixCacheExperiment || typeof prefixCacheExperiment !== 'object') {
+      return null
+    }
+
+    const boundary = buildPrefixCacheRun(prefixCacheExperiment.boundary)
+    const extractRuns = (Array.isArray(prefixCacheExperiment.extracts) ? prefixCacheExperiment.extracts : [])
+      .map((run) => buildPrefixCacheRun(run))
+      .filter(Boolean)
+
+    if (!boundary && !extractRuns.length) {
+      return null
+    }
+
+    const extractCachedTokens = extractRuns.reduce((sum, run) => sum + run.usage.cachedTokens, 0)
+    const extractTotalTokens = extractRuns.reduce((sum, run) => sum + run.usage.totalTokens, 0)
+    const extractEnabledCount = extractRuns.filter((run) => run.enabled).length
+    const extractHitCount = extractRuns.filter((run) => run.hit).length
+    const latestExtractRun = extractRuns[extractRuns.length - 1] || null
+
+    return {
+      available: true,
+      enabled: Boolean(boundary?.enabled || extractEnabledCount > 0),
+      totalCachedTokens: (boundary?.usage.cachedTokens ?? 0) + extractCachedTokens,
+      totalTokens: (boundary?.usage.totalTokens ?? 0) + extractTotalTokens,
+      boundary,
+      extracts: {
+        runs: extractRuns.length,
+        enabledCount: extractEnabledCount,
+        hitCount: extractHitCount,
+        cachedTokens: extractCachedTokens,
+        totalTokens: extractTotalTokens,
+        latestSeedSource: latestExtractRun?.seedSource || '',
+      },
+    }
   }
 
   function buildQuestionSummary(question, totalQuestions = null) {
@@ -465,6 +691,7 @@ export function useQuestionBankWorkbench() {
         detail: event.currentSectionTitle ? `当前小节：${event.currentSectionTitle}` : '',
         progressLabel: `${event.currentIndex}/${event.totalCount}`,
         question,
+        prefixCache: buildPrefixCacheSummary(event.prefixCacheExperiment),
       }
     }
     if (event.type === 'error') {
@@ -534,6 +761,25 @@ export function useQuestionBankWorkbench() {
     return ''
   }
 
+  function isFatalAutoRunErrorMessage(message) {
+    const normalized = String(message || '').toLowerCase()
+  return [
+      'session not found',
+      'please init first',
+      'ark_api_key is missing',
+      'account id is empty',
+      '"param":"model"',
+      '"param":"mode"',
+      '"param":"endpoint"',
+      'endpoint notfound',
+      'endpoint not found',
+      'failed to fetch',
+      'networkerror',
+      'fetch failed',
+      'econnrefused',
+    ].some((keyword) => normalized.includes(keyword))
+  }
+
   async function uploadJsonFileToWorkspace(file) {
     const formData = new FormData()
     formData.append('json', file, file.name)
@@ -548,6 +794,34 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
+  async function readWorkspaceJsonText(filePath) {
+    const resp = await fetch('/api/textbook-json/read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filePath,
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '璇诲彇宸ヤ綔鍓湰澶辫触')
+    }
+    return String(data.text || '')
+  }
+
+  async function syncJsonHandleFromWorkspace(filePath, fileHandle) {
+    if (!filePath || !fileHandle) {
+      return
+    }
+
+    const text = await readWorkspaceJsonText(filePath)
+    const writable = await fileHandle.createWritable()
+    await writable.write(text)
+    await writable.close()
+  }
+
   async function importJsonFileToWorkspace(file) {
     const data = await uploadJsonFileToWorkspace(file)
     state.chapterSessionServerJsonPath = String(data.filePath || '')
@@ -556,6 +830,8 @@ export function useQuestionBankWorkbench() {
   }
 
   async function syncWorkingJsonToLocalFile() {
+    await syncJsonHandleFromWorkspace(state.chapterSessionServerJsonPath, state.chapterSessionJsonHandle)
+    return
     if (!state.chapterSessionServerJsonPath || !state.chapterSessionJsonHandle) {
       return
     }
@@ -575,6 +851,10 @@ export function useQuestionBankWorkbench() {
     const writable = await state.chapterSessionJsonHandle.createWritable()
     await writable.write(String(data.text || ''))
     await writable.close()
+  }
+
+  async function syncVisualizerJsonToLocalFile() {
+    await syncJsonHandleFromWorkspace(state.visualizerServerJsonPath, state.visualizerFileHandle)
   }
 
   async function chooseJsonSessionFile() {
@@ -747,13 +1027,7 @@ export function useQuestionBankWorkbench() {
     state.chapterSessionStatus = '初始化中...'
     state.chapterPassLogs = ''
     state.chapterPassResult = null
-    state.chapterAutoError = false
-    state.chapterAutoStatus = ''
-    state.chapterAutoLogs = ''
-    state.chapterAutoProgress = ''
-    state.chapterAutoEntries = []
-    state.chapterAutoSummary = null
-    state.chapterAutoLive = null
+    resetChapterAutoRuntimeState()
 
     try {
       const resp = await fetch('/api/chapters/session/init', {
@@ -1140,51 +1414,6 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  async function repairJsonLatex() {
-    if (!state.chapterSessionServerJsonPath) {
-      state.latexRepairError = true
-      state.latexRepairStatus = '请先选择 JSON 文件'
-      return
-    }
-
-    state.latexRepairProcessing = true
-    state.latexRepairError = false
-    state.latexRepairStatus = 'LaTeX 修复处理中...'
-    state.latexRepairResult = null
-
-    try {
-      const resp = await fetch('/api/textbook-json/repair-latex', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonFilePath: state.chapterSessionServerJsonPath,
-          sourceFileName: state.chapterSessionJsonLabel || '',
-        }),
-      })
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || 'LaTeX 修复失败')
-      }
-
-      state.latexRepairResult = {
-        repairedFileName: String(data.repairedFileName || ''),
-        repairedFilePath: String(data.repairedFilePath || ''),
-        questionCount: Number(data.questionCount ?? 0),
-        visitedTextBlockCount: Number(data.visitedTextBlockCount ?? 0),
-        changedTextBlockCount: Number(data.changedTextBlockCount ?? 0),
-        changedQuestionCount: Number(data.changedQuestionCount ?? 0),
-      }
-      state.latexRepairStatus = `修复完成，已输出到 latex_repair_json：${state.latexRepairResult.repairedFileName || state.latexRepairResult.repairedFilePath}`
-    } catch (error) {
-      state.latexRepairError = true
-      state.latexRepairStatus = error instanceof Error ? error.message : 'LaTeX 修复失败'
-    } finally {
-      state.latexRepairProcessing = false
-    }
-  }
-
   function onChapterImageChange(event) {
     state.chapterImageFile = event.target.files?.[0] ?? null
   }
@@ -1200,7 +1429,12 @@ export function useQuestionBankWorkbench() {
       state.chapterSessionStatus = '请先选择图片'
       return
     }
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
 
+    const processingProfile = getChapterProcessingProfile()
+    const chapterArkHeaders = buildChapterArkHeaders()
     state.chapterProcessing = true
     state.chapterSessionError = false
     state.chapterSessionStatus = '处理中...'
@@ -1212,8 +1446,9 @@ export function useQuestionBankWorkbench() {
       formData.append('currentChapterTitle', state.chapterSessionCurrentChapter)
       formData.append('currentSectionTitle', state.chapterSessionCurrentSection)
 
-      const resp = await fetch('/api/chapters/session/process-image', {
+      const resp = await fetch(processingProfile.processImageEndpoint, {
         method: 'POST',
+        headers: chapterArkHeaders,
         body: formData,
       })
       const data = await parseApiResponse(resp)
@@ -1232,6 +1467,7 @@ export function useQuestionBankWorkbench() {
         {
           chapters: data.passLogs || [],
           question,
+          prefixCacheExperiment: data.prefixCacheExperiment || null,
         },
         null,
         2,
@@ -1239,9 +1475,11 @@ export function useQuestionBankWorkbench() {
       state.chapterPassResult = {
         chapterTitle: state.chapterSessionCurrentChapter,
         sectionTitle: state.chapterSessionCurrentSection,
+        modeLabel: processingProfile.modeLabel,
         chaptersCount: Number(data.chaptersCount ?? 0),
         questionsCount: Number(data.questionsCount ?? 0),
         question: buildQuestionSummary(question, data.questionsCount ?? 0),
+        prefixCache: buildPrefixCacheSummary(data.prefixCacheExperiment),
       }
       await syncWorkingJsonToLocalFile().catch(() => {})
     } catch (error) {
@@ -1263,14 +1501,22 @@ export function useQuestionBankWorkbench() {
       state.chapterAutoStatus = '请先选择图片文件夹'
       return
     }
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
 
+    const processingProfile = getChapterProcessingProfile()
+    const chapterArkHeaders = buildChapterArkHeaders()
+    const files = state.chapterAutoFiles
+    chapterAutoAbortController?.abort()
+    chapterAutoAbortController = new AbortController()
     state.chapterAutoRunning = true
+    state.chapterAutoStopping = false
     state.chapterAutoError = false
     state.chapterAutoStatus = '自动处理中...'
     state.chapterAutoLogs = ''
     state.chapterAutoProgress = ''
     state.chapterAutoEntries = []
-    const files = state.chapterAutoFiles
     state.chapterAutoSummary = {
       totalCount: files.length,
       completedCount: 0,
@@ -1280,6 +1526,7 @@ export function useQuestionBankWorkbench() {
       currentFileName: '',
       currentChapterTitle: state.chapterSessionCurrentChapter,
       currentSectionTitle: state.chapterSessionCurrentSection,
+      modeLabel: processingProfile.modeLabel,
       phase: '准备开始',
     }
     state.chapterAutoLive = {
@@ -1293,10 +1540,45 @@ export function useQuestionBankWorkbench() {
       failedCount: 0,
       completedCount: 0,
       currentSectionTitle: state.chapterSessionCurrentSection,
+      modeLabel: processingProfile.modeLabel,
     }
 
     let successCount = 0
     let failedCount = 0
+    let firstFailureMessage = ''
+
+    const markChapterAutoStopped = (currentFileName = '') => {
+      const detail = currentFileName ? `已手动停止，当前停在 ${currentFileName}` : '已手动停止当前自动处理'
+      state.chapterAutoError = false
+      state.chapterAutoStatus = detail
+      state.chapterAutoSummary = {
+        totalCount: files.length,
+        completedCount: successCount + failedCount,
+        successCount,
+        failedCount,
+        currentIndex: successCount + failedCount,
+        currentFileName: currentFileName || state.chapterAutoSummary?.currentFileName || '',
+        currentChapterTitle: state.chapterSessionCurrentChapter,
+        currentSectionTitle: state.chapterSessionCurrentSection,
+        modeLabel: processingProfile.modeLabel,
+        phase: '已手动停止',
+      }
+      state.chapterAutoLive = {
+        phase: 'stopped',
+        title: '自动处理已手动停止',
+        detail,
+        currentIndex: successCount + failedCount,
+        totalCount: files.length,
+        currentFileName: currentFileName || state.chapterAutoSummary?.currentFileName || '',
+        successCount,
+        failedCount,
+        completedCount: successCount + failedCount,
+        currentSectionTitle: state.chapterSessionCurrentSection,
+        question: state.chapterAutoLive?.question || null,
+        prefixCache: state.chapterAutoLive?.prefixCache || null,
+        modeLabel: processingProfile.modeLabel,
+      }
+    }
 
     try {
       const startEvent = {
@@ -1309,6 +1591,13 @@ export function useQuestionBankWorkbench() {
       for (let index = 0; index < files.length; index += 1) {
         const current = files[index]
         const lookahead = files[index + 1] || null
+
+        if (state.chapterAutoStopping || chapterAutoAbortController?.signal.aborted) {
+          appendChapterAutoLog(`手动停止于 ${current.name}`)
+          markChapterAutoStopped(current.name)
+          return
+        }
+
         const progressEvent = {
           type: 'progress',
           currentIndex: index + 1,
@@ -1337,6 +1626,7 @@ export function useQuestionBankWorkbench() {
           completedCount: successCount + failedCount,
           currentSectionTitle: state.chapterSessionCurrentSection,
           question: state.chapterAutoLive?.question || null,
+          prefixCache: state.chapterAutoLive?.prefixCache || null,
         }
         await nextTick()
 
@@ -1350,9 +1640,11 @@ export function useQuestionBankWorkbench() {
             formData.append('lookaheadImage', lookahead.file, lookahead.file.name)
           }
 
-          const resp = await fetch('/api/chapters/session/process-image', {
+          const resp = await fetch(processingProfile.processImageEndpoint, {
             method: 'POST',
+            headers: chapterArkHeaders,
             body: formData,
+            signal: chapterAutoAbortController.signal,
           })
           const data = await parseApiResponse(resp)
           if (!resp.ok) {
@@ -1371,6 +1663,7 @@ export function useQuestionBankWorkbench() {
             fileName: current.name,
             currentSectionTitle: data.currentSectionTitle,
             question: data.question,
+            prefixCacheExperiment: data.prefixCacheExperiment,
           }
           const message = formatAutoProgressLine(resultEvent)
           state.chapterAutoProgress = message
@@ -1404,9 +1697,20 @@ export function useQuestionBankWorkbench() {
             completedCount: successCount + failedCount,
             currentSectionTitle: state.chapterSessionCurrentSection,
             question: buildQuestionSummary(question),
+            prefixCache: buildPrefixCacheSummary(data.prefixCacheExperiment),
           }
           await syncWorkingJsonToLocalFile().catch(() => {})
         } catch (error) {
+          if (state.chapterAutoStopping || isAbortRequestError(error) || chapterAutoAbortController?.signal.aborted) {
+            appendChapterAutoLog(`手动停止于 ${current.name}`)
+            markChapterAutoStopped(current.name)
+            return
+          }
+
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          if (!firstFailureMessage) {
+            firstFailureMessage = errorMessage
+          }
           failedCount += 1
           const resultEvent = {
             type: 'result',
@@ -1414,7 +1718,7 @@ export function useQuestionBankWorkbench() {
             currentIndex: index + 1,
             totalCount: files.length,
             fileName: current.name,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
           }
           const message = formatAutoProgressLine(resultEvent)
           state.chapterAutoProgress = message
@@ -1437,7 +1741,7 @@ export function useQuestionBankWorkbench() {
           state.chapterAutoLive = {
             phase: 'failed',
             title: `第 ${index + 1} 页处理失败`,
-            detail: error instanceof Error ? error.message : String(error),
+            detail: errorMessage,
             currentIndex: index + 1,
             totalCount: files.length,
             currentFileName: current.name,
@@ -1446,6 +1750,46 @@ export function useQuestionBankWorkbench() {
             completedCount: successCount + failedCount,
             currentSectionTitle: state.chapterSessionCurrentSection,
             question: state.chapterAutoLive?.question || null,
+            prefixCache: state.chapterAutoLive?.prefixCache || null,
+            modeLabel: processingProfile.modeLabel,
+          }
+
+          if (isFatalAutoRunErrorMessage(errorMessage)) {
+            state.chapterAutoError = true
+            state.chapterAutoStatus = `自动处理已中止：${errorMessage}`
+            state.chapterAutoSummary = {
+              totalCount: files.length,
+              completedCount: successCount + failedCount,
+              successCount,
+              failedCount,
+              currentIndex: index + 1,
+              currentFileName: current.name,
+              currentChapterTitle: state.chapterSessionCurrentChapter,
+              currentSectionTitle: state.chapterSessionCurrentSection,
+              modeLabel: processingProfile.modeLabel,
+              phase: '自动处理已中止',
+            }
+            state.chapterAutoLive = {
+              phase: 'failed',
+              title: '自动处理已中止',
+              detail: errorMessage,
+              currentIndex: index + 1,
+              totalCount: files.length,
+              currentFileName: current.name,
+              successCount,
+              failedCount,
+              completedCount: successCount + failedCount,
+              currentSectionTitle: state.chapterSessionCurrentSection,
+              question: state.chapterAutoLive?.question || null,
+              prefixCache: state.chapterAutoLive?.prefixCache || null,
+              modeLabel: processingProfile.modeLabel,
+            }
+
+            if (errorMessage.toLowerCase().includes('session not found') || errorMessage.toLowerCase().includes('please init first')) {
+              state.chapterSessionError = true
+              state.chapterSessionStatus = '当前章节会话已失效，请重新点击“初始化会话”后再跑目录。'
+            }
+            return
           }
         }
       }
@@ -1465,12 +1809,16 @@ export function useQuestionBankWorkbench() {
         currentFileName: '',
         currentChapterTitle: state.chapterSessionCurrentChapter,
         currentSectionTitle: state.chapterSessionCurrentSection,
+        modeLabel: processingProfile.modeLabel,
         phase: '自动处理完成',
       }
       state.chapterAutoLive = {
         phase: failedCount ? 'done-with-failure' : 'done',
         title: '自动处理完成',
-        detail: `成功 ${successCount} 页，失败 ${failedCount} 页`,
+        detail:
+          failedCount && firstFailureMessage
+            ? `成功 ${successCount} 页，失败 ${failedCount} 页。首个错误：${firstFailureMessage}`
+            : `成功 ${successCount} 页，失败 ${failedCount} 页`,
         currentIndex: files.length,
         totalCount: files.length,
         currentFileName: '',
@@ -1479,9 +1827,19 @@ export function useQuestionBankWorkbench() {
         completedCount: files.length,
         currentSectionTitle: state.chapterSessionCurrentSection,
         question: state.chapterAutoLive?.question || null,
+        prefixCache: state.chapterAutoLive?.prefixCache || null,
+        modeLabel: processingProfile.modeLabel,
       }
-      state.chapterAutoStatus = `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张`
+      state.chapterAutoStatus =
+        failedCount && firstFailureMessage
+          ? `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张。首个错误：${firstFailureMessage}`
+          : `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张`
     } catch (error) {
+      if (state.chapterAutoStopping || isAbortRequestError(error) || chapterAutoAbortController?.signal.aborted) {
+        markChapterAutoStopped(state.chapterAutoSummary?.currentFileName || '')
+        return
+      }
+
       state.chapterAutoError = true
       state.chapterAutoStatus = error instanceof Error ? error.message : '自动处理失败'
       state.chapterAutoLive = {
@@ -1496,10 +1854,31 @@ export function useQuestionBankWorkbench() {
         completedCount: successCount + failedCount,
         currentSectionTitle: state.chapterSessionCurrentSection,
         question: state.chapterAutoLive?.question || null,
+        prefixCache: state.chapterAutoLive?.prefixCache || null,
+        modeLabel: processingProfile.modeLabel,
       }
     } finally {
       state.chapterAutoRunning = false
+      state.chapterAutoStopping = false
+      chapterAutoAbortController = null
     }
+  }
+
+  function stopChapterAuto() {
+    if (!state.chapterAutoRunning || state.chapterAutoStopping) {
+      return
+    }
+    state.chapterAutoStopping = true
+    state.chapterAutoError = false
+    state.chapterAutoStatus = '正在请求停止自动处理...'
+    chapterAutoAbortController?.abort()
+  }
+
+  function resetChapterAuto() {
+    if (state.chapterAutoRunning) {
+      return
+    }
+    resetChapterAutoRuntimeState()
   }
 
   function onFileChange(event) {
@@ -1564,35 +1943,6 @@ export function useQuestionBankWorkbench() {
     state.statusText = '已清空待转换 PDF 列表'
   }
 
-  function toggleImage(url, checked) {
-    const current = new Set(state.selectedImageUrls)
-    if (checked) {
-      current.add(url)
-    } else {
-      current.delete(url)
-    }
-    state.selectedImageUrls = Array.from(current)
-  }
-
-  function toggleSelectAll() {
-    if (state.selectedImageUrls.length === state.pages.length) {
-      state.selectedImageUrls = []
-      return
-    }
-    state.selectedImageUrls = state.pages.map((item) => item.url)
-  }
-
-  function onAiImageChange(event) {
-    const files = Array.from(event.target.files ?? [])
-    state.aiImageFiles = files
-    state.readError = false
-    if (files.length) {
-      state.readStatusText = `已选择 ${files.length} 张图片`
-    } else {
-      state.readStatusText = ''
-    }
-  }
-
   async function uploadPdf() {
     if (!state.selectedPdfFiles.length) {
       state.isError = true
@@ -1629,89 +1979,12 @@ export function useQuestionBankWorkbench() {
       state.batchId = data.batchId || ''
       state.outputFolder = data.folderName || state.folderName
       state.pages = Array.isArray(data.pages) ? data.pages : []
-      resetReadState()
       state.statusText = `转换完成，按当前顺序合并了 ${data.pdfCount || state.selectedPdfFiles.length} 个 PDF，共 ${state.pages.length} 页`
     } catch (error) {
       state.isError = true
       state.statusText = error instanceof Error ? error.message : '转换失败'
     } finally {
       state.loading = false
-    }
-  }
-
-  async function readSelectedByDoubao() {
-    if (state.selectedImageUrls.length === 0) {
-      state.readError = true
-      state.readStatusText = '请先选择至少一张图片'
-      return
-    }
-
-    state.reading = true
-    state.readError = false
-    state.readStatusText = '豆包读取中...'
-
-    try {
-      const resp = await fetch('/api/doubao/read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageUrls: state.selectedImageUrls,
-        }),
-      })
-
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '豆包读取失败')
-      }
-
-      state.readText = String(data.text || '')
-      state.savedTextUrl = String(data.savedTextUrl || '')
-      state.readStatusText = `读取完成，模型: ${data.model || 'doubao-seed-2-0-pro-260215'}`
-    } catch (error) {
-      state.readError = true
-      state.readStatusText = error instanceof Error ? error.message : '豆包读取失败'
-    } finally {
-      state.reading = false
-    }
-  }
-
-  async function readUploadedImagesByDoubao() {
-    if (!state.aiImageFiles.length) {
-      state.readError = true
-      state.readStatusText = '请先选择图片'
-      return
-    }
-
-    state.reading = true
-    state.readError = false
-    state.readStatusText = '上传图片并读取中...'
-
-    try {
-      const formData = new FormData()
-      for (const file of state.aiImageFiles) {
-        formData.append('images', file)
-      }
-
-      const resp = await fetch('/api/doubao/read-files', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '豆包读取失败')
-      }
-
-      state.readText = String(data.text || '')
-      state.savedTextUrl = String(data.savedTextUrl || '')
-      state.readStatusText = `读取完成，模型: ${data.model || 'doubao-seed-2-0-pro-260215'}`
-    } catch (error) {
-      state.readError = true
-      state.readStatusText = error instanceof Error ? error.message : '豆包读取失败'
-    } finally {
-      state.reading = false
     }
   }
 
@@ -1723,7 +1996,10 @@ export function useQuestionBankWorkbench() {
     saveTextbookJson,
     initChapterSession,
     onVisualizerJsonChange,
+    onVisualizerRepairImageChange,
+    clearVisualizerRepairImages,
     reloadVisualizerJsonFile,
+    repairQuestionFromVisualizer,
     repairMathFormatFromVisualizer,
     onMergeJsonFilesChange,
     removeMergeJsonFile,
@@ -1736,20 +2012,17 @@ export function useQuestionBankWorkbench() {
     onRepairImageChange,
     repairQuestionInJson,
     repairQuestionMathFormat,
-    repairJsonLatex,
     onChapterImageChange,
+    setChapterProcessingMode,
     processChapterImage,
     runChapterAuto,
+    stopChapterAuto,
+    resetChapterAuto,
     onFileChange,
     moveSelectedPdf,
     removeSelectedPdf,
     clearSelectedPdfs,
-    toggleImage,
-    toggleSelectAll,
-    onAiImageChange,
     uploadPdf,
-    readSelectedByDoubao,
-    readUploadedImagesByDoubao,
   }
 
   return {
