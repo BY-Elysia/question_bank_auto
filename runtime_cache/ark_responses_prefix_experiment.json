@@ -1,0 +1,18 @@
+{
+  "question_bank_boundary_prefix_v1:doubao-seed-2-0-pro-260215": {
+    "key": "question_bank_boundary_prefix_v1:doubao-seed-2-0-pro-260215",
+    "promptHash": "64619854f0655fa2385464ba0cf9273e76bc780aee33e739f2590fd82bed3455",
+    "model": "doubao-seed-2-0-pro-260215",
+    "responseId": "resp_0217737579544394d8e7564216dfe00427d282ce6492d3a270593",
+    "createdAt": "2026-03-17T14:32:36.456Z",
+    "updatedAt": "2026-03-17T14:32:36.456Z"
+  },
+  "question_bank_extract_prefix_v1:doubao-seed-2-0-pro-260215": {
+    "key": "question_bank_extract_prefix_v1:doubao-seed-2-0-pro-260215",
+    "promptHash": "3265f3cd2a8a7f1a4272709f1b6a7fa3148b61dea69ad56f4dbd2e03575c0c40",
+    "model": "doubao-seed-2-0-pro-260215",
+    "responseId": "resp_0217737580231601b2dbc63e5aa7997d439dca55a6d387e888b5a",
+    "createdAt": "2026-03-17T14:33:44.753Z",
+    "updatedAt": "2026-03-17T14:33:44.753Z"
+  }
+}

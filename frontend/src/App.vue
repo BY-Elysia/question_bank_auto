@@ -47,10 +47,6 @@
         <ImageAttachPanel :state="state" :actions="actions" />
       </section>
 
-      <section v-else-if="currentPage === 'latexRepair'" class="stack-column">
-        <LatexRepairPanel :state="state" :actions="actions" />
-      </section>
-
       <section v-else-if="currentPage === 'visualize'" class="stack-column">
         <JsonVisualizerPanel :state="state" :actions="actions" />
       </section>
@@ -59,27 +55,31 @@
         <JsonMergePanel :state="state" :actions="actions" />
       </section>
 
-      <section v-else class="stack-column">
-        <ReadStudioPanel :state="state" :actions="actions" />
+      <section v-else-if="currentPage === 'database'" class="stack-column">
+        <QuestionBankDatabasePanel :state="state" :actions="actions" />
+      </section>
+
+      <section v-else-if="currentPage === 'assistant'" class="stack-column">
+        <QuestionBankAssistantPanel :state="state" :actions="actions" />
       </section>
     </main>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppHero from './components/AppHero.vue'
 import ChapterSessionPanel from './components/ChapterSessionPanel.vue'
 import ImageAttachPanel from './components/ImageAttachPanel.vue'
 import JsonMergePanel from './components/JsonMergePanel.vue'
 import JsonVisualizerPanel from './components/JsonVisualizerPanel.vue'
-import LatexRepairPanel from './components/LatexRepairPanel.vue'
 import OverviewDeck from './components/OverviewDeck.vue'
 import PageGallery from './components/PageGallery.vue'
 import PdfWorkspacePanel from './components/PdfWorkspacePanel.vue'
 import PipelineStepper from './components/PipelineStepper.vue'
+import QuestionBankAssistantPanel from './components/QuestionBankAssistantPanel.vue'
+import QuestionBankDatabasePanel from './components/QuestionBankDatabasePanel.vue'
 import QuestionRepairPanel from './components/QuestionRepairPanel.vue'
-import ReadStudioPanel from './components/ReadStudioPanel.vue'
 import TextbookJsonPanel from './components/TextbookJsonPanel.vue'
 import WorkspaceNav from './components/WorkspaceNav.vue'
 import { useQuestionBankWorkbench } from './composables/useQuestionBankWorkbench'
@@ -91,13 +91,13 @@ const pipelineStep = ref('session')
 const pages = [
   { id: 'overview', label: '总览', description: '入口与状态' },
   { id: 'pipeline', label: '结构化处理', description: 'JSON 与章节会话' },
-  { id: 'pdf', label: '页图工作台', description: 'PDF 与页图库' },
-  { id: 'repair', label: '题目修复', description: '单题补录覆盖' },
+  { id: 'pdf', label: '页图工作台', description: 'PDF 与页图画廊' },
+  { id: 'repair', label: '题目修复', description: '单题补录与覆盖' },
   { id: 'imageAttach', label: '图片补充', description: '补回题目配图' },
-  { id: 'latexRepair', label: 'LaTeX修复', description: '已有 JSON 公式修复' },
-  { id: 'visualize', label: '题库可视化', description: '章节与题答浏览' },
-  { id: 'merge', label: 'JSON 合并', description: '多文件拼接输出' },
-  { id: 'read', label: '豆包读取', description: '图片直传识别' },
+  { id: 'visualize', label: '题库可视化', description: '章节树与题目浏览' },
+  { id: 'merge', label: 'JSON 合并', description: '多文件整理输出' },
+  { id: 'database', label: '数据库导入', description: '新 schema 入库' },
+  { id: 'assistant', label: 'AI 助手', description: 'MCP 查库问答' },
 ]
 
 const sessionLabel = computed(() => {
@@ -110,45 +110,38 @@ const sessionLabel = computed(() => {
 const heroByPage = computed(() => ({
   overview: {
     title: '题库自动处理中心',
-    description: '集中管理结构化提取、题目修复、图片补充、LaTeX 修复、题库可视化、JSON 合并和页图识别入口。',
+    description: '集中管理结构化提取、题目修复、图片补充、题库可视化、JSON 合并和数据库导入。',
     model: '总览面板',
     session: sessionLabel.value || '查看当前工作流状态',
     status: '从这里进入对应工作区',
   },
   pipeline: {
     title: '结构化提取流程',
-    description: '处理章节会话、跨页题和按页入库。基础教材 JSON 是可选步骤，当前可直接进入第二步。',
+    description: '处理基础教材 JSON、章节会话、单页抽题和目录自动流式跑题。',
     model: '结构化处理工作台',
     session: sessionLabel.value || '可直接进入章节会话',
     status: state.chapterAutoRunning ? '自动处理运行中' : state.chapterSessionStatus || '准备处理章节与题目',
   },
   pdf: {
-    title: 'PDF 与页图库',
-    description: '负责 PDF 转图、页图筛选和后续送入模型前的图片准备。',
+    title: 'PDF 与页图画廊',
+    description: '负责 PDF 转图、页图预览和输出目录回看，为后续处理准备素材。',
     model: '页图工作台',
     session: state.outputFolder || '先上传 PDF 生成页图',
     status: state.statusText || '准备处理 PDF',
   },
   repair: {
     title: '题目定点修复',
-    description: '按章节、小节和题号精确修复单题，支持多图跨页读取，结果输出到 repair_json。',
+    description: '按章、小节和题号精确修复单题，支持多图跨页补录，结果输出到 repair_json。',
     model: '题目修复工作台',
     session: state.chapterSessionJsonLabel || '先选择需要修复的 JSON 文件',
     status: state.repairStatus || '准备执行定点修复',
   },
   imageAttach: {
     title: '题目图片补充',
-    description: '给指定大题或小题补回遗漏的题目配图，自动写入 media 字段，并让可视化页面直接显示。',
+    description: '给指定大题或小题补回遗漏的题目配图，自动回写 media 字段。',
     model: '图片补充工作台',
     session: state.chapterSessionJsonLabel || '先选择需要补图的 JSON 文件',
     status: state.imageAttachStatus || '准备补充题目图片',
-  },
-  latexRepair: {
-    title: 'LaTeX 格式修复',
-    description: '对已有题库 JSON 做确定性公式修复，重点处理单反斜杠命令和未闭合块公式。',
-    model: 'LaTeX 修复工作台',
-    session: state.chapterSessionJsonLabel || '先选择一个题库 JSON 文件',
-    status: state.latexRepairStatus || '准备扫描并修复 LaTeX 文本',
   },
   visualize: {
     title: '题库章节可视化',
@@ -159,17 +152,24 @@ const heroByPage = computed(() => ({
   },
   merge: {
     title: '多章节 JSON 合并',
-    description: '把拆开的多个章节 JSON 去重合并，自动整理章节树和题目顺序，输出到 merged_json。',
+    description: '把拆开的多个章节 JSON 去重合并，自动整理章节树和题目顺序。',
     model: 'JSON 合并工作台',
     session: state.mergeJsonFiles.length ? `已选择 ${state.mergeJsonFiles.length} 个文件` : '先选择多个 JSON 文件',
     status: state.mergeStatus || '准备执行 JSON 合并',
   },
-  read: {
-    title: '豆包读取工作区',
-    description: '直接上传图片做逐字转写，结果统一输出到识别文本区域。',
-    model: '豆包直传读取',
-    session: state.savedTextUrl ? '已生成可打开的 TXT 结果' : '可直接上传图片转写',
-    status: state.readStatusText || '准备发送图片给豆包',
+  database: {
+    title: '题库数据库导入',
+    description: '把自动生成好的题库 JSON 直接导入 PostgreSQL 新 schema，并在界面里查看入库摘要。',
+    model: '数据库导入工作台',
+    session: state.dbSummary?.schema || '等待读取数据库摘要',
+    status: state.dbImportStatus || state.dbSummaryStatus || '先在终端执行迁移，再上传 JSON',
+  },
+  assistant: {
+    title: '题库 AI 助手',
+    description: '通过 MCP 查询 PostgreSQL 题库 schema，根据用户要求检索教材、章节和题目并生成回答。',
+    model: 'MCP 问答工作台',
+    session: state.dbSummary?.schema || '连接题库数据库',
+    status: state.assistantStatus || '先导入题库，再开始提问',
   },
 }))
 
@@ -177,7 +177,7 @@ const currentHero = computed(() => heroByPage.value[currentPage.value] || heroBy
 
 const pipelineSteps = computed(() => [
   { id: 'json', index: '01', title: '基础教材 JSON', description: '可选生成教材工作副本', disabled: false },
-  { id: 'session', index: '02', title: '章节会话与跑批', description: '可直接开始，也支持回退', disabled: false },
+  { id: 'session', index: '02', title: '章节会话与跑题', description: '可直接开始，也支持回退', disabled: false },
 ])
 
 const canGoPipelineBack = computed(() => pipelineStep.value === 'session')
@@ -206,6 +206,10 @@ watch(
   },
 )
 
+onMounted(() => {
+  actions.loadQuestionBankDbSummary().catch(() => {})
+})
+
 const heroMetrics = computed(() => [
   {
     label: 'Pages',
@@ -213,19 +217,19 @@ const heroMetrics = computed(() => [
     hint: state.pages.length ? `输出目录 ${state.outputFolder || '-'}` : '等待 PDF 转图',
   },
   {
-    label: 'Selected',
-    value: state.selectedImageUrls.length || '0',
-    hint: state.selectedImageUrls.length ? '页图库已选择识别输入' : '可从页图库中勾选',
-  },
-  {
     label: 'Session',
     value: state.chapterSessionId ? 'Active' : 'Idle',
     hint: state.chapterSessionId ? state.chapterSessionCurrentSection || '会话已初始化' : '等待初始化章节会话',
   },
   {
-    label: 'Readback',
-    value: state.readText ? 'Ready' : 'Empty',
-    hint: state.readText ? `${state.readText.length} 字输出已生成` : '识别结果会显示在读取工作台',
+    label: 'Visualizer',
+    value: state.visualizerPayload ? 'Loaded' : 'Empty',
+    hint: state.visualizerFileName || '还没有加载题库 JSON',
+  },
+  {
+    label: 'Database',
+    value: state.dbSummary?.counts?.textbookCount ?? '0',
+    hint: state.dbSummary?.schema || state.dbSummaryStatus || '等待数据库摘要',
   },
 ])
 
@@ -234,7 +238,7 @@ const overviewItems = computed(() => [
     id: 'pipeline',
     eyebrow: 'Structure',
     title: '结构化处理',
-    description: '生成教材 JSON、初始化章节会话、按页推进题库结构化提取。',
+    description: '生成教材 JSON、初始化章节会话，并按页推进题库结构化提取。',
     value: state.chapterSessionId ? '会话已激活' : '等待初始化',
     hint: state.chapterSessionCurrentSection || '尚未开始',
     tone: 'mint',
@@ -244,7 +248,7 @@ const overviewItems = computed(() => [
     id: 'pdf',
     eyebrow: 'Images',
     title: '页图工作台',
-    description: '上传 PDF 自动切页，并在画廊中勾选图片送入模型。',
+    description: '上传 PDF 自动切页，并在画廊中预览每一页的输出结果。',
     value: `${state.pages.length || 0} 页`,
     hint: state.outputFolder || '暂无输出目录',
     tone: 'sun',
@@ -271,16 +275,6 @@ const overviewItems = computed(() => [
     buttonLabel: '图片补充',
   },
   {
-    id: 'latexRepair',
-    eyebrow: 'LaTeX',
-    title: 'LaTeX修复',
-    description: '对已有 JSON 做公式格式修复，输出新文件，不覆盖原文件。',
-    value: state.latexRepairResult ? '最近已修复' : '等待修复',
-    hint: state.latexRepairResult?.repairedFileName || state.chapterSessionJsonLabel || '先选择 JSON 文件',
-    tone: 'clear',
-    buttonLabel: 'LaTeX修复',
-  },
-  {
     id: 'visualize',
     eyebrow: 'Visualize',
     title: '题库可视化',
@@ -294,21 +288,31 @@ const overviewItems = computed(() => [
     id: 'merge',
     eyebrow: 'Merge',
     title: 'JSON 合并',
-    description: '选择多个章节 JSON，去重拼接后输出到 merged_json 新文件夹。',
+    description: '选择多个章节 JSON，去重拼接后输出到 merged_json 新目录。',
     value: state.mergeResult ? '最近已合并' : '等待合并',
     hint: state.mergeResult?.mergedFileName || `${state.mergeJsonFiles.length || 0} 个待合并文件`,
     tone: 'clear',
     buttonLabel: 'JSON 合并',
   },
   {
-    id: 'read',
-    eyebrow: 'Reading',
-    title: '豆包读取',
-    description: '直接上传图片做逐字转写，结果统一落到识别输出窗。',
-    value: state.readText ? '结果已生成' : '等待识别',
-    hint: state.readText ? `${state.readText.length} 字` : '未生成输出',
+    id: 'database',
+    eyebrow: 'Database',
+    title: '数据库导入',
+    description: '终端执行迁移后，把题库 JSON 直接上传到 PostgreSQL 新 schema，并在页面里看导入结果。',
+    value: state.dbSummary?.counts?.textbookCount ?? '0',
+    hint: state.dbSummary?.schema || state.dbSummaryStatus || '等待数据库摘要',
+    tone: 'ice',
+    buttonLabel: '数据库导入',
+  },
+  {
+    id: 'assistant',
+    eyebrow: 'Assistant',
+    title: 'AI 助手',
+    description: '采用 MCP 查询题库数据库，支持自然语言问答、教材筛选、章节定位和题目检索。',
+    value: state.assistantMessages.length ? `${state.assistantMessages.length} 条消息` : '等待提问',
+    hint: state.assistantStatus || '可直接询问某章某节有哪些题',
     tone: 'berry',
-    buttonLabel: '豆包读取',
+    buttonLabel: 'AI 助手',
   },
 ])
 </script>
