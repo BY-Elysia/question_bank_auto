@@ -13,6 +13,16 @@ function renderPlainText(text) {
   return escapeHtml(text).replace(/\r?\n/g, '<br />')
 }
 
+function renderFormattedText(text, { preserveLineBreaks = true } = {}) {
+  let html = escapeHtml(text)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  if (preserveLineBreaks) {
+    html = html.replace(/\r?\n/g, '<br />')
+  }
+  return html
+}
+
 function renderMathExpression(expression, displayMode) {
   try {
     return katex.renderToString(String(expression || '').trim(), {
@@ -80,4 +90,77 @@ export function renderLatexHtml(text) {
       return renderMathExpression(value, displayMode)
     })
     .join('')
+}
+
+function renderRichInlineHtml(text, { preserveLineBreaks = true } = {}) {
+  return tokenizeMathSegments(String(text || ''))
+    .map((segment) => {
+      if (segment.type === 'text') {
+        return renderFormattedText(segment.value, { preserveLineBreaks })
+      }
+      const { value, displayMode } = unwrapMathDelimiters(segment.value)
+      return renderMathExpression(value, displayMode)
+    })
+    .join('')
+}
+
+export function renderRichTextHtml(text) {
+  const source = String(text || '').replace(/\r\n?/g, '\n').trim()
+  if (!source) {
+    return ''
+  }
+
+  const blocks = []
+  let paragraphLines = []
+  let listLines = []
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return
+    blocks.push(`<p>${renderRichInlineHtml(paragraphLines.join('\n'))}</p>`)
+    paragraphLines = []
+  }
+
+  const flushList = () => {
+    if (!listLines.length) return
+    blocks.push(
+      `<ul>${listLines
+        .map((line) => line.replace(/^\s*[-*]\s+/, ''))
+        .map((line) => `<li>${renderRichInlineHtml(line, { preserveLineBreaks: false })}</li>`)
+        .join('')}</ul>`,
+    )
+    listLines = []
+  }
+
+  for (const rawLine of source.split('\n')) {
+    const line = rawLine.trim()
+
+    if (!line) {
+      flushParagraph()
+      flushList()
+      continue
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+    if (headingMatch) {
+      flushParagraph()
+      flushList()
+      const level = Math.min(6, headingMatch[1].length + 1)
+      blocks.push(`<h${level}>${renderRichInlineHtml(headingMatch[2], { preserveLineBreaks: false })}</h${level}>`)
+      continue
+    }
+
+    if (/^\s*[-*]\s+/.test(rawLine)) {
+      flushParagraph()
+      listLines.push(rawLine)
+      continue
+    }
+
+    flushList()
+    paragraphLines.push(rawLine)
+  }
+
+  flushParagraph()
+  flushList()
+
+  return blocks.join('')
 }

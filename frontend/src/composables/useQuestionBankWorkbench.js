@@ -1242,7 +1242,9 @@ export function useQuestionBankWorkbench() {
         counts: {
           textbookCount: Number(data.counts?.textbookCount ?? 0),
           chapterCount: Number(data.counts?.chapterCount ?? 0),
+          textbookSchoolScopeCount: Number(data.counts?.textbookSchoolScopeCount ?? 0),
           questionRowCount: Number(data.counts?.questionRowCount ?? 0),
+          paperCount: Number(data.counts?.paperCount ?? 0),
           groupQuestionCount: Number(data.counts?.groupQuestionCount ?? 0),
           leafQuestionCount: Number(data.counts?.leafQuestionCount ?? 0),
           childQuestionCount: Number(data.counts?.childQuestionCount ?? 0),

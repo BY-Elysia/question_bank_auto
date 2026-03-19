@@ -44,12 +44,14 @@ router.post('/api/mcp/question-bank', async (req: Request, res: Response) => {
   })
 
   try {
-    await server.connect(transport)
-    res.on('close', () => {
-      void transport.close().catch(() => {})
-      void server.close().catch(() => {})
+    await runWithArkApiKey(getArkApiKeyFromRequest(req), async () => {
+      await server.connect(transport)
+      res.on('close', () => {
+        void transport.close().catch(() => {})
+        void server.close().catch(() => {})
+      })
+      await transport.handleRequest(req, res, req.body)
     })
-    await transport.handleRequest(req, res, req.body)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (!res.headersSent) {

@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { getArkApiKeyOverride } from './ark-request-context'
 import { ARK_MODEL, PORT } from './config'
 import { extractArkText, extractFirstJsonObject, parseModelJsonObject, requestArkRawWithRetry } from './question-bank-service'
 
@@ -187,6 +188,11 @@ async function requestAssistantDecision(params: {
     '你的唯一事实来源是 MCP 工具返回的数据库结果，不能编造数据库里不存在的信息。',
     '如果用户的问题需要数据库事实，先调用工具；如果现有工具结果已经足够，再给最终回答。',
     '优先少量高命中的查询，避免无意义地重复调用工具。',
+    '优先使用明确业务工具：教材列表、教材详情、章节列表、题目搜索、候选题筛选、题目详情、试卷列表。',
+    '如果不清楚表结构或字段，先调用 get_schema_overview，不要猜数据库结构。',
+    '回答某一道题的答案、题干或评分规则时，优先调用 get_assignment_question_detail。',
+    '遇到“是不是某类题”“难度中等/偏难/简单”“疑似某主题题目”这类语义判断时，优先调用 screen_assignment_question_candidates，不要把 questionType 当成唯一依据。',
+    'search_assignment_questions 适合做宽召回；如果 questionType 不是用户明确指定的数据库字段值，就不要传 questionType 参数。',
     '如果数据库里查不到，明确说明“数据库中未查到对应信息”。',
     '你必须只输出一个 JSON 对象，不要输出 markdown，不要输出解释。',
     finalOnly
@@ -247,7 +253,16 @@ export async function runQuestionBankAssistantChat(params: {
   }
 
   const maxToolSteps = Math.max(1, Math.min(8, Number(params.maxToolSteps) || 6))
-  const transport = new StreamableHTTPClientTransport(new URL('/api/mcp/question-bank', `http://127.0.0.1:${PORT}`))
+  const arkApiKey = getArkApiKeyOverride()
+  const transport = new StreamableHTTPClientTransport(new URL('/api/mcp/question-bank', `http://127.0.0.1:${PORT}`), {
+    requestInit: arkApiKey
+      ? {
+          headers: {
+            'X-Ark-Api-Key': arkApiKey,
+          },
+        }
+      : undefined,
+  })
   const client = new Client({
     name: 'question-bank-assistant',
     version: '1.0.0',

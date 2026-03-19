@@ -71,7 +71,7 @@
             <strong>{{ message.role === 'assistant' ? 'AI 助手' : '你' }}</strong>
             <span>{{ formatDate(message.createdAt) }}</span>
           </div>
-          <p class="assistant-message__content">{{ message.content }}</p>
+          <div class="assistant-message__content assistant-rich-text" v-html="renderMessageHtml(message.content)"></div>
           <p v-if="message.role === 'assistant' && message.usedTools?.length" class="assistant-message__tools">
             调用工具：{{ message.usedTools.join('、') }}
           </p>
@@ -96,6 +96,7 @@
 
 <script setup>
 import GlassPanel from './GlassPanel.vue'
+import { renderRichTextHtml } from '../utils/mathRender'
 
 defineProps({
   state: {
@@ -121,5 +122,9 @@ function formatJson(value) {
   } catch (_error) {
     return '{}'
   }
+}
+
+function renderMessageHtml(value) {
+  return renderRichTextHtml(value)
 }
 </script>

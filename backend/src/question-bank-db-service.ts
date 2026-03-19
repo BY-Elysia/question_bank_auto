@@ -14,7 +14,7 @@ type ImportQuestionRow = {
   id: string
   textbookId: string
   courseId: string
-  externalId: string
+  questionCode: string
   chapterId: string | null
   nodeType: 'LEAF' | 'GROUP'
   parentId: string | null
@@ -43,6 +43,7 @@ type ImportSnapshot = {
     subject: string
     publisher: string | null
     version: string
+    createdBy: string | null
     sourceFileName: string
     rawPayloadJson: unknown
     createdAt: string
@@ -242,7 +243,7 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
         id: groupQuestionId,
         textbookId,
         courseId: payload.courseId,
-        externalId: normalized.questionId,
+        questionCode: normalized.questionId,
         chapterId,
         nodeType: 'GROUP',
         parentId: null,
@@ -277,7 +278,7 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
           id: crypto.randomUUID(),
           textbookId,
           courseId: payload.courseId,
-          externalId: child.questionId,
+          questionCode: child.questionId,
           chapterId,
           nodeType: 'LEAF',
           parentId: groupQuestionId,
@@ -305,7 +306,7 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
       id: crypto.randomUUID(),
       textbookId,
       courseId: payload.courseId,
-      externalId: normalized.questionId,
+      questionCode: normalized.questionId,
       chapterId,
       nodeType: 'LEAF',
       parentId: null,
@@ -338,6 +339,7 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
       subject: payload.textbook.subject,
       publisher: payload.textbook.publisher || null,
       version: payload.version,
+      createdBy: null,
       sourceFileName,
       rawPayloadJson: payload.textbook,
       createdAt: timestamp,
@@ -456,8 +458,7 @@ function parseUploadedPayload(source: UploadedJsonSource) {
 async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot) {
   const textbookTable = tableName('textbooks')
   const chaptersTable = tableName('chapters')
-  const questionsTable = tableName('question_bank_questions')
-  const importRunsTable = tableName('question_bank_import_runs')
+  const questionsTable = tableName('assignment_questions')
 
   const existing = await client.query<{ id: string; createdAt: string }>(
     `
@@ -482,18 +483,20 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
         subject,
         publisher,
         version,
+        created_by,
         source_file_name,
         raw_payload_json,
         created_at,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::timestamptz, $11::timestamptz
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::timestamptz, $12::timestamptz
       )
       ON CONFLICT (course_id, external_id) DO UPDATE SET
         title = EXCLUDED.title,
         subject = EXCLUDED.subject,
         publisher = EXCLUDED.publisher,
         version = EXCLUDED.version,
+        created_by = EXCLUDED.created_by,
         source_file_name = EXCLUDED.source_file_name,
         raw_payload_json = EXCLUDED.raw_payload_json,
         updated_at = EXCLUDED.updated_at
@@ -506,6 +509,7 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
       snapshot.textbook.subject,
       snapshot.textbook.publisher,
       snapshot.textbook.version,
+      snapshot.textbook.createdBy,
       snapshot.textbook.sourceFileName,
       JSON.stringify(snapshot.textbook.rawPayloadJson),
       createdAt,
@@ -564,20 +568,22 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
           id,
           textbook_id,
           course_id,
-          external_id,
+          question_code,
           chapter_id,
           node_type,
           parent_id,
           title,
           description,
-          stem_json,
-          prompt_json,
-          standard_answer_json,
+          stem,
+          prompt,
+          standard_answer,
           question_type,
-          question_schema_json,
-          grading_policy_json,
+          question_schema,
+          grading_policy,
           default_score,
-          rubric_json,
+          rubric,
+          created_by,
+          status,
           order_no,
           raw_payload_json,
           created_at,
@@ -585,14 +591,14 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9,
           $10::jsonb, $11::jsonb, $12::jsonb, $13, $14::jsonb, $15::jsonb, $16::numeric,
-          $17::jsonb, $18, $19::jsonb, $20::timestamptz, $21::timestamptz
+          $17::jsonb, $18, $19, $20, $21::jsonb, $22::timestamptz, $23::timestamptz
         )
       `,
       [
         questionIdRemap.get(question.id),
         textbookId,
         question.courseId,
-        question.externalId,
+        question.questionCode,
         question.chapterId ? chapterIdRemap.get(question.chapterId) || null : null,
         question.nodeType,
         question.parentId ? questionIdRemap.get(question.parentId) || null : null,
@@ -606,6 +612,8 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
         question.gradingPolicyJson === null ? null : JSON.stringify(question.gradingPolicyJson),
         question.defaultScore,
         question.rubricJson === null ? null : JSON.stringify(question.rubricJson),
+        null,
+        'ACTIVE',
         question.orderNo,
         JSON.stringify(question.rawPayloadJson),
         createdAt,
@@ -613,32 +621,6 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
       ],
     )
   }
-
-  await client.query(
-    `
-      INSERT INTO ${importRunsTable} (
-        id,
-        textbook_id,
-        source_file_name,
-        imported_at,
-        chapter_count,
-        question_row_count,
-        leaf_question_count,
-        group_question_count,
-        child_question_count
-      ) VALUES ($1, $2, $3, now(), $4, $5, $6, $7, $8)
-    `,
-    [
-      crypto.randomUUID(),
-      textbookId,
-      snapshot.textbook.sourceFileName,
-      snapshot.counts.chapters,
-      snapshot.counts.questionRows,
-      snapshot.counts.leafQuestions,
-      snapshot.counts.groupQuestions,
-      snapshot.counts.childQuestions,
-    ],
-  )
 
   return {
     textbookId: snapshot.textbook.externalId,
@@ -714,7 +696,9 @@ export async function getQuestionBankDatabaseSummary() {
     const counts = await client.query<{
       textbookCount: string
       chapterCount: string
+      textbookSchoolScopeCount: string
       questionRowCount: string
+      paperCount: string
       groupQuestionCount: string
       leafQuestionCount: string
       childQuestionCount: string
@@ -723,10 +707,12 @@ export async function getQuestionBankDatabaseSummary() {
         SELECT
           (SELECT COUNT(*)::text FROM ${tableName('textbooks')}) AS "textbookCount",
           (SELECT COUNT(*)::text FROM ${tableName('chapters')}) AS "chapterCount",
-          (SELECT COUNT(*)::text FROM ${tableName('question_bank_questions')}) AS "questionRowCount",
-          (SELECT COUNT(*)::text FROM ${tableName('question_bank_questions')} WHERE node_type = 'GROUP') AS "groupQuestionCount",
-          (SELECT COUNT(*)::text FROM ${tableName('question_bank_questions')} WHERE node_type = 'LEAF' AND parent_id IS NULL) AS "leafQuestionCount",
-          (SELECT COUNT(*)::text FROM ${tableName('question_bank_questions')} WHERE parent_id IS NOT NULL) AS "childQuestionCount"
+          (SELECT COUNT(*)::text FROM ${tableName('question_bank_textbook_schools')}) AS "textbookSchoolScopeCount",
+          (SELECT COUNT(*)::text FROM ${tableName('assignment_questions')}) AS "questionRowCount",
+          (SELECT COUNT(*)::text FROM ${tableName('question_bank_papers')}) AS "paperCount",
+          (SELECT COUNT(*)::text FROM ${tableName('assignment_questions')} WHERE node_type = 'GROUP') AS "groupQuestionCount",
+          (SELECT COUNT(*)::text FROM ${tableName('assignment_questions')} WHERE node_type = 'LEAF' AND parent_id IS NULL) AS "leafQuestionCount",
+          (SELECT COUNT(*)::text FROM ${tableName('assignment_questions')} WHERE parent_id IS NOT NULL) AS "childQuestionCount"
       `,
     )
 
@@ -762,7 +748,7 @@ export async function getQuestionBankDatabaseSummary() {
           COUNT(DISTINCT CASE WHEN q.parent_id IS NOT NULL THEN q.id END)::text AS "childQuestions"
         FROM ${tableName('textbooks')} t
         LEFT JOIN ${tableName('chapters')} c ON c.textbook_id = t.id
-        LEFT JOIN ${tableName('question_bank_questions')} q ON q.textbook_id = t.id
+        LEFT JOIN ${tableName('assignment_questions')} q ON q.textbook_id = t.id
         GROUP BY t.id
         ORDER BY t.updated_at DESC, t.title ASC
       `,
@@ -774,7 +760,9 @@ export async function getQuestionBankDatabaseSummary() {
       counts: {
         textbookCount: Number(counts.rows[0]?.textbookCount || 0),
         chapterCount: Number(counts.rows[0]?.chapterCount || 0),
+        textbookSchoolScopeCount: Number(counts.rows[0]?.textbookSchoolScopeCount || 0),
         questionRowCount: Number(counts.rows[0]?.questionRowCount || 0),
+        paperCount: Number(counts.rows[0]?.paperCount || 0),
         groupQuestionCount: Number(counts.rows[0]?.groupQuestionCount || 0),
         leafQuestionCount: Number(counts.rows[0]?.leafQuestionCount || 0),
         childQuestionCount: Number(counts.rows[0]?.childQuestionCount || 0),

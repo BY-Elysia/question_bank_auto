@@ -3,9 +3,25 @@
     <GlassPanel
       eyebrow="Database"
       title="题库数据库导入"
-      description="这个功能只负责把已经生成好的题库 JSON 导入 PostgreSQL 新 schema，不会写进 public。先在终端执行迁移，再从这里上传 JSON。"
+      description="这个页面按当前五张表来设计。题库 JSON 会直接写入 textbooks、chapters、assignment_questions；question_bank_textbook_schools 和 question_bank_papers 是辅助表，不会从这类 JSON 自动生成。"
       tone="berry"
     >
+      <div class="db-table-grid">
+        <article
+          v-for="table in tableCards"
+          :key="table.name"
+          class="db-table-card"
+          :class="{ 'is-direct': table.directWrite, 'is-secondary': !table.directWrite }"
+        >
+          <div class="db-table-card__head">
+            <strong>{{ table.name }}</strong>
+            <span>{{ table.directWrite ? 'JSON 直接写入' : '辅助表' }}</span>
+          </div>
+          <p>{{ table.description }}</p>
+          <small>当前记录数：{{ table.count }}</small>
+        </article>
+      </div>
+
       <label class="file-shell">
         <span>选择题库 JSON</span>
         <input type="file" accept=".json,application/json" multiple @change="actions.onDbImportFilesChange" />
@@ -45,7 +61,7 @@
         <div v-for="item in state.dbImportResult.items" :key="`${item.fileName}_${item.textbookId}`" class="db-result-item">
           <strong>{{ item.title }}</strong>
           <span>{{ item.fileName }}</span>
-          <span>章节 {{ item.chapters }} / 题目行 {{ item.questionRows }}</span>
+          <span>写入 textbooks 1 / chapters {{ item.chapters }} / assignment_questions {{ item.questionRows }}</span>
         </div>
       </div>
     </GlassPanel>
@@ -78,9 +94,19 @@
             <small>章节树节点总数</small>
           </article>
           <article class="summary-stat">
-            <span>题目行</span>
+            <span>题目</span>
             <strong>{{ state.dbSummary.counts.questionRowCount }}</strong>
-            <small>含大题、独立题和子题</small>
+            <small>assignment_questions 总数</small>
+          </article>
+          <article class="summary-stat">
+            <span>可见范围</span>
+            <strong>{{ state.dbSummary.counts.textbookSchoolScopeCount }}</strong>
+            <small>question_bank_textbook_schools</small>
+          </article>
+          <article class="summary-stat">
+            <span>试卷模板</span>
+            <strong>{{ state.dbSummary.counts.paperCount }}</strong>
+            <small>question_bank_papers</small>
           </article>
         </div>
 
@@ -109,9 +135,10 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import GlassPanel from './GlassPanel.vue'
 
-defineProps({
+const props = defineProps({
   state: {
     type: Object,
     required: true,
@@ -121,6 +148,39 @@ defineProps({
     required: true,
   },
 })
+
+const tableCards = computed(() => [
+  {
+    name: 'textbooks',
+    directWrite: true,
+    description: '教材主表，保存 course_id、external_id、标题、学科、出版社等信息。',
+    count: props.state.dbSummary?.counts?.textbookCount ?? 0,
+  },
+  {
+    name: 'chapters',
+    directWrite: true,
+    description: '章节树结构，保存教材下的章、小节、父子关系与顺序。',
+    count: props.state.dbSummary?.counts?.chapterCount ?? 0,
+  },
+  {
+    name: 'assignment_questions',
+    directWrite: true,
+    description: '题目实体表，保存题号、题型、题干、答案、评分规则和树形题节点。',
+    count: props.state.dbSummary?.counts?.questionRowCount ?? 0,
+  },
+  {
+    name: 'question_bank_textbook_schools',
+    directWrite: false,
+    description: '教材对学校的可见范围授权表，当前不从题库 JSON 自动导入。',
+    count: props.state.dbSummary?.counts?.textbookSchoolScopeCount ?? 0,
+  },
+  {
+    name: 'question_bank_papers',
+    directWrite: false,
+    description: '教师组卷后的试卷模板表，当前不从题库 JSON 自动导入。',
+    count: props.state.dbSummary?.counts?.paperCount ?? 0,
+  },
+])
 
 function formatSize(size) {
   const value = Number(size || 0)
