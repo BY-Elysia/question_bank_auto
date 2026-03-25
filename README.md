@@ -66,7 +66,44 @@ npm install
 npm run dev
 ```
 
-默认监听 `http://127.0.0.1:5000`。
+默认监听 `http://127.0.0.1:5001`。
+
+### 题库数据库
+
+当前仓库已经补上 PostgreSQL 题库数据库导入能力。参考 `ai-homework-system` 的结构，数据库里会落三类核心数据：
+
+- `textbooks`：教材元数据
+- `chapters`：章节树
+- `question_bank_questions`：题目表，`GROUP` 大题和子题都按行存储，子题通过 `parent_id` 关联父题
+
+数据库不会写进默认 `public` schema，而是单独使用 `QUESTION_BANK_DB_SCHEMA`。默认 schema 名是 `question_bank_auto`。
+
+先配置数据库连接：
+
+```bash
+export QUESTION_BANK_DATABASE_URL="postgres://user:password@127.0.0.1:5432/your_db"
+export QUESTION_BANK_DB_SCHEMA="question_bank_auto"
+```
+
+然后执行迁移：
+
+```bash
+cd backend
+npm run db:migrate
+```
+
+迁移会自动：
+
+- 创建独立 schema
+- 创建迁移记录表 `__migrations`
+- 创建 `textbooks`、`chapters`、`question_bank_questions`、`question_bank_import_runs`
+
+后端启动后，前端“数据库导入”工作台会直接调用这些接口：
+
+- `POST /api/question-bank-db/import-upload`
+- `GET /api/question-bank-db/summary`
+
+导入方式改成前端上传 JSON 文件，不再要求通过命令行传文件路径。
 
 ### 2. 启动前端
 
@@ -104,7 +141,7 @@ npm start
 
 后端支持这些关键环境变量：
 
-- `PORT`：服务端口，默认 `5000`
+- `PORT`：服务端口，默认 `5001`
 - `PDF_RENDER_DPI`：PDF 转图 DPI，默认 `180`
 - `PDF_JPEG_QUALITY`：JPG 质量，默认 `90`
 - `ARK_API_KEY`：豆包方舟 API Key，必填
@@ -114,6 +151,8 @@ npm start
 - `ARK_RETRY_TIMES`：失败重试次数，默认 `3`
 - `ARK_RETRY_DELAY_MS`：重试间隔，默认 `1200`
 - `MAX_PENDING_QUEUE_PAGES`：跨页待补队列最大页数，默认 `6`
+- `QUESTION_BANK_DATABASE_URL`：题库 PostgreSQL 连接串
+- `QUESTION_BANK_DB_SCHEMA`：题库专用 schema，默认 `question_bank_auto`，不要设置成 `public`
 
 当前后端直接读取进程环境变量；如果没设置 `ARK_API_KEY`，调用模型时会报 `ARK_API_KEY is missing`。
 
@@ -155,6 +194,7 @@ npm run dev
 - `图片补充`：给指定题目挂载图片资源。
 - `题库可视化`：按章节树筛选查看题目、答案和小题结构。
 - `JSON 合并`：把拆分的多个 JSON 文件合并成一个结果文件。
+- `数据库导入`：把题库 JSON 上传到 PostgreSQL 新 schema，并查看导入摘要。
 
 ### 1. 基础 JSON 生成
 

@@ -314,7 +314,7 @@ function buildBoundarySharedInstruction() {
     '5) continueQuestionKey 只判断“当前输入图片队列中，按阅读顺序实际出现的最后一道顶层大题”是谁；它不是当前章的最后一题，不是当前小节的最后一题，也不是当前处理起点那道题，除非这道题确实就是整组图片里最后出现的那一道题。',
     '6) 如果最后一页发生了小节或章节切换，必须先根据图片实际内容判断切换后最后出现的顶层大题是谁，再决定 continueQuestionKey；不能因为起点题来自旧小节，就把旧小节那道题误当成整组图片里的最后一题。',
     '7) 如果这道“整组图片里最后出现的顶层大题”还要续到下一页，则 continueQuestionKey 返回它；否则返回 null。',
-    '8) continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。若最后一页切到新小节，则用新小节标题。',
+    '8) continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。这里的第几题是指的顶层大题，不是它的某个小问，若最后一页切到新小节，则用新小节标题。',
     '9) 对长题必须核对小问链和答案链是否真正闭合；不能只看页面末尾像是结束了就返回不跨页。',
     '10) hasExtractableQuestions=true 与 needNextPage=true 可以同时成立；这表示起点题还没补完，但当前队列里已经有别的完整题可导入。',
     '11) 例1：起点=第2题，当前队列里第2题补完，后面第3题完整，整组图片里最后出现的顶层大题是第4题且它跨页 => hasExtractableQuestions=true, needNextPage=false, continueQuestionKey=第4题。',
@@ -746,8 +746,7 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
     '严格输出 JSON：',
     '{',
     '  "question": {',
-    '    "continueQuestionKey": "string or null",',
-    '    "reason": "string"',
+    '    "continueQuestionKey": "string or null"',
     '  }',
     '}',
   ].join('\n')
@@ -800,7 +799,7 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
       typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
         ? questionRaw.continueQuestionKey.trim()
         : null,
-    reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
+    reason: '',
     rawText: text,
   }
 }
