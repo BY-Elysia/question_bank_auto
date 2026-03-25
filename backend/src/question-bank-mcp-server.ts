@@ -96,51 +96,325 @@ function dedupeStrings(values: string[]) {
   return result
 }
 
+function parseChineseIntegerToken(rawToken: string) {
+  const token = String(rawToken || '').trim()
+  if (!token) return 0
+  if (/^\d+$/.test(token)) return Number(token)
+
+  const map: Record<string, number> = {
+    零: 0,
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  }
+
+  let total = 0
+  let current = 0
+  for (const ch of token) {
+    if (map[ch] !== undefined) {
+      current = map[ch]
+      continue
+    }
+    if (ch === '十') {
+      total += (current || 1) * 10
+      current = 0
+      continue
+    }
+    if (ch === '百') {
+      total += (current || 1) * 100
+      current = 0
+      continue
+    }
+    if (ch === '千') {
+      total += (current || 1) * 1000
+      current = 0
+      continue
+    }
+  }
+
+  return total + current
+}
+
+function toReferenceNumber(rawValue: string | undefined) {
+  const numeric = parseChineseIntegerToken(String(rawValue || '').trim())
+  return numeric > 0 ? numeric : null
+}
+
+function normalizeQuestionReferenceText(value: string) {
+  return String(value || '')
+    .replace(/[，、；;：:！？?!（）()\[\]【】"'“”‘’]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+type ParsedAssignmentQuestionReference = {
+  rawReference: string
+  normalizedReference: string
+  explicitQuestionCode: string | null
+  sectionTitle: string | null
+  chapterNo: number | null
+  sectionNo: number | null
+  mainQuestionNo: number | null
+  subQuestionNo: number | null
+  questionCodeCandidates: string[]
+  titleCandidates: string[]
+  isSpecificReference: boolean
+}
+
+function parseAssignmentQuestionReference(reference: string): ParsedAssignmentQuestionReference {
+  const rawReference = String(reference || '').trim()
+  const normalizedReference = normalizeQuestionReferenceText(rawReference)
+  const compactReference = normalizedReference.replace(/\s+/g, '')
+
+  const explicitQuestionCode =
+    compactReference.match(/\bq_\d+(?:_\d+){2,3}\b/i)?.[0]?.toLowerCase() || null
+
+  let chapterNo: number | null = null
+  let sectionNo: number | null = null
+  let mainQuestionNo: number | null = null
+  let subQuestionNo: number | null = null
+
+  if (explicitQuestionCode) {
+    const parts = explicitQuestionCode
+      .split('_')
+      .slice(1)
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+
+    chapterNo = parts[0] || null
+    sectionNo = parts[1] || null
+    mainQuestionNo = parts[2] || null
+    subQuestionNo = parts[3] || null
+  }
+
+  const sectionMatch =
+    normalizedReference.match(/习题\s*(\d+)\s*[._．。]\s*(\d+)/) ||
+    normalizedReference.match(/(?:^|[^0-9])(\d+)\s*[._．。]\s*(\d+)(?=[^\d]|$)/)
+  if (sectionMatch?.[1] && sectionMatch?.[2]) {
+    chapterNo = chapterNo || Number(sectionMatch[1])
+    sectionNo = sectionNo || Number(sectionMatch[2])
+  }
+
+  const mainQuestionMatch = normalizedReference.match(/第\s*([零一二两三四五六七八九十百千\d]+)\s*(?:题|问)/)
+  const subQuestionMatch = normalizedReference.match(/第\s*([零一二两三四五六七八九十百千\d]+)\s*(?:小题|小问)/)
+  mainQuestionNo = mainQuestionNo || toReferenceNumber(mainQuestionMatch?.[1])
+  subQuestionNo = subQuestionNo || toReferenceNumber(subQuestionMatch?.[1])
+
+  const sectionTitle = chapterNo && sectionNo ? `习题${chapterNo}.${sectionNo}` : null
+  const titleCandidates = sectionTitle && mainQuestionNo
+    ? [
+        `${sectionTitle} 第${mainQuestionNo}题${subQuestionNo ? ` 第${subQuestionNo}小题` : ''}`.trim(),
+      ]
+    : []
+
+  const questionCodeCandidates = dedupeStrings(
+    [
+      explicitQuestionCode || '',
+      chapterNo && sectionNo && mainQuestionNo
+        ? `q_${chapterNo}_${sectionNo}_${mainQuestionNo}${subQuestionNo ? `_${subQuestionNo}` : ''}`
+        : '',
+    ].filter(Boolean),
+  )
+
+  return {
+    rawReference,
+    normalizedReference,
+    explicitQuestionCode,
+    sectionTitle,
+    chapterNo,
+    sectionNo,
+    mainQuestionNo,
+    subQuestionNo,
+    questionCodeCandidates,
+    titleCandidates,
+    isSpecificReference: Boolean(explicitQuestionCode || (sectionTitle && mainQuestionNo)),
+  }
+}
+
+const QUESTION_SEARCH_STOP_PHRASES = [
+  '中等难度',
+  '较难',
+  '偏难',
+  '简单',
+  '容易',
+  '困难',
+  '难度',
+  '帮我',
+  '给我',
+  '来一道',
+  '来一题',
+  '来一个',
+  '来',
+  '找一道',
+  '找一题',
+  '找题',
+  '找',
+  '推荐',
+  '筛选',
+  '告诉我',
+  '请',
+  '一道',
+  '一题',
+  '一个',
+  '题目',
+  '习题',
+  '题型',
+  '相关',
+  '里面',
+  '里面的',
+  '中的',
+  '关于',
+  '有关',
+  '属于',
+  '是不是',
+  '是否',
+  '可以',
+]
+
+const QUESTION_SEARCH_ACTION_WORDS = ['计算', '求解', '求', '解', '判断', '证明', '化简', '完成', '利用', '应用', '使用']
+
+const QUESTION_SEARCH_SEGMENT_SPLITTER =
+  /(?:\s+|通过|利用|应用|使用|用于|用来|用|来|把|将|帮我|给我|告诉我|请|推荐|筛选|找一道|找一题|找题|找|一道|一题|一个|相关|有关|关于|是不是|是否|可以|能否|如何|怎么|为什么|里面的|里面|里的|中的|以及|并且|或者|或|的|地|得)+/g
+
+const QUESTION_SEARCH_DOMAIN_PATTERNS = [
+  /不定积分/g,
+  /定积分/g,
+  /积分和/g,
+  /曲边梯形/g,
+  /旋转曲面/g,
+  /旋转体/g,
+  /平面图形/g,
+  /空间图形/g,
+  /公共部分/g,
+  /阴影部分/g,
+  /截面面积/g,
+  /曲面积/g,
+  /平面面积/g,
+  /空间面积/g,
+  /表面积/g,
+  /面积/g,
+  /体积/g,
+  /极限/g,
+  /证明/g,
+  /可积/g,
+]
+
+const QUESTION_SEARCH_STOP_TERMS = new Set(
+  dedupeStrings([
+    ...QUESTION_SEARCH_STOP_PHRASES,
+    ...QUESTION_SEARCH_ACTION_WORDS,
+    '题',
+  ]),
+)
+
+function normalizeQuestionSearchText(value: string) {
+  return String(value || '')
+    .replace(/[，。,.、；;：:！？?!（）()\[\]【】"'“”‘’]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeQuestionSearchFragment(value: string) {
+  return String(value || '')
+    .replace(/\s+/g, '')
+    .replace(/^[的地得]+/, '')
+    .replace(/[的地得]+$/, '')
+    .trim()
+}
+
+function isUsefulQuestionSearchFragment(value: string) {
+  const normalized = normalizeQuestionSearchFragment(value)
+  if (!normalized || normalized.length < 2 || normalized.length > 24) {
+    return false
+  }
+  if (QUESTION_SEARCH_STOP_TERMS.has(normalized)) {
+    return false
+  }
+  if (!/[A-Za-z0-9\u4E00-\u9FFF]/.test(normalized)) {
+    return false
+  }
+  if (/^[的地得]+$/.test(normalized)) {
+    return false
+  }
+  return true
+}
+
+function extractQuestionSearchFragments(value: string) {
+  const normalized = normalizeQuestionSearchText(value)
+  if (!normalized) {
+    return []
+  }
+
+  const fragments: string[] = []
+  const compact = normalized.replace(/\s+/g, '')
+
+  for (const pattern of QUESTION_SEARCH_DOMAIN_PATTERNS) {
+    const matches = compact.match(pattern)
+    if (matches?.length) {
+      fragments.push(...matches)
+    }
+  }
+
+  const coarseSegments = normalized
+    .replace(QUESTION_SEARCH_SEGMENT_SPLITTER, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (coarseSegments) {
+    fragments.push(...coarseSegments.split(' '))
+  }
+
+  const compactSegments = coarseSegments
+    ? coarseSegments
+        .split(/\s+/)
+        .map((segment) => segment.replace(/\s+/g, '').trim())
+        .filter(Boolean)
+    : []
+
+  for (const segment of compactSegments) {
+    fragments.push(segment)
+  }
+
+  return dedupeStrings(
+    fragments.map(normalizeQuestionSearchFragment).filter(isUsefulQuestionSearchFragment),
+  ).slice(0, 12)
+}
+
+function extractQuestionDomainKeywords(value: string) {
+  const normalized = normalizeQuestionSearchText(value)
+  if (!normalized) {
+    return []
+  }
+
+  const compact = normalized.replace(/\s+/g, '')
+  const fragments: string[] = []
+  for (const pattern of QUESTION_SEARCH_DOMAIN_PATTERNS) {
+    const matches = compact.match(pattern)
+    if (matches?.length) {
+      fragments.push(...matches)
+    }
+  }
+
+  return dedupeStrings(fragments.map(normalizeQuestionSearchFragment).filter(isUsefulQuestionSearchFragment))
+}
+
+function collectQuestionTextQueries(params: { query?: string; extraQueries?: string[] }) {
+  return dedupeStrings([params.query || '', ...(params.extraQueries || [])]).filter(Boolean)
+}
+
 function deriveRecallKeywords(requirement: string, query?: string) {
   const rawTexts = dedupeStrings([query || '', requirement || ''])
   const variants = new Set<string>()
-  const removablePhrases = [
-    '中等难度',
-    '较难',
-    '偏难',
-    '简单',
-    '容易',
-    '困难',
-    '难度',
-    '帮我',
-    '给我',
-    '找一道',
-    '找一题',
-    '找题',
-    '找',
-    '推荐',
-    '筛选',
-    '告诉我',
-    '请',
-    '一道',
-    '一题',
-    '一个',
-    '题目',
-    '习题',
-    '题型',
-    '相关',
-    '里面',
-    '中的',
-    '关于',
-    '属于',
-    '是不是',
-    '是否',
-    '可以',
-    '线性代数习题册',
-    '线性代数',
-  ]
-  const removableVerbs = ['计算', '求解', '求', '解', '判断', '证明', '化简', '完成']
 
   for (const rawText of rawTexts) {
-    const normalized = rawText
-      .replace(/[，。,.、；;：:！？?!（）()\[\]【】"'“”‘’]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const normalized = normalizeQuestionSearchText(rawText)
 
     if (!normalized) {
       continue
@@ -149,41 +423,31 @@ function deriveRecallKeywords(requirement: string, query?: string) {
     variants.add(normalized)
 
     let stripped = normalized
-    for (const phrase of removablePhrases) {
+    for (const phrase of QUESTION_SEARCH_STOP_PHRASES) {
       stripped = stripped.replaceAll(phrase, ' ')
     }
-    stripped = stripped.replace(/\s+/g, ' ').trim()
+    stripped = normalizeQuestionSearchText(stripped)
     if (stripped) {
       variants.add(stripped)
+      for (const fragment of extractQuestionDomainKeywords(stripped)) {
+        variants.add(fragment)
+      }
     }
 
     let nounLike = stripped
-    for (const verb of removableVerbs) {
+    for (const verb of QUESTION_SEARCH_ACTION_WORDS) {
       nounLike = nounLike.replaceAll(verb, ' ')
     }
-    nounLike = nounLike.replace(/\s+/g, ' ').trim()
+    nounLike = normalizeQuestionSearchText(nounLike)
     if (nounLike) {
       variants.add(nounLike)
-    }
-
-    for (const token of normalized.split(/\s+/)) {
-      if (token.length >= 2) {
-        variants.add(token)
-      }
-    }
-    for (const token of stripped.split(/\s+/)) {
-      if (token.length >= 2) {
-        variants.add(token)
-      }
-    }
-    for (const token of nounLike.split(/\s+/)) {
-      if (token.length >= 2) {
-        variants.add(token)
+      for (const fragment of extractQuestionSearchFragments(nounLike)) {
+        variants.add(fragment)
       }
     }
   }
 
-  return [...variants].filter((item) => item.length >= 2).slice(0, 8)
+  return dedupeStrings([...variants].map(normalizeQuestionSearchFragment).filter(isUsefulQuestionSearchFragment)).slice(0, 12)
 }
 
 function buildQuestionKeywordCondition(keywordParamIndex: number) {
@@ -192,6 +456,8 @@ function buildQuestionKeywordCondition(keywordParamIndex: number) {
     `q.description ILIKE $${keywordParamIndex}`,
     `q.question_code ILIKE $${keywordParamIndex}`,
     `COALESCE(c.title, '') ILIKE $${keywordParamIndex}`,
+    `COALESCE(pc.title, '') ILIKE $${keywordParamIndex}`,
+    `COALESCE(gc.title, '') ILIKE $${keywordParamIndex}`,
     `COALESCE(q.stem::text, '') ILIKE $${keywordParamIndex}`,
     `COALESCE(q.prompt::text, '') ILIKE $${keywordParamIndex}`,
     `COALESCE(q.standard_answer::text, '') ILIKE $${keywordParamIndex}`,
@@ -199,6 +465,39 @@ function buildQuestionKeywordCondition(keywordParamIndex: number) {
     `COALESCE(q.question_schema::text, '') ILIKE $${keywordParamIndex}`,
     `COALESCE(q.raw_payload_json::text, '') ILIKE $${keywordParamIndex}`,
   ].join(' OR ')
+}
+
+function buildQuestionKeywordScoreExpression(keywordParamIndex: number, specificityWeight: number) {
+  return [
+    'GREATEST(',
+    `CASE WHEN q.title ILIKE $${keywordParamIndex} THEN ${12 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN q.description ILIKE $${keywordParamIndex} THEN ${10 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN q.question_code ILIKE $${keywordParamIndex} THEN ${6 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(c.title, '') ILIKE $${keywordParamIndex} THEN ${7 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(pc.title, '') ILIKE $${keywordParamIndex} THEN ${8 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(gc.title, '') ILIKE $${keywordParamIndex} THEN ${8 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.stem::text, '') ILIKE $${keywordParamIndex} THEN ${9 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.prompt::text, '') ILIKE $${keywordParamIndex} THEN ${11 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.standard_answer::text, '') ILIKE $${keywordParamIndex} THEN ${4 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.rubric::text, '') ILIKE $${keywordParamIndex} THEN ${2 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.question_schema::text, '') ILIKE $${keywordParamIndex} THEN ${2 * specificityWeight} ELSE 0 END,`,
+    `CASE WHEN COALESCE(q.raw_payload_json::text, '') ILIKE $${keywordParamIndex} THEN ${2 * specificityWeight} ELSE 0 END`,
+    ')',
+  ].join(' ')
+}
+
+function getQuestionQuerySpecificityWeight(value: string) {
+  const length = String(value || '').replace(/\s+/g, '').trim().length
+  if (length >= 6) {
+    return 4
+  }
+  if (length >= 4) {
+    return 3
+  }
+  if (length >= 3) {
+    return 2
+  }
+  return 1
 }
 
 function buildQuestionSearchConditions(params: {
@@ -215,7 +514,7 @@ function buildQuestionSearchConditions(params: {
   const conditions: string[] = []
   const values: string[] = []
 
-  const textQueries = dedupeStrings([params.query || '', ...(params.extraQueries || [])])
+  const textQueries = collectQuestionTextQueries(params)
   if (textQueries.length) {
     const keywordConditions: string[] = []
     for (const textQuery of textQueries) {
@@ -289,10 +588,20 @@ type QuestionCandidateRow = {
   textbookTitle: string
   courseId: string
   defaultScore: string
+  relevanceScore: number | null
   stem: unknown
   prompt: unknown
   standardAnswer: unknown
   rawPayloadJson: unknown
+}
+
+function buildQuestionContentPreview(candidate: Pick<QuestionCandidateRow, 'stem' | 'prompt'>, maxLength = 220) {
+  return compactText(
+    [toCompactJsonText(candidate.stem, maxLength), toCompactJsonText(candidate.prompt, maxLength)]
+      .filter(Boolean)
+      .join(' '),
+    maxLength,
+  )
 }
 
 async function loadQuestionCandidates(params: {
@@ -313,10 +622,25 @@ async function loadQuestionCandidates(params: {
     throw new Error('至少提供一个筛选条件，例如 requirement、query、questionCode、chapterId、textbookId')
   }
 
+  const textQueries = collectQuestionTextQueries(params)
+  const scoreExpressions: string[] = []
+  for (const textQuery of textQueries) {
+    const keyword = normalizeKeyword(textQuery)
+    if (!keyword) {
+      continue
+    }
+    values.push(keyword)
+    scoreExpressions.push(
+      `(${buildQuestionKeywordScoreExpression(values.length, getQuestionQuerySpecificityWeight(textQuery))})`,
+    )
+  }
+
+  const relevanceScoreSql = scoreExpressions.length ? scoreExpressions.join(' + ') : '0'
   values.push(String(params.limit))
   const result = await getQuestionBankPoolInstance().query<QuestionCandidateRow>(
     `
       SELECT
+        (${relevanceScoreSql}) AS "relevanceScore",
         q.question_code AS "questionCode",
         q.node_type AS "nodeType",
         q.question_type AS "questionType",
@@ -337,8 +661,10 @@ async function loadQuestionCandidates(params: {
       FROM ${tableName('assignment_questions')} q
       INNER JOIN ${tableName('textbooks')} t ON t.id = q.textbook_id
       LEFT JOIN ${tableName('chapters')} c ON c.id = q.chapter_id
+      LEFT JOIN ${tableName('chapters')} pc ON pc.id = c.parent_id
+      LEFT JOIN ${tableName('chapters')} gc ON gc.id = pc.parent_id
       WHERE ${conditions.join(' AND ')}
-      ORDER BY t.updated_at DESC, COALESCE(c.order_no, 0) ASC, q.order_no ASC NULLS LAST, q.question_code ASC
+      ORDER BY "relevanceScore" DESC, t.updated_at DESC, COALESCE(c.order_no, 0) ASC, q.order_no ASC NULLS LAST, q.question_code ASC
       LIMIT $${values.length}
     `,
     values,
@@ -357,8 +683,10 @@ function serializeCandidateForModel(candidate: QuestionCandidateRow) {
     chapterId: candidate.chapterId,
     chapterTitle: candidate.chapterTitle,
     defaultScore: toNumber(candidate.defaultScore),
+    retrievalScore: toNumber(candidate.relevanceScore),
     title: compactText(candidate.title, 300),
     description: compactText(candidate.description, 400),
+    contentPreview: buildQuestionContentPreview(candidate, 260),
     stemText: toCompactJsonText(candidate.stem, 900),
     promptText: toCompactJsonText(candidate.prompt, 900),
     standardAnswerText: toCompactJsonText(candidate.standardAnswer, 500),
@@ -445,6 +773,8 @@ async function judgeQuestionCandidates(params: {
         title: candidate.title,
         description: candidate.description,
         defaultScore: toNumber(candidate.defaultScore),
+        relevanceScore: toNumber(candidate.relevanceScore),
+        contentPreview: buildQuestionContentPreview(candidate, 240),
       }
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -778,6 +1108,209 @@ export function createQuestionBankMcpServer() {
   )
 
   server.registerTool(
+    'resolve_assignment_question_reference',
+    {
+      description:
+        '解析“习题10.2第2题”“第1小题”“q_10_2_2”这类固定题目引用，返回最可能对应的 questionCode，适合先做精确定位，再配合题目详情工具读取完整题干与答案。',
+      annotations: {
+        title: '题目引用解析',
+        readOnlyHint: true,
+      },
+      inputSchema: {
+        reference: z.string().describe('用户提到的固定题目引用，例如“习题10.2的第二题”或“q_10_2_2”'),
+        textbookId: z.string().optional().describe('可选，按教材 external_id 限定解析范围'),
+        courseId: z.string().optional().describe('可选，按 course_id 限定解析范围'),
+        status: z.string().optional().describe('可选，默认只查 ACTIVE'),
+        limit: z.coerce.number().int().min(1).max(10).default(5),
+      },
+    },
+    async ({ reference, textbookId, courseId, status, limit }) => {
+      const parsed = parseAssignmentQuestionReference(reference)
+      const normalizedLimit = normalizeOptionalNumber(limit, 5, 1, 10)
+
+      if (!parsed.isSpecificReference) {
+        return buildToolResult('题目引用解析结果', {
+          schema: getQuestionBankDbSchemaName(),
+          reference: parsed.rawReference,
+          parsed,
+          matches: [],
+        })
+      }
+
+      const buildScopeConditions = (values: string[]) => {
+        const conditions: string[] = []
+
+        const normalizedTextbookId = normalizeOptionalText(textbookId)
+        if (normalizedTextbookId) {
+          values.push(normalizedTextbookId)
+          conditions.push(`t.external_id = $${values.length}`)
+        }
+
+        const normalizedCourseId = normalizeOptionalText(courseId)
+        if (normalizedCourseId) {
+          values.push(normalizedCourseId)
+          conditions.push(`q.course_id = $${values.length}`)
+        }
+
+        const normalizedStatus = normalizeOptionalText(status) || 'ACTIVE'
+        values.push(normalizedStatus)
+        conditions.push(`q.status = $${values.length}`)
+
+        return conditions
+      }
+
+      const runLookupQuery = async (params: {
+        whereClauses: string[]
+        values: string[]
+        matchedBy: 'questionCode' | 'canonicalTitle'
+      }) => {
+        if (!params.whereClauses.length) {
+          return [] as Array<{
+            questionCode: string
+            nodeType: string
+            questionType: string
+            status: string
+            title: string
+            chapterId: string | null
+            chapterTitle: string | null
+            textbookId: string
+            textbookTitle: string
+            courseId: string
+            parentQuestionCode: string | null
+            childCount: string
+            matchedBy: 'questionCode' | 'canonicalTitle'
+          }>
+        }
+
+        params.values.push(String(normalizedLimit))
+        const result = await getQuestionBankPoolInstance().query<{
+          questionCode: string
+          nodeType: string
+          questionType: string
+          status: string
+          title: string
+          chapterId: string | null
+          chapterTitle: string | null
+          textbookId: string
+          textbookTitle: string
+          courseId: string
+          parentQuestionCode: string | null
+          childCount: string
+        }>(
+          `
+            SELECT
+              q.question_code AS "questionCode",
+              q.node_type AS "nodeType",
+              q.question_type AS "questionType",
+              q.status,
+              q.title,
+              c.external_id AS "chapterId",
+              c.title AS "chapterTitle",
+              t.external_id AS "textbookId",
+              t.title AS "textbookTitle",
+              q.course_id AS "courseId",
+              p.question_code AS "parentQuestionCode",
+              (
+                SELECT COUNT(*)::text
+                FROM ${tableName('assignment_questions')} cq
+                WHERE cq.parent_id = q.id
+              ) AS "childCount"
+            FROM ${tableName('assignment_questions')} q
+            INNER JOIN ${tableName('textbooks')} t ON t.id = q.textbook_id
+            LEFT JOIN ${tableName('chapters')} c ON c.id = q.chapter_id
+            LEFT JOIN ${tableName('assignment_questions')} p ON p.id = q.parent_id
+            WHERE ${params.whereClauses.join(' AND ')}
+            ORDER BY
+              CASE WHEN q.node_type = 'GROUP' THEN 0 ELSE 1 END ASC,
+              COALESCE(q.order_no, 0) ASC,
+              q.question_code ASC
+            LIMIT $${params.values.length}
+          `,
+          params.values,
+        )
+
+        return result.rows.map((row) => ({
+          ...row,
+          matchedBy: params.matchedBy,
+        }))
+      }
+
+      const codeQueryValues: string[] = []
+      const codeQueryConditions = buildScopeConditions(codeQueryValues)
+      if (parsed.questionCodeCandidates.length) {
+        const codeConditions = parsed.questionCodeCandidates.map((questionCode) => {
+          codeQueryValues.push(questionCode)
+          return `q.question_code = $${codeQueryValues.length}`
+        })
+        codeQueryConditions.push(`(${codeConditions.join(' OR ')})`)
+      }
+
+      const titleQueryValues: string[] = []
+      const titleQueryConditions = buildScopeConditions(titleQueryValues)
+      if (parsed.sectionTitle) {
+        titleQueryValues.push(parsed.sectionTitle)
+        titleQueryConditions.push(`c.title = $${titleQueryValues.length}`)
+      }
+      if (parsed.titleCandidates.length) {
+        const titleConditions = parsed.titleCandidates.map((title) => {
+          titleQueryValues.push(title)
+          return `q.title = $${titleQueryValues.length}`
+        })
+        titleQueryConditions.push(`(${titleConditions.join(' OR ')})`)
+      }
+
+      const codeMatches = await runLookupQuery({
+        whereClauses: codeQueryConditions,
+        values: codeQueryValues,
+        matchedBy: 'questionCode',
+      })
+
+      const titleMatches =
+        codeMatches.length || !parsed.sectionTitle || !parsed.titleCandidates.length
+          ? []
+          : await runLookupQuery({
+              whereClauses: titleQueryConditions,
+              values: titleQueryValues,
+              matchedBy: 'canonicalTitle',
+            })
+
+      const matches = dedupeStrings(
+        [...codeMatches, ...titleMatches].map((item) => item.questionCode),
+      )
+        .map((questionCode) => [...codeMatches, ...titleMatches].find((item) => item.questionCode === questionCode))
+        .filter(
+          (
+            item,
+          ): item is {
+            questionCode: string
+            nodeType: string
+            questionType: string
+            status: string
+            title: string
+            chapterId: string | null
+            chapterTitle: string | null
+            textbookId: string
+            textbookTitle: string
+            courseId: string
+            parentQuestionCode: string | null
+            childCount: string
+            matchedBy: 'questionCode' | 'canonicalTitle'
+          } => Boolean(item),
+        )
+
+      return buildToolResult('题目引用解析结果', {
+        schema: getQuestionBankDbSchemaName(),
+        reference: parsed.rawReference,
+        parsed,
+        matches: matches.map((item) => ({
+          ...item,
+          childCount: toNumber(item.childCount),
+        })),
+      })
+    },
+  )
+
+  server.registerTool(
     'search_assignment_questions',
     {
       description: '搜索题目列表，适合做宽召回。会同时搜索标题、描述、章节标题、题干、prompt、标准答案和原始 JSON。questionType 是严格字段过滤，不适合拿来做语义判断。',
@@ -815,18 +1348,10 @@ export function createQuestionBankMcpServer() {
         items: resultRows.map((row) => ({
           ...row,
           defaultScore: toNumber(row.defaultScore),
+          relevanceScore: toNumber(row.relevanceScore),
           titlePreview: compactText(row.title, 120),
           descriptionPreview: compactText(row.description, 160),
-          contentPreview: compactText(
-            [
-              toCompactJsonText(row.stem, 120),
-              toCompactJsonText(row.prompt, 120),
-              toCompactJsonText(row.standardAnswer, 80),
-            ]
-              .filter(Boolean)
-              .join(' '),
-            200,
-          ),
+          contentPreview: buildQuestionContentPreview(row, 200),
         })),
       })
     },
@@ -898,6 +1423,8 @@ export function createQuestionBankMcpServer() {
           chapterTitle: candidate.chapterTitle,
           textbookId: candidate.textbookId,
           questionType: candidate.questionType,
+          relevanceScore: toNumber(candidate.relevanceScore),
+          contentPreview: buildQuestionContentPreview(candidate, 180),
         })),
         matches: screenedMatches,
       })

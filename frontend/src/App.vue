@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'app-shell--overview': currentPage === 'overview' }">
     <span class="ambient-orb orb-a"></span>
     <span class="ambient-orb orb-b"></span>
     <span class="ambient-orb orb-c"></span>
@@ -7,75 +7,87 @@
     <main class="workspace-shell">
       <WorkspaceNav :items="pages" :current-page="currentPage" @change="currentPage = $event" />
 
-      <AppHero
-        :metrics="heroMetrics"
-        :title="currentHero.title"
-        :description="currentHero.description"
-        :model-name="currentHero.model"
-        :session-label="currentHero.session"
-        :status-text="currentHero.status"
-      />
+      <div class="workspace-stage">
+        <aside class="workspace-dock workspace-dock--left">
+          <OverviewDeck
+            :items="overviewItems"
+            :current-page="currentPage"
+            side="left"
+            @jump="currentPage = $event"
+          />
+        </aside>
 
-      <section v-if="currentPage === 'overview'" class="stack-column">
-        <OverviewDeck :items="overviewItems" @jump="currentPage = $event" />
-      </section>
+        <div class="workspace-content">
+          <section v-if="currentPage === 'overview'" class="overview-empty-stage" aria-hidden="true">
+            <img class="overview-brand-mark" src="/home-overview-logo.png" alt="" />
+          </section>
 
-      <section v-else-if="currentPage === 'pipeline'" class="stack-column">
-        <PipelineStepper
-          :items="pipelineSteps"
-          :current-step="pipelineStep"
-          :can-go-back="canGoPipelineBack"
-          :can-go-next="canGoPipelineNext"
-          @change="goPipelineStep"
-          @back="goPipelineBack"
-          @next="goPipelineNext"
-        />
-        <TextbookJsonPanel v-if="pipelineStep === 'json'" :state="state" :actions="actions" />
-        <ChapterSessionPanel v-else :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'pipeline'" class="stack-column">
+            <PipelineStepper
+              :items="pipelineSteps"
+              :current-step="pipelineStep"
+              :can-go-back="canGoPipelineBack"
+              :can-go-next="canGoPipelineNext"
+              @change="goPipelineStep"
+              @back="goPipelineBack"
+              @next="goPipelineNext"
+            />
 
-      <section v-else-if="currentPage === 'pdf'" class="stack-column">
-        <PdfWorkspacePanel :state="state" :actions="actions" />
-        <PageGallery :state="state" :actions="actions" />
-      </section>
+            <PipelineKindPanel
+              v-if="pipelineStep === 'kind'"
+              :pipeline-kind="pipelineKind"
+              @select="selectPipelineKind"
+            />
+            <TextbookJsonPanel v-else-if="pipelineStep === 'json'" :state="state" :actions="actions" />
+            <ChapterSessionPanel v-else-if="pipelineStep === 'session'" :state="state" :actions="actions" />
+            <ExamWorkspacePlaceholder v-else @back-to-kind="pipelineStep = 'kind'" />
+          </section>
 
-      <section v-else-if="currentPage === 'repair'" class="stack-column">
-        <QuestionRepairPanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'pdf'" class="stack-column">
+            <PdfWorkspacePanel :state="state" :actions="actions" />
+            <PageGallery :state="state" :actions="actions" />
+          </section>
 
-      <section v-else-if="currentPage === 'imageAttach'" class="stack-column">
-        <ImageAttachPanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'repair'" class="stack-column">
+            <QuestionRepairPanel :state="state" :actions="actions" />
+          </section>
 
-      <section v-else-if="currentPage === 'visualize'" class="stack-column">
-        <JsonVisualizerPanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'imageAttach'" class="stack-column">
+            <ImageAttachPanel :state="state" :actions="actions" />
+          </section>
 
-      <section v-else-if="currentPage === 'merge'" class="stack-column">
-        <JsonMergePanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'visualize'" class="stack-column">
+            <JsonVisualizerPanel :state="state" :actions="actions" />
+          </section>
 
-      <section v-else-if="currentPage === 'database'" class="stack-column">
-        <QuestionBankDatabasePanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'merge'" class="stack-column">
+            <JsonMergePanel :state="state" :actions="actions" />
+          </section>
 
-      <section v-else-if="currentPage === 'assistant'" class="stack-column">
-        <QuestionBankAssistantPanel :state="state" :actions="actions" />
-      </section>
+          <section v-else-if="currentPage === 'database'" class="stack-column">
+            <QuestionBankDatabasePanel :state="state" :actions="actions" />
+          </section>
+
+          <section v-else-if="currentPage === 'assistant'" class="stack-column">
+            <QuestionBankAssistantPanel :state="state" :actions="actions" />
+          </section>
+        </div>
+      </div>
     </main>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import AppHero from './components/AppHero.vue'
 import ChapterSessionPanel from './components/ChapterSessionPanel.vue'
+import ExamWorkspacePlaceholder from './components/ExamWorkspacePlaceholder.vue'
 import ImageAttachPanel from './components/ImageAttachPanel.vue'
 import JsonMergePanel from './components/JsonMergePanel.vue'
 import JsonVisualizerPanel from './components/JsonVisualizerPanel.vue'
 import OverviewDeck from './components/OverviewDeck.vue'
 import PageGallery from './components/PageGallery.vue'
 import PdfWorkspacePanel from './components/PdfWorkspacePanel.vue'
+import PipelineKindPanel from './components/PipelineKindPanel.vue'
 import PipelineStepper from './components/PipelineStepper.vue'
 import QuestionBankAssistantPanel from './components/QuestionBankAssistantPanel.vue'
 import QuestionBankDatabasePanel from './components/QuestionBankDatabasePanel.vue'
@@ -86,11 +98,12 @@ import { useQuestionBankWorkbench } from './composables/useQuestionBankWorkbench
 
 const { state, actions } = useQuestionBankWorkbench()
 const currentPage = ref('overview')
-const pipelineStep = ref('session')
+const pipelineKind = ref('textbook')
+const pipelineStep = ref('kind')
 
 const pages = [
   { id: 'overview', label: '总览', description: '入口与状态' },
-  { id: 'pipeline', label: '结构化处理', description: 'JSON 与章节会话' },
+  { id: 'pipeline', label: '结构化处理', description: '教材与试卷分流' },
   { id: 'pdf', label: '页图工作台', description: 'PDF 与页图画廊' },
   { id: 'repair', label: '题目修复', description: '单题补录与覆盖' },
   { id: 'imageAttach', label: '图片补充', description: '补回题目配图' },
@@ -107,100 +120,120 @@ const sessionLabel = computed(() => {
   return `${state.chapterSessionCurrentChapter || '未命名章节'} / ${state.chapterSessionCurrentSection || '未命名小节'}`
 })
 
-const heroByPage = computed(() => ({
-  overview: {
-    title: '题库自动处理中心',
-    description: '集中管理结构化提取、题目修复、图片补充、题库可视化、JSON 合并和数据库导入。',
-    model: '总览面板',
-    session: sessionLabel.value || '查看当前工作流状态',
-    status: '从这里进入对应工作区',
-  },
-  pipeline: {
-    title: '结构化提取流程',
-    description: '处理基础教材 JSON、章节会话、单页抽题和目录自动流式跑题。',
-    model: '结构化处理工作台',
-    session: sessionLabel.value || '可直接进入章节会话',
-    status: state.chapterAutoRunning ? '自动处理运行中' : state.chapterSessionStatus || '准备处理章节与题目',
-  },
-  pdf: {
-    title: 'PDF 与页图画廊',
-    description: '负责 PDF 转图、页图预览和输出目录回看，为后续处理准备素材。',
-    model: '页图工作台',
-    session: state.outputFolder || '先上传 PDF 生成页图',
-    status: state.statusText || '准备处理 PDF',
-  },
-  repair: {
-    title: '题目定点修复',
-    description: '按章、小节和题号精确修复单题，支持多图跨页补录，结果输出到 repair_json。',
-    model: '题目修复工作台',
-    session: state.chapterSessionJsonLabel || '先选择需要修复的 JSON 文件',
-    status: state.repairStatus || '准备执行定点修复',
-  },
-  imageAttach: {
-    title: '题目图片补充',
-    description: '给指定大题或小题补回遗漏的题目配图，自动回写 media 字段。',
-    model: '图片补充工作台',
-    session: state.chapterSessionJsonLabel || '先选择需要补图的 JSON 文件',
-    status: state.imageAttachStatus || '准备补充题目图片',
-  },
-  visualize: {
-    title: '题库章节可视化',
-    description: '本地解析题库 JSON，按章节树筛选题目和答案，并直接渲染 LaTeX 公式。',
-    model: '题库浏览工作台',
-    session: state.visualizerFileName || '先选择一个题库 JSON 文件',
-    status: state.visualizerStatus || '准备解析题库结构并展示题答',
-  },
-  merge: {
-    title: '多章节 JSON 合并',
-    description: '把拆开的多个章节 JSON 去重合并，自动整理章节树和题目顺序。',
-    model: 'JSON 合并工作台',
-    session: state.mergeJsonFiles.length ? `已选择 ${state.mergeJsonFiles.length} 个文件` : '先选择多个 JSON 文件',
-    status: state.mergeStatus || '准备执行 JSON 合并',
-  },
-  database: {
-    title: '题库数据库导入',
-    description: '把自动生成好的题库 JSON 直接导入 PostgreSQL 新 schema，并在界面里查看入库摘要。',
-    model: '数据库导入工作台',
-    session: state.dbSummary?.schema || '等待读取数据库摘要',
-    status: state.dbImportStatus || state.dbSummaryStatus || '先在终端执行迁移，再上传 JSON',
-  },
-  assistant: {
-    title: '题库 AI 助手',
-    description: '通过 MCP 查询 PostgreSQL 题库 schema，根据用户要求检索教材、章节和题目并生成回答。',
-    model: 'MCP 问答工作台',
-    session: state.dbSummary?.schema || '连接题库数据库',
-    status: state.assistantStatus || '先导入题库，再开始提问',
-  },
-}))
+const chapterBatchConfiguredCount = computed(
+  () =>
+    (Array.isArray(state.chapterBatchTasks) ? state.chapterBatchTasks : []).filter(
+      (task) =>
+        String(task?.jsonLabel || '').trim() ||
+        String(task?.serverJsonPath || '').trim() ||
+        String(task?.initChapter || '').trim() ||
+        String(task?.initSection || '').trim() ||
+        (Array.isArray(task?.imageFiles) && task.imageFiles.length),
+    ).length,
+)
 
-const currentHero = computed(() => heroByPage.value[currentPage.value] || heroByPage.value.overview)
+const pipelineSessionLabel = computed(() => {
+  if (state.chapterRunMode === 'multi') {
+    return chapterBatchConfiguredCount.value
+      ? `多章并行 · ${chapterBatchConfiguredCount.value} 个任务`
+      : '多章并行待配置'
+  }
+  return sessionLabel.value || '可直接进入章节会话'
+})
 
-const pipelineSteps = computed(() => [
-  { id: 'json', index: '01', title: '基础教材 JSON', description: '可选生成教材工作副本', disabled: false },
-  { id: 'session', index: '02', title: '章节会话与跑题', description: '可直接开始，也支持回退', disabled: false },
-])
+const pipelineStatusText = computed(() => {
+  if (state.chapterRunMode === 'multi') {
+    return state.chapterBatchRunning
+      ? '多章并行处理中'
+      : state.chapterBatchStatus || '准备配置多章并行任务'
+  }
+  return state.chapterAutoRunning ? '自动处理运行中' : state.chapterSessionStatus || '准备处理章节与题目'
+})
 
-const canGoPipelineBack = computed(() => pipelineStep.value === 'session')
-const canGoPipelineNext = computed(() => pipelineStep.value === 'json')
+const pipelineSteps = computed(() => {
+  const items = [
+    {
+      id: 'kind',
+      index: '01',
+      title: '生成类型',
+      description: pipelineKind.value === 'exam' ? '当前：试卷生成' : '当前：教材生成',
+      disabled: false,
+    },
+  ]
+
+  if (pipelineKind.value === 'exam') {
+    items.push({
+      id: 'exam',
+      index: '02',
+      title: '试卷生成',
+      description: '试卷专属流程入口已预留',
+      disabled: false,
+    })
+    return items
+  }
+
+  items.push(
+    {
+      id: 'json',
+      index: '02',
+      title: '基础教材 JSON',
+      description: '可选生成教材工作副本',
+      disabled: false,
+    },
+    {
+      id: 'session',
+      index: '03',
+      title: '章节会话与跑题',
+      description: '继续沿用原有教材结构化流程',
+      disabled: false,
+    },
+  )
+
+  return items
+})
+
+const canGoPipelineBack = computed(() => pipelineStep.value !== 'kind')
+const canGoPipelineNext = computed(() => pipelineStep.value === 'kind' || pipelineStep.value === 'json')
+
+function selectPipelineKind(kind) {
+  pipelineKind.value = kind
+  pipelineStep.value = kind === 'exam' ? 'exam' : 'json'
+}
 
 function goPipelineStep(step) {
+  if (step === 'json' || step === 'session') {
+    pipelineKind.value = 'textbook'
+  }
+  if (step === 'exam') {
+    pipelineKind.value = 'exam'
+  }
   pipelineStep.value = step
 }
 
 function goPipelineBack() {
   if (pipelineStep.value === 'session') {
     pipelineStep.value = 'json'
+    return
+  }
+  if (pipelineStep.value === 'json' || pipelineStep.value === 'exam') {
+    pipelineStep.value = 'kind'
   }
 }
 
 function goPipelineNext() {
-  pipelineStep.value = 'session'
+  if (pipelineStep.value === 'kind') {
+    pipelineStep.value = pipelineKind.value === 'exam' ? 'exam' : 'json'
+    return
+  }
+  if (pipelineStep.value === 'json') {
+    pipelineStep.value = 'session'
+  }
 }
 
 watch(
   () => state.chapterSessionServerJsonPath,
   (value, previous) => {
-    if (value && value !== previous) {
+    if (pipelineKind.value === 'textbook' && value && value !== previous) {
       pipelineStep.value = 'session'
     }
   },
@@ -210,37 +243,28 @@ onMounted(() => {
   actions.loadQuestionBankDbSummary().catch(() => {})
 })
 
-const heroMetrics = computed(() => [
-  {
-    label: 'Pages',
-    value: state.pages.length || '0',
-    hint: state.pages.length ? `输出目录 ${state.outputFolder || '-'}` : '等待 PDF 转图',
-  },
-  {
-    label: 'Session',
-    value: state.chapterSessionId ? 'Active' : 'Idle',
-    hint: state.chapterSessionId ? state.chapterSessionCurrentSection || '会话已初始化' : '等待初始化章节会话',
-  },
-  {
-    label: 'Visualizer',
-    value: state.visualizerPayload ? 'Loaded' : 'Empty',
-    hint: state.visualizerFileName || '还没有加载题库 JSON',
-  },
-  {
-    label: 'Database',
-    value: state.dbSummary?.counts?.textbookCount ?? '0',
-    hint: state.dbSummary?.schema || state.dbSummaryStatus || '等待数据库摘要',
-  },
-])
-
 const overviewItems = computed(() => [
   {
     id: 'pipeline',
     eyebrow: 'Structure',
     title: '结构化处理',
-    description: '生成教材 JSON、初始化章节会话，并按页推进题库结构化提取。',
-    value: state.chapterSessionId ? '会话已激活' : '等待初始化',
-    hint: state.chapterSessionCurrentSection || '尚未开始',
+    description: '先选择教材生成或试卷生成，再进入对应的结构化工作流。',
+    value:
+      pipelineKind.value === 'exam'
+        ? '当前预览试卷分支'
+        : state.chapterRunMode === 'multi'
+          ? chapterBatchConfiguredCount.value
+            ? '多章模式已配置'
+            : '等待配置任务'
+          : state.chapterSessionId
+            ? '会话已激活'
+            : '等待初始化',
+    hint:
+      pipelineKind.value === 'exam'
+        ? '试卷分支入口已建立，后续接入专属逻辑'
+        : state.chapterRunMode === 'multi'
+          ? pipelineStatusText.value
+          : state.chapterSessionCurrentSection || '尚未开始',
     tone: 'mint',
     buttonLabel: '结构化处理',
   },

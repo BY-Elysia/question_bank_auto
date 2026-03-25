@@ -48,6 +48,7 @@ export function useQuestionBankWorkbench() {
     chapterSessionCurrentChapter: '',
     chapterSessionCurrentSection: '',
     chapterArkApiKey: '',
+    chapterRunMode: 'single',
     chapterProcessingMode: 'original',
     chapterSessionStatus: '',
     chapterSessionError: false,
@@ -128,6 +129,12 @@ export function useQuestionBankWorkbench() {
     chapterAutoEntries: [],
     chapterAutoSummary: null,
     chapterAutoLive: null,
+    chapterBatchConcurrency: 2,
+    chapterBatchTasks: [],
+    chapterBatchRunning: false,
+    chapterBatchStopping: false,
+    chapterBatchStatus: '',
+    chapterBatchError: false,
     jsonForm: {
       version: 'v1.1',
       courseId: '',
@@ -140,6 +147,8 @@ export function useQuestionBankWorkbench() {
 
   let selectedPdfSequence = 0
   let chapterAutoAbortController = null
+  let chapterBatchTaskSequence = 0
+  const chapterBatchAbortControllers = new Map()
 
   function createSelectedPdfEntry(file) {
     selectedPdfSequence += 1
@@ -147,6 +156,85 @@ export function useQuestionBankWorkbench() {
       id: `pdf_${Date.now()}_${selectedPdfSequence}`,
       file,
     }
+  }
+
+  function createChapterBatchTask() {
+    chapterBatchTaskSequence += 1
+    return {
+      id: `chapter_task_${Date.now()}_${chapterBatchTaskSequence}`,
+      jsonLabel: '',
+      serverJsonPath: '',
+      jsonHandle: null,
+      initChapter: '',
+      initSection: '',
+      imageFiles: [],
+      folderLabel: '',
+      sessionId: '',
+      currentChapter: '',
+      currentSection: '',
+      status: '',
+      error: false,
+      running: false,
+      stopped: false,
+      completed: false,
+      phase: '待命',
+      currentIndex: 0,
+      completedCount: 0,
+      successCount: 0,
+      failedCount: 0,
+      totalCount: 0,
+      currentFileName: '',
+      logs: '',
+      lastQuestion: null,
+      lastPrefixCache: null,
+    }
+  }
+
+  function normalizeChapterBatchConcurrency(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      return 2
+    }
+    return Math.max(1, Math.min(6, Math.trunc(numeric)))
+  }
+
+  function getChapterBatchTaskLabel(task) {
+    return (
+      String(task?.jsonLabel || '').trim() ||
+      String(task?.folderLabel || '').trim() ||
+      [String(task?.initChapter || '').trim(), String(task?.initSection || '').trim()].filter(Boolean).join(' / ') ||
+      '未命名章节任务'
+    )
+  }
+
+  function findChapterBatchTask(taskId) {
+    return state.chapterBatchTasks.find((item) => item?.id === taskId) || null
+  }
+
+  function isChapterBatchTaskConfigured(task) {
+    if (!task || typeof task !== 'object') {
+      return false
+    }
+    return Boolean(
+      String(task.jsonLabel || '').trim() ||
+        String(task.serverJsonPath || '').trim() ||
+        String(task.initChapter || '').trim() ||
+        String(task.initSection || '').trim() ||
+        (Array.isArray(task.imageFiles) && task.imageFiles.length),
+    )
+  }
+
+  function isChapterBatchTaskReady(task) {
+    if (!task || typeof task !== 'object') {
+      return false
+    }
+    return Boolean(
+      String(task.serverJsonPath || '').trim() &&
+        String(task.initChapter || '').trim() &&
+        String(task.initSection || '').trim() &&
+        Array.isArray(task.imageFiles) &&
+        task.imageFiles.length,
+    )
   }
 
   function resetPdfWorkspace() {
@@ -194,11 +282,28 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function setChapterRunMode(mode) {
+    if (mode !== 'single' && mode !== 'multi') {
+      return
+    }
+    if (state.chapterProcessing || state.chapterAutoRunning || state.chapterBatchRunning) {
+      return
+    }
+    state.chapterRunMode = mode
+    if (mode === 'multi' && !state.chapterBatchTasks.length) {
+      state.chapterBatchTasks.push(createChapterBatchTask())
+    }
+  }
+
   function setChapterProcessingMode(mode) {
     if (mode !== 'original' && mode !== 'responses') {
       return
     }
     state.chapterProcessingMode = mode
+  }
+
+  function setChapterBatchConcurrency(value) {
+    state.chapterBatchConcurrency = normalizeChapterBatchConcurrency(value)
   }
 
   function getChapterArkApiKey() {
@@ -227,6 +332,8 @@ export function useQuestionBankWorkbench() {
     state.chapterSessionStatus = '请先在当前页面填写 API Key，再开始提取'
     state.chapterAutoError = true
     state.chapterAutoStatus = '请先在当前页面填写 API Key，再开始提取'
+    state.chapterBatchError = true
+    state.chapterBatchStatus = '请先在当前页面填写 API Key，再开始提取'
     return false
   }
 
@@ -243,6 +350,44 @@ export function useQuestionBankWorkbench() {
     state.chapterAutoEntries = []
     state.chapterAutoSummary = null
     state.chapterAutoLive = null
+  }
+
+  function appendChapterBatchTaskLog(task, line) {
+    if (!task || !line) {
+      return
+    }
+    task.logs = task.logs ? `${task.logs}\n${line}` : line
+  }
+
+  function resetChapterBatchTaskRuntime(task) {
+    if (!task || typeof task !== 'object') {
+      return
+    }
+    task.sessionId = ''
+    task.currentChapter = ''
+    task.currentSection = ''
+    task.status = ''
+    task.error = false
+    task.running = false
+    task.stopped = false
+    task.completed = false
+    task.phase = '待命'
+    task.currentIndex = 0
+    task.completedCount = 0
+    task.successCount = 0
+    task.failedCount = 0
+    task.totalCount = Array.isArray(task.imageFiles) ? task.imageFiles.length : 0
+    task.currentFileName = ''
+    task.logs = ''
+    task.lastQuestion = null
+    task.lastPrefixCache = null
+  }
+
+  function resetChapterBatchRuntimeState() {
+    state.chapterBatchError = false
+    state.chapterBatchStopping = false
+    state.chapterBatchStatus = ''
+    state.chapterBatchTasks.forEach((task) => resetChapterBatchTaskRuntime(task))
   }
 
   async function loadVisualizerJsonFile(file, fileHandle = null) {
@@ -507,25 +652,25 @@ export function useQuestionBankWorkbench() {
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '褰撳墠鍙鍖栨枃浠跺皻鏈悓姝ュ埌淇宸ヤ綔鍖猴紝璇烽噸鏂伴€夋嫨涓€娆?JSON 鏂囦欢'
+      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
       return
     }
     if (!state.visualizerRepairImageFiles.length) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '璇峰厛涓婁紶鐢ㄤ簬閲嶅啓褰撳墠棰樼洰鐨勫浘鐗?'
+      state.visualizerRepairStatus = '请先上传用于重写当前题目的图片'
       return
     }
 
     const parts = parseQuestionIdParts(questionId)
     if (!parts) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = `鏃犳硶浠?questionId 瑙ｆ瀽绔犺妭淇℃伅锛?${questionId || 'unknown'}`
+      state.visualizerRepairStatus = `无法从 questionId 解析章节信息：${questionId || 'unknown'}`
       return
     }
 
     state.visualizerRepairProcessing = true
     state.visualizerRepairError = false
-    state.visualizerRepairStatus = `姝ｅ湪鏍规嵁鍥剧墖閲嶅啓 ${questionTitle || questionId}...`
+    state.visualizerRepairStatus = `正在根据图片重写 ${questionTitle || questionId}...`
     state.visualizerRewriteResult = null
 
     try {
@@ -545,7 +690,7 @@ export function useQuestionBankWorkbench() {
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
-        throw new Error(data.message || '褰撳墠棰樼洰閲嶅啓澶辫触')
+        throw new Error(data.message || '当前题目重写失败')
       }
 
       upsertQuestionInVisualizerPayload(data.question)
@@ -568,14 +713,14 @@ export function useQuestionBankWorkbench() {
       try {
         await syncVisualizerJsonToLocalFile()
       } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '鍥炲啓鏈湴鏂囦欢澶辫触'
+        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
       }
       state.visualizerRepairStatus = syncWarning
-        ? `宸叉寜鍥剧墖閲嶅啓 ${state.visualizerRewriteResult.questionTitle}锛屼絾鍥炲啓鏈湴鏂囦欢澶辫触锛?${syncWarning}`
-        : `宸叉寜鍥剧墖閲嶅啓 ${state.visualizerRewriteResult.questionTitle}`
+        ? `已按图片重写 ${state.visualizerRewriteResult.questionTitle}，但回写本地文件失败：${syncWarning}`
+        : `已按图片重写 ${state.visualizerRewriteResult.questionTitle}`
     } catch (error) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = error instanceof Error ? error.message : '褰撳墠棰樼洰閲嶅啓澶辫触'
+      state.visualizerRepairStatus = error instanceof Error ? error.message : '当前题目重写失败'
     } finally {
       state.visualizerRepairProcessing = false
     }
@@ -831,7 +976,7 @@ export function useQuestionBankWorkbench() {
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
-      throw new Error(data.message || '璇诲彇宸ヤ綔鍓湰澶辫触')
+      throw new Error(data.message || '读取工作副本失败')
     }
     return String(data.text || '')
   }
@@ -882,29 +1027,134 @@ export function useQuestionBankWorkbench() {
     await syncJsonHandleFromWorkspace(state.visualizerServerJsonPath, state.visualizerFileHandle)
   }
 
-  async function chooseJsonSessionFile() {
+  async function pickJsonFileFromPicker() {
     if (!supportsPicker('showOpenFilePicker')) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = '当前浏览器不支持 JSON 文件选择器，请使用 Chromium 内核浏览器'
-      return
+      throw new Error('当前浏览器不支持 JSON 文件选择器，请使用 Chromium 内核浏览器')
     }
 
-    try {
-      const [handle] = await window.showOpenFilePicker({
-        excludeAcceptAllOption: true,
-        multiple: false,
-        types: [
-          {
-            description: '教材 JSON',
-            accept: {
-              'application/json': ['.json'],
-            },
+    const [handle] = await window.showOpenFilePicker({
+      excludeAcceptAllOption: true,
+      multiple: false,
+      types: [
+        {
+          description: '教材 JSON',
+          accept: {
+            'application/json': ['.json'],
           },
-        ],
+        },
+      ],
+    })
+    const file = await handle.getFile()
+    const text = await fileToText(file)
+    JSON.parse(text)
+    return {
+      handle,
+      file,
+    }
+  }
+
+  async function collectImagesFromDirectoryHandle(directoryHandle, prefix = '') {
+    const files = []
+    for await (const entry of directoryHandle.values()) {
+      const nextPrefix = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.kind === 'directory') {
+        files.push(...await collectImagesFromDirectoryHandle(entry, nextPrefix))
+        continue
+      }
+      if (!/\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
+        continue
+      }
+      const file = await entry.getFile()
+      files.push({
+        file,
+        name: nextPrefix,
       })
-      const file = await handle.getFile()
-      const text = await fileToText(file)
-      JSON.parse(text)
+    }
+    return files
+  }
+
+  async function pickImageFolderFromPicker() {
+    if (!supportsPicker('showDirectoryPicker')) {
+      throw new Error('当前浏览器不支持文件夹选择器，请使用 Chromium 内核浏览器')
+    }
+
+    const handle = await window.showDirectoryPicker()
+    const images = await collectImagesFromDirectoryHandle(handle)
+    images.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' }))
+    if (!images.length) {
+      throw new Error('所选文件夹中没有图片文件')
+    }
+    return {
+      handle,
+      images,
+    }
+  }
+
+  async function requestChapterSessionInit(params) {
+    const {
+      jsonFilePath = '',
+      currentChapterTitle = '',
+      currentSectionTitle = '',
+    } = params || {}
+
+    const resp = await fetch('/api/chapters/session/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonFilePath,
+        currentChapterTitle,
+        currentSectionTitle,
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '初始化失败')
+    }
+    return data
+  }
+
+  async function requestChapterProcessImage(params) {
+    const {
+      processingProfile,
+      chapterArkHeaders = {},
+      sessionId = '',
+      imageFile = null,
+      lookaheadFile = null,
+      currentChapterTitle = '',
+      currentSectionTitle = '',
+      signal,
+      errorMessage = '自动处理失败',
+    } = params || {}
+
+    const formData = new FormData()
+    formData.append('sessionId', sessionId)
+    formData.append('image', imageFile, imageFile?.name || 'image')
+    formData.append('currentChapterTitle', currentChapterTitle)
+    formData.append('currentSectionTitle', currentSectionTitle)
+    if (lookaheadFile) {
+      formData.append('lookaheadImage', lookaheadFile, lookaheadFile.name || 'lookahead')
+    }
+
+    const resp = await fetch(processingProfile.processImageEndpoint, {
+      method: 'POST',
+      headers: chapterArkHeaders,
+      body: formData,
+      signal,
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || errorMessage)
+    }
+    return data
+  }
+
+  async function syncChapterBatchTaskToLocalFile(task) {
+    await syncJsonHandleFromWorkspace(task?.serverJsonPath, task?.jsonHandle)
+  }
+
+  async function chooseJsonSessionFile() {
+    try {
+      const { handle, file } = await pickJsonFileFromPicker()
       await importJsonFileToWorkspace(file)
       state.chapterSessionJsonHandle = handle
       state.chapterSessionError = false
@@ -919,39 +1169,8 @@ export function useQuestionBankWorkbench() {
   }
 
   async function chooseAutoImageFolder() {
-    if (!supportsPicker('showDirectoryPicker')) {
-      state.chapterAutoError = true
-      state.chapterAutoStatus = '当前浏览器不支持文件夹选择器，请使用 Chromium 内核浏览器'
-      return
-    }
-
-    async function collectImages(directoryHandle, prefix = '') {
-      const files = []
-      for await (const entry of directoryHandle.values()) {
-        const nextPrefix = prefix ? `${prefix}/${entry.name}` : entry.name
-        if (entry.kind === 'directory') {
-          files.push(...await collectImages(entry, nextPrefix))
-          continue
-        }
-        if (!/\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
-          continue
-        }
-        const file = await entry.getFile()
-        files.push({
-          file,
-          name: nextPrefix,
-        })
-      }
-      return files
-    }
-
     try {
-      const handle = await window.showDirectoryPicker()
-      const images = await collectImages(handle)
-      images.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' }))
-      if (!images.length) {
-        throw new Error('所选文件夹中没有图片文件')
-      }
+      const { handle, images } = await pickImageFolderFromPicker()
       state.chapterAutoFiles = images
       state.chapterAutoFolderLabel = handle.name
       state.chapterAutoError = false
@@ -1055,19 +1274,11 @@ export function useQuestionBankWorkbench() {
     resetChapterAutoRuntimeState()
 
     try {
-      const resp = await fetch('/api/chapters/session/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonFilePath: state.chapterSessionServerJsonPath,
-          currentChapterTitle: state.chapterSessionInitChapter,
-          currentSectionTitle: state.chapterSessionInitSection,
-        }),
+      const data = await requestChapterSessionInit({
+        jsonFilePath: state.chapterSessionServerJsonPath,
+        currentChapterTitle: state.chapterSessionInitChapter,
+        currentSectionTitle: state.chapterSessionInitSection,
       })
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '初始化失败')
-      }
       state.chapterSessionId = String(data.sessionId || '')
       state.chapterSessionCurrentChapter = String(data.currentChapterTitle || '')
       state.chapterSessionCurrentSection = String(data.currentSectionTitle || '')
@@ -2090,6 +2301,331 @@ export function useQuestionBankWorkbench() {
     resetChapterAutoRuntimeState()
   }
 
+  function addChapterBatchTask() {
+    state.chapterBatchTasks.push(createChapterBatchTask())
+    state.chapterBatchError = false
+    if (!state.chapterBatchStatus) {
+      state.chapterBatchStatus = '已添加章节任务，请为每一章选择 JSON、填写起始章节并选择图片文件夹'
+    }
+  }
+
+  function removeChapterBatchTask(taskId) {
+    if (state.chapterBatchRunning) {
+      return
+    }
+    const index = state.chapterBatchTasks.findIndex((item) => item?.id === taskId)
+    if (index === -1) {
+      return
+    }
+    state.chapterBatchTasks.splice(index, 1)
+    if (!state.chapterBatchTasks.length) {
+      state.chapterBatchError = false
+      state.chapterBatchStatus = ''
+    }
+  }
+
+  async function chooseChapterBatchTaskJson(taskId) {
+    const task = findChapterBatchTask(taskId)
+    if (!task) {
+      return
+    }
+
+    try {
+      const { handle, file } = await pickJsonFileFromPicker()
+      const data = await uploadJsonFileToWorkspace(file)
+      task.serverJsonPath = String(data.filePath || '')
+      task.jsonLabel = file.name
+      task.jsonHandle = handle
+      task.error = false
+      task.status = `已选择 JSON 文件：${file.name}`
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return
+      }
+      task.error = true
+      task.status = error instanceof Error ? error.message : '选择 JSON 文件失败'
+    }
+  }
+
+  async function chooseChapterBatchTaskFolder(taskId) {
+    const task = findChapterBatchTask(taskId)
+    if (!task) {
+      return
+    }
+
+    try {
+      const { handle, images } = await pickImageFolderFromPicker()
+      task.imageFiles = images
+      task.folderLabel = handle.name
+      task.error = false
+      task.status = `已选择文件夹：${handle.name}，共 ${images.length} 张图片`
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return
+      }
+      task.error = true
+      task.status = error instanceof Error ? error.message : '选择文件夹失败'
+    }
+  }
+
+  async function runChapterBatchTask(task, processingProfile, chapterArkHeaders) {
+    if (!task) {
+      return
+    }
+
+    const files = Array.isArray(task.imageFiles) ? task.imageFiles : []
+    const abortController = new AbortController()
+    chapterBatchAbortControllers.set(task.id, abortController)
+    resetChapterBatchTaskRuntime(task)
+    task.running = true
+    task.totalCount = files.length
+    task.phase = '初始化中'
+    task.status = '初始化章节会话中...'
+
+    const markStopped = (currentFileName = '') => {
+      task.running = false
+      task.stopped = true
+      task.phase = '已手动停止'
+      task.currentFileName = currentFileName || task.currentFileName || ''
+      task.status = currentFileName ? `已手动停止，停在 ${currentFileName}` : '已手动停止'
+    }
+
+    let firstFailureMessage = ''
+
+    try {
+      const initData = await requestChapterSessionInit({
+        jsonFilePath: task.serverJsonPath,
+        currentChapterTitle: task.initChapter,
+        currentSectionTitle: task.initSection,
+      })
+      task.sessionId = String(initData.sessionId || '')
+      task.currentChapter = String(initData.currentChapterTitle || '')
+      task.currentSection = String(initData.currentSectionTitle || '')
+      task.phase = '会话已初始化'
+      task.status = `初始化成功，chapters: ${initData.chaptersCount}，questions: ${initData.questionsCount || 0}`
+      await syncChapterBatchTaskToLocalFile(task).catch(() => {})
+
+      const startEvent = {
+        type: 'start',
+        totalCount: files.length,
+        currentSectionTitle: task.currentSection,
+      }
+      appendChapterBatchTaskLog(task, formatAutoProgressLine(startEvent))
+
+      for (let index = 0; index < files.length; index += 1) {
+        const current = files[index]
+        const lookahead = files[index + 1] || null
+
+        if (state.chapterBatchStopping || abortController.signal.aborted) {
+          appendChapterBatchTaskLog(task, `手动停止于 ${current.name}`)
+          markStopped(current.name)
+          return
+        }
+
+        const progressEvent = {
+          type: 'progress',
+          currentIndex: index + 1,
+          totalCount: files.length,
+          fileName: current.name,
+        }
+        task.currentIndex = index + 1
+        task.currentFileName = current.name
+        task.phase = '处理中'
+        task.status = formatAutoProgressLine(progressEvent)
+        appendChapterBatchTaskLog(task, task.status)
+        await nextTick()
+
+        try {
+          const data = await requestChapterProcessImage({
+            processingProfile,
+            chapterArkHeaders,
+            sessionId: task.sessionId,
+            imageFile: current.file,
+            lookaheadFile: lookahead?.file || null,
+            currentChapterTitle: task.currentChapter,
+            currentSectionTitle: task.currentSection,
+            signal: abortController.signal,
+          })
+
+          const question = data.question || {}
+          task.successCount += 1
+          task.completedCount = task.successCount + task.failedCount
+          task.currentChapter = String(data.currentChapterTitle || task.currentChapter)
+          task.currentSection = String(data.currentSectionTitle || task.currentSection)
+          task.lastQuestion = buildQuestionSummary(question)
+          task.lastPrefixCache = buildPrefixCacheSummary(data.prefixCacheExperiment)
+          task.phase = question.pending ? '待下一页' : '本页已完成'
+          const resultEvent = {
+            type: 'result',
+            status: 'success',
+            currentIndex: index + 1,
+            totalCount: files.length,
+            fileName: current.name,
+            currentSectionTitle: data.currentSectionTitle,
+            question: data.question,
+            prefixCacheExperiment: data.prefixCacheExperiment,
+          }
+          task.status = formatAutoProgressLine(resultEvent)
+          appendChapterBatchTaskLog(task, task.status)
+          await syncChapterBatchTaskToLocalFile(task).catch(() => {})
+        } catch (error) {
+          if (state.chapterBatchStopping || isAbortRequestError(error) || abortController.signal.aborted) {
+            appendChapterBatchTaskLog(task, `手动停止于 ${current.name}`)
+            markStopped(current.name)
+            return
+          }
+
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          if (!firstFailureMessage) {
+            firstFailureMessage = errorMessage
+          }
+          task.failedCount += 1
+          task.completedCount = task.successCount + task.failedCount
+          task.phase = '本页失败'
+          task.error = true
+          const resultEvent = {
+            type: 'result',
+            status: 'failed',
+            currentIndex: index + 1,
+            totalCount: files.length,
+            fileName: current.name,
+            error: errorMessage,
+          }
+          task.status = formatAutoProgressLine(resultEvent)
+          appendChapterBatchTaskLog(task, task.status)
+
+          if (isFatalAutoRunErrorMessage(errorMessage)) {
+            task.running = false
+            task.phase = '处理中止'
+            task.status = `章节任务已中止：${errorMessage}`
+            return
+          }
+        }
+      }
+
+      const doneEvent = {
+        type: 'done',
+        successCount: task.successCount,
+        failedCount: task.failedCount,
+      }
+      appendChapterBatchTaskLog(task, formatAutoProgressLine(doneEvent))
+      task.running = false
+      task.completed = true
+      task.phase = task.failedCount ? '完成（含失败）' : '已完成'
+      task.currentFileName = ''
+      task.status =
+        task.failedCount && firstFailureMessage
+          ? `自动处理完成，成功 ${task.successCount} 张，失败 ${task.failedCount} 张。首个错误：${firstFailureMessage}`
+          : `自动处理完成，成功 ${task.successCount} 张，失败 ${task.failedCount} 张`
+    } catch (error) {
+      if (state.chapterBatchStopping || isAbortRequestError(error) || abortController.signal.aborted) {
+        markStopped(task.currentFileName || '')
+        return
+      }
+
+      task.running = false
+      task.error = true
+      task.phase = '初始化失败'
+      task.status = error instanceof Error ? error.message : '章节任务初始化失败'
+    } finally {
+      task.running = false
+      chapterBatchAbortControllers.delete(task.id)
+    }
+  }
+
+  async function runChapterBatch() {
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
+
+    const configuredTasks = state.chapterBatchTasks.filter((task) => isChapterBatchTaskConfigured(task))
+    if (!configuredTasks.length) {
+      state.chapterBatchError = true
+      state.chapterBatchStatus = '请先至少添加并配置一个章节任务'
+      return
+    }
+
+    const invalidTask = configuredTasks.find((task) => !isChapterBatchTaskReady(task))
+    if (invalidTask) {
+      state.chapterBatchError = true
+      state.chapterBatchStatus = `请先补全任务：${getChapterBatchTaskLabel(invalidTask)}。每一章都需要 JSON、当前章、当前小节和图片文件夹`
+      return
+    }
+
+    const processingProfile = getChapterProcessingProfile()
+    const chapterArkHeaders = buildChapterArkHeaders()
+    const concurrency = Math.min(normalizeChapterBatchConcurrency(state.chapterBatchConcurrency), configuredTasks.length)
+
+    resetChapterBatchRuntimeState()
+    setChapterBatchConcurrency(concurrency)
+    state.chapterBatchRunning = true
+    state.chapterBatchStopping = false
+    state.chapterBatchError = false
+    state.chapterBatchStatus = `多章并行处理中：${configuredTasks.length} 个任务，最大并发 ${concurrency}`
+
+    let nextTaskIndex = 0
+
+    const worker = async () => {
+      while (!state.chapterBatchStopping) {
+        const currentIndex = nextTaskIndex
+        if (currentIndex >= configuredTasks.length) {
+          return
+        }
+        nextTaskIndex += 1
+        await runChapterBatchTask(configuredTasks[currentIndex], processingProfile, chapterArkHeaders)
+      }
+    }
+
+    try {
+      await Promise.all(Array.from({ length: concurrency }, () => worker()))
+      const successTasks = configuredTasks.filter((task) => task.completed && !task.error && !task.stopped).length
+      const failedTasks = configuredTasks.filter((task) => task.error).length
+      const stoppedTasks = configuredTasks.filter((task) => task.stopped).length
+      const completedTasks = configuredTasks.filter((task) => task.completed || task.stopped || task.error).length
+
+      if (state.chapterBatchStopping) {
+        state.chapterBatchError = false
+        state.chapterBatchStatus = `多章并行已停止，已结束 ${completedTasks}/${configuredTasks.length} 个任务`
+      } else if (failedTasks > 0) {
+        state.chapterBatchError = true
+        state.chapterBatchStatus = `多章并行完成：成功 ${successTasks} 个任务，失败 ${failedTasks} 个任务`
+      } else {
+        state.chapterBatchError = false
+        state.chapterBatchStatus = `多章并行完成：${successTasks} 个任务全部处理完成`
+      }
+
+      if (stoppedTasks > 0 && !state.chapterBatchStopping) {
+        state.chapterBatchStatus = `${state.chapterBatchStatus}，另有 ${stoppedTasks} 个任务被停止`
+      }
+    } catch (error) {
+      state.chapterBatchError = true
+      state.chapterBatchStatus = error instanceof Error ? error.message : '多章并行处理失败'
+    } finally {
+      state.chapterBatchRunning = false
+      state.chapterBatchStopping = false
+      chapterBatchAbortControllers.clear()
+    }
+  }
+
+  function stopChapterBatch() {
+    if (!state.chapterBatchRunning || state.chapterBatchStopping) {
+      return
+    }
+    state.chapterBatchStopping = true
+    state.chapterBatchError = false
+    state.chapterBatchStatus = '正在请求停止多章并行处理...'
+    for (const controller of chapterBatchAbortControllers.values()) {
+      controller.abort()
+    }
+  }
+
+  function resetChapterBatch() {
+    if (state.chapterBatchRunning) {
+      return
+    }
+    resetChapterBatchRuntimeState()
+  }
+
   function onFileChange(event) {
     const files = Array.from(event?.target?.files ?? [])
     if (event?.target) {
@@ -2198,7 +2734,10 @@ export function useQuestionBankWorkbench() {
   }
 
   const actions = {
+    addChapterBatchTask,
     chooseAutoImageFolder,
+    chooseChapterBatchTaskFolder,
+    chooseChapterBatchTaskJson,
     chooseJsonSessionFile,
     chooseVisualizerJsonFile,
     onDbImportFilesChange,
@@ -2230,9 +2769,15 @@ export function useQuestionBankWorkbench() {
     repairQuestionInJson,
     repairQuestionMathFormat,
     onChapterImageChange,
+    removeChapterBatchTask,
+    resetChapterBatch,
+    runChapterBatch,
+    setChapterBatchConcurrency,
     setChapterProcessingMode,
+    setChapterRunMode,
     processChapterImage,
     runChapterAuto,
+    stopChapterBatch,
     stopChapterAuto,
     resetChapterAuto,
     onFileChange,
