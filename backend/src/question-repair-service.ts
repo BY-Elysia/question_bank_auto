@@ -1,39 +1,33 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { ARK_API_KEY, ARK_MODEL, REPAIR_JSON_DIR } from './config'
+import { ARK_MODEL, REPAIR_JSON_DIR } from './config'
+import {
+  buildLegacyQuestionId,
+  parseQuestionIdParts,
+  resolveChapterTitles,
+} from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import {
+  buildCanonicalQuestionTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  buildCanonicalQuestionTitle,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
   extractArkText,
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
+  getPayloadAnswerHandlingMode,
   loadTextbookJson,
-  normalizeQuestionItem,
   normalizeJsonFileName,
-  normalizeTitle,
+  normalizeQuestionItem,
   parseModelJsonObject,
+  payloadExpectsAnswer,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
-
-function findChapterById(payload: TextbookJsonPayload, chapterId: string) {
-  return payload.chapters.find((item) => item.chapterId === chapterId)
-}
-
-function buildCanonicalSectionTitle(chapterNo: number, sectionNo: number, fallback = '') {
-  const normalizedFallback = normalizeTitle(fallback)
-  if (normalizedFallback) {
-    return normalizedFallback
-  }
-  return `习题${chapterNo}.${sectionNo}`
-}
 
 function findQuestionInsertIndex(existing: unknown[], questionId: string, chapterId: string) {
   const targetQuestionNo = Number(extractQuestionNoFromId(questionId) || 0)
@@ -75,6 +69,46 @@ function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
   return normalizeJsonFileName(path.basename(jsonFilePath))
 }
 
+function resolveRepairScope(params: {
+  payload: TextbookJsonPayload
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
+}) {
+  const { payload, chapterNo, sectionNo, questionNo, questionId = '' } = params
+  const resolvedQuestionId = String(questionId || '').trim()
+    || (
+      Number.isInteger(chapterNo) &&
+      Number.isInteger(sectionNo) &&
+      Number.isInteger(questionNo)
+        ? buildLegacyQuestionId(Number(chapterNo), Number(sectionNo), Number(questionNo))
+        : ''
+    )
+  if (!resolvedQuestionId) {
+    throw new Error('questionId is required, or chapterNo/sectionNo/questionNo must all be positive integers')
+  }
+
+  const parts = parseQuestionIdParts(resolvedQuestionId)
+  if (!parts) {
+    throw new Error(`questionId ${resolvedQuestionId} is invalid`)
+  }
+
+  const resolvedChapterId = parts.sectionNo > 0 ? `ch_${parts.chapterNo}_${parts.sectionNo}` : `ch_${parts.chapterNo}`
+  const titles = resolveChapterTitles(payload, resolvedChapterId)
+  if (!titles.sectionTitle) {
+    throw new Error(`chapterId ${resolvedChapterId} not found in JSON`)
+  }
+
+  return {
+    questionId: resolvedQuestionId,
+    chapterId: resolvedChapterId,
+    questionNo: String(parts.questionNo),
+    chapterTitle: titles.chapterTitle,
+    sectionTitle: titles.sectionTitle,
+  }
+}
+
 async function detectSingleQuestionRepairByDoubao(params: {
   imageDataUrls: string[]
   chapterTitle: string
@@ -82,6 +116,7 @@ async function detectSingleQuestionRepairByDoubao(params: {
   chapterId: string
   questionId: string
   questionNo: string
+  answerHandlingMode: 'extract_visible' | 'leave_empty' | 'generate_brief'
 }) {
   const {
     imageDataUrls,
@@ -90,19 +125,17 @@ async function detectSingleQuestionRepairByDoubao(params: {
     chapterId,
     questionId,
     questionNo,
+    answerHandlingMode,
   } = params
 
-  if (!ARK_API_KEY) {
-    throw new Error('ARK_API_KEY is missing')
-  }
   if (!Array.isArray(imageDataUrls) || !imageDataUrls.length) {
     throw new Error('imageDataUrls is required')
   }
 
   const instruction = [
-    '你是教材题库定点修复器。你只负责从图片序列中提取指定的一道顶层大题，并输出这一题的合法 JSON。',
+    '你是题库定点修复器。你只负责从图片序列中提取指定的一道顶层大题，并输出这一题的合法 JSON。',
     `- 当前章标题: ${chapterTitle}`,
-    `- 当前小节标题: ${sectionTitle}`,
+    `- 当前小节/结构标题: ${sectionTitle}`,
     `- 目标 chapterId: ${chapterId}`,
     `- 目标 questionId: ${questionId}`,
     `- 目标顶层题号: 第${questionNo}题`,
@@ -116,9 +149,14 @@ async function detectSingleQuestionRepairByDoubao(params: {
     '6) 若该题是单一题目，输出 LEAF。',
     `7) 输出题目的 questionId 必须使用 ${questionId}；若是 GROUP.children，子题 questionId 必须在此基础上按 _1, _2 ... 递增。`,
     `8) 输出题目的 chapterId 必须固定为 ${chapterId}。`,
-    `9) 题目 title 必须使用“小节标题 + 第几题”格式，即 ${sectionTitle} 第${questionNo}题。`,
-    ...buildSharedQuestionContentRuleLines(10, 'questionToUpsert'),
-    ...buildSharedQuestionStructureInstructionLines(),
+    `9) 题目 title 必须使用“${sectionTitle} 第${questionNo}题”这种格式。`,
+    answerHandlingMode === 'generate_brief'
+      ? '10) 这是无答案教材，standardAnswer 需要由模型根据题目自行生成简洁适量的答案；若是编程/写代码题，则保持空答案。'
+      : answerHandlingMode === 'leave_empty'
+        ? '10) 这是无答案文档，所有 standardAnswer 字段必须保留，但 text 为空、media 为空数组。'
+        : '10) 这是有答案文档，若图片中出现答案，standardAnswer 必须按原文提取。',
+    ...buildSharedQuestionContentRuleLines(11, 'questionToUpsert', answerHandlingMode),
+    ...buildSharedQuestionStructureInstructionLines(answerHandlingMode),
     '严格输出 JSON：',
     '{',
     '  "found": true/false,',
@@ -191,9 +229,10 @@ async function detectSingleQuestionRepairByDoubao(params: {
 
 export async function repairQuestionInTextbookJson(params: {
   jsonFilePath: string
-  chapterNo: number
-  sectionNo: number
-  questionNo: number
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
   imageDataUrls: string[]
   imageLabels?: string[]
   sourceFileName?: string
@@ -203,57 +242,51 @@ export async function repairQuestionInTextbookJson(params: {
     chapterNo,
     sectionNo,
     questionNo,
+    questionId = '',
     imageDataUrls,
     imageLabels = [],
     sourceFileName = '',
   } = params
 
-  if (!Number.isInteger(chapterNo) || chapterNo <= 0) {
-    throw new Error('chapterNo must be a positive integer')
-  }
-  if (!Number.isInteger(sectionNo) || sectionNo <= 0) {
-    throw new Error('sectionNo must be a positive integer')
-  }
-  if (!Number.isInteger(questionNo) || questionNo <= 0) {
-    throw new Error('questionNo must be a positive integer')
-  }
-
   const payload = await loadTextbookJson(jsonFilePath)
-  const topChapterId = `ch_${chapterNo}`
-  const sectionChapterId = `ch_${chapterNo}_${sectionNo}`
-  const topChapter = findChapterById(payload, topChapterId)
-  if (!topChapter) {
-    throw new Error(`chapterId ${topChapterId} not found in JSON`)
-  }
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const expectAnswer = payloadExpectsAnswer(payload)
+  const allowBlankCodeAnswer = answerHandlingMode === 'generate_brief'
+  const scope = resolveRepairScope({
+    payload,
+    chapterNo,
+    sectionNo,
+    questionNo,
+    questionId,
+  })
 
-  const section = findChapterById(payload, sectionChapterId)
-  if (!section) {
-    throw new Error(`chapterId ${sectionChapterId} not found in JSON`)
-  }
-
-  const targetQuestionId = `q_${chapterNo}_${sectionNo}_${questionNo}`
   const repairDetect = await detectSingleQuestionRepairByDoubao({
     imageDataUrls,
-    chapterTitle: topChapter.title,
-    sectionTitle: buildCanonicalSectionTitle(chapterNo, sectionNo, section.title),
-    chapterId: sectionChapterId,
-    questionId: targetQuestionId,
-    questionNo: String(questionNo),
+    chapterTitle: scope.chapterTitle,
+    sectionTitle: scope.sectionTitle,
+    chapterId: scope.chapterId,
+    questionId: scope.questionId,
+    questionNo: scope.questionNo,
+    answerHandlingMode,
   })
 
   if (!repairDetect.found || !repairDetect.questionToUpsert) {
-    throw new Error(repairDetect.reason || `图片中未能完整识别第${questionNo}题`)
+    throw new Error(repairDetect.reason || `图片中未能完整识别第${scope.questionNo}题`)
   }
 
   const normalized = normalizeQuestionItem(
     {
       ...repairDetect.questionToUpsert,
-      questionId: targetQuestionId,
-      chapterId: sectionChapterId,
-      title: buildCanonicalQuestionTitle(section.title, String(questionNo)),
+      questionId: scope.questionId,
+      chapterId: scope.chapterId,
+      title: buildCanonicalQuestionTitle(scope.sectionTitle, scope.questionNo),
     },
-    sectionChapterId,
-    section.title,
+    scope.chapterId,
+    scope.sectionTitle,
+    {
+      expectAnswer,
+      answerHandlingMode,
+    },
   )
 
   if (!normalized) {
@@ -262,16 +295,16 @@ export async function repairQuestionInTextbookJson(params: {
 
   const normalizedQuestionNo =
     extractQuestionNoFromId(normalized.questionId) || extractQuestionNoFromText(normalized.title)
-  if (String(normalizedQuestionNo || '') !== String(questionNo)) {
-    throw new Error(`模型返回题号与目标不一致: target=${questionNo}, got=${normalizedQuestionNo || 'unknown'}`)
+  if (String(normalizedQuestionNo || '') !== String(scope.questionNo)) {
+    throw new Error(`模型返回题号与目标不一致: target=${scope.questionNo}, got=${normalizedQuestionNo || 'unknown'}`)
   }
 
-  const emptyAnswerIssue = detectQuestionEmptyAnswerIssue(normalized)
+  const emptyAnswerIssue = detectQuestionEmptyAnswerIssue(normalized, { expectAnswer, allowBlankCodeAnswer })
   if (emptyAnswerIssue) {
     throw new Error(emptyAnswerIssue)
   }
 
-  const integrityIssue = detectQuestionIntegrityIssue([normalized])
+  const integrityIssue = detectQuestionIntegrityIssue([normalized], { expectAnswer, allowBlankCodeAnswer })
   if (integrityIssue) {
     throw new Error(integrityIssue.reason)
   }
@@ -279,11 +312,11 @@ export async function repairQuestionInTextbookJson(params: {
   const existing = Array.isArray(payload.questions) ? [...payload.questions] : []
   const replaceIndex = existing.findIndex((item) => {
     const row = item as Record<string, unknown>
-    return typeof row.questionId === 'string' && row.questionId.trim() === targetQuestionId
+    return typeof row.questionId === 'string' && row.questionId.trim() === scope.questionId
   })
 
   const insertIndex =
-    replaceIndex >= 0 ? replaceIndex : findQuestionInsertIndex(existing, targetQuestionId, sectionChapterId)
+    replaceIndex >= 0 ? replaceIndex : findQuestionInsertIndex(existing, scope.questionId, scope.chapterId)
 
   if (replaceIndex >= 0) {
     existing[replaceIndex] = normalized
@@ -304,10 +337,10 @@ export async function repairQuestionInTextbookJson(params: {
     repairJsonPath,
     imageLabel: imageLabels.join(' + '),
     imageCount: imageDataUrls.length,
-    chapterTitle: topChapter.title,
-    sectionTitle: section.title,
-    chapterId: sectionChapterId,
-    questionId: targetQuestionId,
+    chapterTitle: scope.chapterTitle,
+    sectionTitle: scope.sectionTitle,
+    chapterId: scope.chapterId,
+    questionId: scope.questionId,
     questionTitle: normalized.title,
     action: replaceIndex >= 0 ? 'replaced' : 'inserted',
     insertIndex,
@@ -315,5 +348,6 @@ export async function repairQuestionInTextbookJson(params: {
     reason: repairDetect.reason,
     rawText: repairDetect.rawText,
     question: normalized,
+    expectAnswer,
   }
 }

@@ -7,7 +7,7 @@
   >
     <div class="subpanel-head">
       <h3>流程入口</h3>
-      <p>教材生成沿用现在这套结构化处理流程；试卷生成先预留独立入口，后面再接试卷专属逻辑。</p>
+      <p>教材生成沿用现有章节流程；试卷生成使用独立的试卷 JSON、结构识别和目录跑批面板。</p>
     </div>
 
     <div class="mode-switch" role="tablist" aria-label="生成类型">
@@ -28,13 +28,13 @@
         @click="$emit('select', 'exam')"
       >
         <strong>试卷生成</strong>
-        <span>切到试卷专属分支，后续会接入另一套处理逻辑和页面编排。</span>
+        <span>切到试卷专属分支，填写试卷元数据后直接按大题结构自动提取。</span>
       </button>
     </div>
 
     <p class="mode-switch__hint">
       当前选择：{{ pipelineKind === 'exam' ? '试卷生成' : '教材生成' }}。
-      {{ pipelineKind === 'exam' ? '现在先把分支入口搭起来。' : '选择后会继续进入原有教材流程。' }}
+      {{ pipelineKind === 'exam' ? '下一步会进入试卷 JSON 与试卷会话流程。' : '选择后会继续进入原有教材流程。' }}
     </p>
   </GlassPanel>
 </template>

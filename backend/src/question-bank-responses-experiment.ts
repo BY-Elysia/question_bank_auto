@@ -13,6 +13,7 @@ import {
 } from './ark-responses-prefix-experiment-service'
 import {
   buildCanonicalQuestionTitle,
+  getPayloadAnswerHandlingMode,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   chapterSessions,
@@ -365,28 +366,52 @@ function buildBoundaryDynamicInstruction(params: {
     .join('\n')
 }
 
-function buildExtractSharedInstruction() {
+function buildExtractSharedInstruction(
+  answerHandlingMode: 'extract_visible' | 'leave_empty' | 'generate_brief' = 'extract_visible',
+  questionSelectionMode: 'complete_only' | 'all_visible' = 'complete_only',
+  fixedChapterSection = false,
+) {
   return [
     '你是教材结构化提取器，一次同时输出 chapter 与 question 两部分 JSON。',
     '下面动态输入会在每次请求中单独提供：当前章标题、当前小节标题、当前小节 chapterId、afterSwitchMode、处理模式、本轮提取范围 start/end key、可选 retryHint，以及按顺序传入的图片。',
     '章节规则:',
-    '1) 默认按当前章标题和当前小节标题编号。',
-    '2) 章节/小节切换只按输入队列的最后一页判断；前面的页只用于补题。',
-    '3) 最后一页未出现新章节/小节标题，则 chapterTitle/sectionTitle 返回 null。',
-    '4) 最后一页上半仍属当前小节、下半才切到新小节时，切换前题目保持当前小节编号，切换后题目改用新小节编号，并返回 switchSectionTitle。',
-    '5) 最后一页中途切到新章节或新小节时，切换点之后题目改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
-    '6) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
-    '7) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
+    ...(fixedChapterSection
+      ? [
+          '1) 本次章标题和小节标题完全以用户给定值为准，禁止根据图片自行切换章节或小节。',
+          '2) 所有题目的 chapterId 都必须固定使用当前小节 chapterId。',
+          '3) chapter.chapterTitle、chapter.sectionTitle、chapter.switchSectionTitle 一律返回 null。',
+        ]
+      : [
+          '1) 默认按当前章标题和当前小节标题编号。',
+          '2) 章节/小节切换只按输入队列的最后一页判断；前面的页只用于补题。',
+          '3) 最后一页未出现新章节/小节标题，则 chapterTitle/sectionTitle 返回 null。',
+          '4) 最后一页上半仍属当前小节、下半才切到新小节时，切换前题目保持当前小节编号，切换后题目改用新小节编号，并返回 switchSectionTitle。',
+          '5) 最后一页中途切到新章节或新小节时，切换点之后题目改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
+          '6) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
+          '7) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
+        ]),
     '题目规则:',
-    '1) 只提取给定范围内在图片上完整可见的顶层大题；未完整显示的题不要输出。',
+    questionSelectionMode === 'all_visible'
+      ? '1) 本次为无答案教材单页直提，不做跨页完整性判断；当前页出现的所有习题都要提取。若题目在页首或页尾被截断，也按当前页可见内容输出，不要等待下一页。'
+      : '1) 只提取给定范围内在图片上完整可见的顶层大题；未完整显示的题不要输出。',
     '2) startQuestionKey=null 时，从队列第一页实际出现的第一个顶层大题开始。',
     '3) endBeforeQuestionKey!=null 时，只提取到该题之前；该题本身严禁输出。',
     '4) endBeforeQuestionKey=null 时，必须提取从 startQuestionKey 开始到当前队列末尾之间所有完整顶层大题；绝不能自行制造新的截止题号，也绝不能只提取起点题。',
     '5) startQuestionKey 与 endBeforeQuestionKey 指向同一道题时，不表示空范围；表示当前正在续这道题。若它在当前队列里已完整结束，就输出它；否则不要输出。',
     '6) 典型场景：起点=第2题，截止=第4题，当前队列里第2题已完整、后面第3题完整 => 必须同时输出第2题和第3题，不输出第4题。',
     '7) 典型场景：起点=第6题，截止=null，当前队列里第6题已完整、后面第7题完整 => 必须同时输出第6题和第7题。',
-    ...buildSharedQuestionContentRuleLines(8),
-    ...buildSharedQuestionStructureInstructionLines(),
+    questionSelectionMode === 'all_visible'
+      ? '8) 因为本次答案需要由模型生成，所以不要再根据答案是否跨页来决定是否丢题；题干以当前页可见内容为准。'
+      : '',
+    questionSelectionMode === 'all_visible'
+      ? '9) 本次单页直提时，如与通用“完整性”约束冲突，以“当前页所有习题都要提取”为准。'
+      : '',
+    ...buildSharedQuestionContentRuleLines(
+      questionSelectionMode === 'all_visible' ? 10 : 8,
+      'questionsToUpsert',
+      answerHandlingMode,
+    ),
+    ...buildSharedQuestionStructureInstructionLines(answerHandlingMode),
     '严格输出 JSON（不要 markdown，不要解释）：',
     '{',
     '  "chapter": {',
@@ -582,6 +607,10 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
   processingStartQuestionKey?: string | null
   extractEndBeforeQuestionKey?: string | null
   retryHint?: string
+  answerHandlingMode?: 'extract_visible' | 'leave_empty' | 'generate_brief'
+  questionSelectionMode?: 'complete_only' | 'all_visible'
+  fixedChapterSection?: boolean
+  allowLargeImageBatch?: boolean
 }): Promise<CombinedExtractWithPrefixCacheResult> {
   const {
     imageDataUrls,
@@ -593,16 +622,20 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
     processingStartQuestionKey = null,
     extractEndBeforeQuestionKey = null,
     retryHint = '',
+    answerHandlingMode = 'extract_visible',
+    questionSelectionMode = 'complete_only',
+    fixedChapterSection = false,
+    allowLargeImageBatch = false,
   } = params
 
   if (!getEffectiveArkApiKey()) {
     throw new Error('ARK_API_KEY is missing')
   }
-  if (mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
+  if (!allowLargeImageBatch && mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
     throw new Error(`cross_page_merge requires 2-${MAX_PENDING_QUEUE_PAGES} images, got ${imageDataUrls.length}`)
   }
 
-  const sharedInstruction = buildExtractSharedInstruction()
+  const sharedInstruction = buildExtractSharedInstruction(answerHandlingMode, questionSelectionMode, fixedChapterSection)
   const dynamicInstruction = buildExtractDynamicInstruction({
     currentChapterTitle,
     currentSectionTitle,
@@ -804,6 +837,143 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
   }
 }
 
+export async function appendChapterSegmentFromImagesWithResponsesPrefixCache(params: {
+  jsonFilePath: string
+  chapterTitle: string
+  sectionTitle: string
+  imageDataUrls: string[]
+  imageLabels?: string[]
+}) {
+  const {
+    jsonFilePath,
+    chapterTitle,
+    sectionTitle,
+    imageDataUrls,
+    imageLabels = [],
+  } = params
+
+  const payload = await loadTextbookJson(jsonFilePath)
+  const normalizedChapterTitle = normalizeTitle(chapterTitle)
+  const normalizedSectionTitle = normalizeTitle(sectionTitle)
+  const chapter = ensureTopChapter(payload, normalizedChapterTitle)
+  const section = ensureSectionChapter(payload, chapter.chapterId, normalizedSectionTitle)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const questionSelectionMode = answerHandlingMode === 'generate_brief' ? 'all_visible' : 'complete_only'
+  const mode: 'single_page' | 'cross_page_merge' = imageDataUrls.length > 1 ? 'cross_page_merge' : 'single_page'
+
+  const extractDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
+    imageDataUrls,
+    currentChapterTitle: normalizedChapterTitle,
+    currentSectionTitle: normalizedSectionTitle,
+    currentSectionChapterId: section.chapterId,
+    afterSwitchMode: false,
+    mode,
+    answerHandlingMode,
+    questionSelectionMode,
+    fixedChapterSection: true,
+    allowLargeImageBatch: true,
+  })
+
+  const rawQuestions = Array.isArray(extractDetect.question.questionsToUpsert)
+    ? extractDetect.question.questionsToUpsert
+    : []
+  if (!rawQuestions.length) {
+    throw new Error(extractDetect.question.reason || '当前片段没有提取到可写入的题目')
+  }
+
+  let normalizedQuestions = rawQuestions
+    .map((item) =>
+      normalizeQuestionItem(item, section.chapterId, normalizedSectionTitle, {
+        answerHandlingMode,
+      }),
+    )
+    .filter(Boolean) as QuestionItem[]
+  normalizedQuestions = rewriteQuestionTitlesByResolvedChapter(payload, normalizedQuestions)
+
+  const pendingReviewLogs = collectPendingReviewLogs(normalizedQuestions)
+  upsertQuestionsById(payload, normalizedQuestions)
+  await appendPendingReviewLogs('manual_segment', pendingReviewLogs)
+  await saveTextbookJson(jsonFilePath, payload)
+
+  const prefixCacheExperiment = {
+    boundary: null,
+    extracts: [extractDetect.prefixCacheDebug],
+  }
+
+  return {
+    message: 'success',
+    jsonFilePath,
+    currentChapterTitle: normalizedChapterTitle,
+    currentSectionTitle: normalizedSectionTitle,
+    currentSectionChapterId: section.chapterId,
+    chaptersCount: payload.chapters.length,
+    questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+    question: {
+      pending: false,
+      reason: extractDetect.question.reason || '',
+      processingStartQuestionKey: null,
+      nextStartQuestionKey: null,
+      pendingPagesCount: 0,
+      pendingPageLabels: [],
+      upsertedCount: normalizedQuestions.length,
+      pendingReviewCount: pendingReviewLogs.length,
+      droppedPendingQuestionCount: 0,
+      boundaryHasExtractableQuestions: rawQuestions.length > 0,
+      boundaryNeedNextPage: false,
+      boundaryContinueQuestionKey: null,
+      boundaryLookaheadLabel: null,
+      boundaryLookaheadReason: '手工分段模式按整段图片一次处理，不做预读判断。',
+      boundaryReason: '手工分段模式固定章/小节并按整段图片一次提取。',
+      extractReason: extractDetect.question.reason || '',
+      retryExtractReason: '',
+      integrityRetryReason: '',
+      rangeRetryReason: '',
+      extractReturnedCount: rawQuestions.length,
+      normalizedCount: normalizedQuestions.length,
+      sessionStoredProcessingStartQuestionKey: null,
+      sessionStoredPendingContinueQuestionKey: null,
+      effectiveProcessingStartQuestionKey: null,
+      effectiveExtractEndBeforeQuestionKey: null,
+      effectiveExtractMode: 'manual_segment',
+      integrityFixRetried: false,
+      pendingReviewFixRetried: false,
+      rangeFixRetried: false,
+      rangeMismatchBlocked: false,
+      rawText: extractDetect.question.rawText,
+      retried: false,
+    },
+    segment: {
+      chapterTitle: normalizedChapterTitle,
+      sectionTitle: normalizedSectionTitle,
+      imageCount: imageDataUrls.length,
+      imageLabels: imageLabels.filter((item) => typeof item === 'string' && item.trim()),
+      upsertedCount: normalizedQuestions.length,
+    },
+    passLogs: [
+      {
+        pass: 1,
+        chapterTitle: normalizedChapterTitle,
+        sectionTitle: normalizedSectionTitle,
+        switched: false,
+        needReprocessSameImage: false,
+        reason: '手工分段模式固定章节与小节',
+        prefixCacheExperiment,
+        question: {
+          mode: 'manual_segment',
+          pending: false,
+          reason: extractDetect.question.reason || '',
+          upsertedCount: normalizedQuestions.length,
+          extractReturnedCount: rawQuestions.length,
+          normalizedCount: normalizedQuestions.length,
+          imageCount: imageDataUrls.length,
+          imageLabels: imageLabels.filter((item) => typeof item === 'string' && item.trim()),
+        },
+      },
+    ],
+    prefixCacheExperiment,
+  }
+}
+
 export async function processChapterSessionImageWithResponsesPrefixCache(params: {
   sessionId: string
   imageDataUrl: string
@@ -859,6 +1029,174 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     pendingUpsertedCount: 0,
     updatedAt: new Date().toISOString(),
   }
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
+  const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
+
+  if (answerHandlingMode === 'generate_brief') {
+    const extractDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
+      imageDataUrls: [imageDataUrl],
+      currentChapterTitle: activeChapterTitle,
+      currentSectionTitle: activeSectionTitle,
+      currentSectionChapterId: activeSectionChapterId,
+      afterSwitchMode: false,
+      mode: 'single_page',
+      answerHandlingMode,
+      questionSelectionMode: 'all_visible',
+    })
+
+    let chapterTitle = extractDetect.chapter.chapterTitle || activeChapterTitle
+    let sectionTitle = extractDetect.chapter.sectionTitle || activeSectionTitle
+    const switchSectionTitle = extractDetect.chapter.switchSectionTitle
+    let chapter = ensureTopChapter(payload, chapterTitle)
+    let section = ensureSectionChapter(payload, chapter.chapterId, sectionTitle)
+    activeChapterTitle = chapterTitle
+    activeSectionTitle = sectionTitle
+    activeSectionChapterId = section.chapterId
+
+    let switched = false
+    if (switchSectionTitle && normalizeTitle(switchSectionTitle) !== normalizeTitle(activeSectionTitle)) {
+      const switchedSection = ensureSectionChapter(payload, chapter.chapterId, switchSectionTitle)
+      activeSectionTitle = normalizeTitle(switchSectionTitle)
+      activeSectionChapterId = switchedSection.chapterId
+      switched = true
+    }
+
+    const rawQuestions = Array.isArray(extractDetect.question.questionsToUpsert)
+      ? extractDetect.question.questionsToUpsert
+      : []
+    let normalizedQuestions = rawQuestions
+      .map((item) =>
+        normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+          answerHandlingMode,
+        }),
+      )
+      .filter(Boolean) as QuestionItem[]
+    normalizedQuestions = rewriteQuestionTitlesByResolvedChapter(payload, normalizedQuestions)
+
+    const pendingReviewLogs = collectPendingReviewLogs(normalizedQuestions)
+    upsertQuestionsById(payload, normalizedQuestions)
+    await appendPendingReviewLogs(sessionId, pendingReviewLogs)
+
+    questionSession.currentChapterTitle = activeChapterTitle
+    questionSession.currentSectionTitle = activeSectionTitle
+    questionSession.currentSectionChapterId = activeSectionChapterId
+    questionSession.pendingPageDataUrls = []
+    questionSession.pendingPageLabels = []
+    questionSession.pendingContinueQuestionKey = null
+    questionSession.processingStartQuestionKey = null
+    questionSession.pendingReason = null
+    questionSession.pendingUpsertedCount = 0
+
+    const prefixCacheExperiment = {
+      boundary: null,
+      extracts: [extractDetect.prefixCacheDebug],
+    }
+
+    passLogs.push({
+      pass: 1,
+      chapterTitle: activeChapterTitle,
+      sectionTitle,
+      switchSectionTitle: switchSectionTitle ?? null,
+      switched,
+      needReprocessSameImage: false,
+      reason: extractDetect.chapter.reason,
+      prefixCacheExperiment,
+      question: {
+        mode: 'single_page_no_answer_direct',
+        pending: false,
+        reason: extractDetect.question.reason,
+        processingStartQuestionKey: null,
+        nextStartQuestionKey: null,
+        continueQuestionKey: null,
+        upsertedCount: normalizedQuestions.length,
+        pendingReviewCount: pendingReviewLogs.length,
+        droppedPendingQuestionCount: 0,
+        pendingPageLabels: [],
+        boundaryHasExtractableQuestions: rawQuestions.length > 0,
+        boundaryNeedNextPage: false,
+        boundaryContinueQuestionKey: null,
+        boundaryLookaheadLabel: null,
+        boundaryLookaheadReason: '无答案教材跳过预读判断，直接按当前页提取所有习题。',
+        boundaryReason: '无答案教材跳过跨页边界判断，直接按当前页提取所有习题。',
+        extractReason: extractDetect.question.reason,
+        retryExtractReason: '',
+        integrityRetryReason: '',
+        rangeRetryReason: '',
+        extractReturnedCount: rawQuestions.length,
+        normalizedCount: normalizedQuestions.length,
+        sessionStoredProcessingStartQuestionKey,
+        sessionStoredPendingContinueQuestionKey,
+        effectiveProcessingStartQuestionKey: null,
+        effectiveExtractEndBeforeQuestionKey: null,
+        effectiveExtractMode: 'single_page_no_answer_direct',
+        integrityFixRetried: false,
+        pendingReviewFixRetried: false,
+        rangeFixRetried: false,
+        rangeMismatchBlocked: false,
+        rawText: extractDetect.question.rawText,
+        retried: false,
+      },
+    })
+
+    const activeTopChapter = ensureTopChapter(payload, activeChapterTitle)
+    const activeSection = ensureSectionChapter(payload, activeTopChapter.chapterId, activeSectionTitle)
+
+    await saveTextbookJson(session.jsonFilePath, payload)
+    session.currentChapterTitle = activeChapterTitle
+    session.currentSectionTitle = activeSectionTitle
+    session.updatedAt = new Date().toISOString()
+    chapterSessions.set(sessionId, session)
+    questionSession.updatedAt = new Date().toISOString()
+    questionSessions.set(sessionId, questionSession)
+
+    return {
+      message: 'success',
+      sessionId,
+      jsonFilePath: session.jsonFilePath,
+      currentChapterTitle: session.currentChapterTitle,
+      currentSectionTitle: session.currentSectionTitle,
+      currentSectionChapterId: activeSection.chapterId,
+      chaptersCount: payload.chapters.length,
+      questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+      passLogs,
+      question: {
+        pending: false,
+        reason: extractDetect.question.reason,
+        processingStartQuestionKey: null,
+        nextStartQuestionKey: null,
+        pendingPagesCount: 0,
+        pendingPageLabels: [],
+        upsertedCount: normalizedQuestions.length,
+        pendingReviewCount: pendingReviewLogs.length,
+        droppedPendingQuestionCount: 0,
+        boundaryHasExtractableQuestions: rawQuestions.length > 0,
+        boundaryNeedNextPage: false,
+        boundaryContinueQuestionKey: null,
+        boundaryLookaheadLabel: null,
+        boundaryLookaheadReason: '无答案教材跳过预读判断，直接按当前页提取所有习题。',
+        boundaryReason: '无答案教材跳过跨页边界判断，直接按当前页提取所有习题。',
+        extractReason: extractDetect.question.reason,
+        retryExtractReason: '',
+        integrityRetryReason: '',
+        rangeRetryReason: '',
+        extractReturnedCount: rawQuestions.length,
+        normalizedCount: normalizedQuestions.length,
+        sessionStoredProcessingStartQuestionKey,
+        sessionStoredPendingContinueQuestionKey,
+        effectiveProcessingStartQuestionKey: null,
+        effectiveExtractEndBeforeQuestionKey: null,
+        effectiveExtractMode: 'single_page_no_answer_direct',
+        integrityFixRetried: false,
+        pendingReviewFixRetried: false,
+        rangeFixRetried: false,
+        rangeMismatchBlocked: false,
+        rawText: extractDetect.question.rawText,
+        retried: false,
+      },
+      prefixCacheExperiment,
+    }
+  }
 
   let pendingPageDataUrls = Array.isArray(questionSession.pendingPageDataUrls)
     ? questionSession.pendingPageDataUrls.filter((item) => typeof item === 'string' && item.trim())
@@ -870,8 +1208,6 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     pendingPageDataUrls = pendingPageDataUrls.slice(-(MAX_PENDING_QUEUE_PAGES - 1))
     pendingPageLabels = pendingPageLabels.slice(-(MAX_PENDING_QUEUE_PAGES - 1))
   }
-  const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
-  const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
   let pendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
   const processingStartQuestionKey =
     questionSession.processingStartQuestionKey || questionSession.pendingContinueQuestionKey
@@ -976,6 +1312,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       mode,
       processingStartQuestionKey,
       extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+      answerHandlingMode,
     })
     extractPrefixCacheRuns.push(extractDetect.prefixCacheDebug)
     finalQuestionDetect = {
@@ -999,6 +1336,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         mode,
         processingStartQuestionKey,
         extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+        answerHandlingMode,
         retryHint:
           '边界判断已确认当前队列存在可完整入库的题目。请严格按起点开始提取，只输出可入库范围内的完整题，禁止输出跨页题。',
       })
@@ -1021,7 +1359,11 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     }
 
     const normalizedQuestionsAll = questionsRaw
-      .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+      .map((item) =>
+        normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+          answerHandlingMode,
+        }),
+      )
       .filter(Boolean) as QuestionItem[]
     pendingFiltered = {
       filtered: normalizedQuestionsAll,
@@ -1049,13 +1391,18 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `${rangeMismatch.reason} 结构化范围约束：endBeforeQuestionKey=${effectiveBoundaryContinueKey || 'null'}。如果 endBeforeQuestionKey 为 null，严禁把 startQuestionKey 当作截止题号，必须继续提取起点之后所有完整顶层大题。`,
         })
         extractPrefixCacheRuns.push(rangeRetryDetect.prefixCacheDebug)
         rangeRetryReason = rangeRetryDetect.question.reason || ''
         const rangeRetryRaw = rangeRetryDetect.question.questionsToUpsert
         const rangeRetryNormalized = rangeRetryRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const rangeRetryMismatch = detectExtractorRangeMismatch({
           boundaryReason: boundaryDetect.question.reason,
@@ -1114,12 +1461,17 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `上一轮提取结果含有 ${pendingReviewLogs.length} 处【待校对】。请重新看图并仅修复这些位置，严格保持提取范围不变。`,
         })
         extractPrefixCacheRuns.push(fixDetect.prefixCacheDebug)
         const fixRaw = fixDetect.question.questionsToUpsert
         const fixAll = fixRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const fixPendingLogs = collectPendingReviewLogs(fixAll)
         if (fixAll.length && fixPendingLogs.length <= pendingReviewLogs.length) {
@@ -1150,12 +1502,17 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `上一轮提取结果不完整：${integrityIssue.reason}。请重新看图，完整输出这道题所有可见小问和答案；若仍未完整结束则不要输出这道题。`,
         })
         extractPrefixCacheRuns.push(integrityRetryDetect.prefixCacheDebug)
         const integrityRetryRaw = integrityRetryDetect.question.questionsToUpsert
         const integrityRetryNormalized = integrityRetryRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized)
         integrityRetryReason = integrityRetryDetect.question.reason || ''

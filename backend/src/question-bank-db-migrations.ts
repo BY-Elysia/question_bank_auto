@@ -122,4 +122,25 @@ export const questionBankMigrations: QuestionBankMigration[] = [
     description: 'ensure section 3.3 question bank tables exist',
     up: buildSection33QuestionBankSql,
   },
+  {
+    id: '202603250001',
+    description: 'add document type metadata for textbooks and exams',
+    up: (schemaName) => `
+      ALTER TABLE "${schemaName}"."textbooks"
+        ADD COLUMN IF NOT EXISTS "document_type" varchar(16) NOT NULL DEFAULT 'textbook',
+        ADD COLUMN IF NOT EXISTS "exam_type" varchar(16),
+        ADD COLUMN IF NOT EXISTS "has_answer" boolean;
+
+      UPDATE "${schemaName}"."textbooks"
+      SET "document_type" = 'textbook'
+      WHERE "document_type" IS NULL OR btrim("document_type") = '';
+
+      ALTER TABLE "${schemaName}"."textbooks"
+        DROP CONSTRAINT IF EXISTS "uq_textbooks_course_external";
+
+      ALTER TABLE "${schemaName}"."textbooks"
+        ADD CONSTRAINT "uq_textbooks_course_document_external"
+        UNIQUE ("course_id", "document_type", "external_id");
+    `,
+  },
 ]

@@ -30,6 +30,13 @@
         <span>学科</span>
         <input v-model.trim="state.jsonForm.subject" class="glass-input" type="text" placeholder="数学" />
       </label>
+      <label class="field">
+        <span>是否有答案</span>
+        <select v-model="hasAnswerValue" class="glass-input">
+          <option value="true">有答案</option>
+          <option value="false">无答案</option>
+        </select>
+      </label>
     </div>
 
     <div class="action-row">
@@ -47,9 +54,10 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import GlassPanel from './GlassPanel.vue'
 
-defineProps({
+const props = defineProps({
   state: {
     type: Object,
     required: true,
@@ -57,6 +65,15 @@ defineProps({
   actions: {
     type: Object,
     required: true,
+  },
+})
+
+const hasAnswerValue = computed({
+  get() {
+    return props.state.jsonForm.hasAnswer === false ? 'false' : 'true'
+  },
+  set(value) {
+    props.state.jsonForm.hasAnswer = value !== 'false'
   },
 })
 </script>

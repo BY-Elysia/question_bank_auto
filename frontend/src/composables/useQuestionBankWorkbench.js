@@ -36,12 +36,19 @@ export function useQuestionBankWorkbench() {
     outputFolder: '',
     pages: [],
     generatedTextbookJson: '',
+    generatedExamJson: '',
     jsonFormError: '',
     jsonSaveStatus: '',
     jsonSaveError: false,
+    examJsonFormError: '',
+    examJsonSaveStatus: '',
+    examJsonSaveError: false,
     chapterSessionJsonLabel: '',
     chapterSessionServerJsonPath: '',
     chapterSessionJsonHandle: null,
+    workingJsonDocumentType: '',
+    workingJsonExamType: '',
+    workingJsonHasAnswer: null,
     chapterSessionInitChapter: '第八章 不定积分',
     chapterSessionInitSection: '习题8.1',
     chapterSessionId: '',
@@ -49,13 +56,36 @@ export function useQuestionBankWorkbench() {
     chapterSessionCurrentSection: '',
     chapterArkApiKey: '',
     chapterRunMode: 'single',
+    chapterSingleMode: 'session',
     chapterProcessingMode: 'original',
     chapterSessionStatus: '',
     chapterSessionError: false,
+    examSessionJsonLabel: '',
+    examSessionServerJsonPath: '',
+    examSessionJsonHandle: null,
+    examSessionId: '',
+    examSessionTitle: '',
+    examSessionExamType: '',
+    examSessionHasAnswer: true,
+    examSessionCurrentMajor: '',
+    examSessionCurrentMinor: '',
+    examSessionStatus: '',
+    examSessionError: false,
+    examQuestionTypeOptions: [],
+    examQuestionTypeLoading: false,
+    examQuestionTypeStatus: '',
+    examQuestionTypeError: false,
+    examSectionStatus: '',
+    examSectionError: false,
+    examFinalizeStatus: '',
+    examFinalizeError: false,
+    examFinalizeProcessing: false,
+    examSectionTasks: [],
     repairForm: {
       chapterNo: '',
       sectionNo: '',
       questionNo: '',
+      questionId: '',
     },
     repairImageFiles: [],
     repairProcessing: false,
@@ -65,6 +95,8 @@ export function useQuestionBankWorkbench() {
     mathFormatRepairForm: {
       targetType: 'standardAnswer',
       childNo: '',
+      questionId: '',
+      childQuestionId: '',
     },
     mathFormatRepairProcessing: false,
     mathFormatRepairStatus: '',
@@ -75,6 +107,8 @@ export function useQuestionBankWorkbench() {
       sectionNo: '',
       questionNo: '',
       childNo: '',
+      questionId: '',
+      childQuestionId: '',
     },
     imageAttachFiles: [],
     imageAttachProcessing: false,
@@ -87,9 +121,15 @@ export function useQuestionBankWorkbench() {
     visualizerStatus: '',
     visualizerError: false,
     visualizerPayload: null,
+    visualizerArkApiKey: '',
+    visualizerAnswerPrompt: '',
+    visualizerAnswerProcessing: false,
+    visualizerAnswerStatus: '',
+    visualizerAnswerError: false,
     visualizerRepairProcessing: false,
     visualizerRepairStatus: '',
     visualizerRepairError: false,
+    visualizerQuestionTypeProcessing: false,
     visualizerRepairImageFiles: [],
     visualizerRewriteResult: null,
     mergeJsonFiles: [],
@@ -118,6 +158,10 @@ export function useQuestionBankWorkbench() {
     chapterProcessing: false,
     chapterPassLogs: '',
     chapterPassResult: null,
+    examImageFile: null,
+    examProcessing: false,
+    examPassLogs: '',
+    examPassResult: null,
     chapterAutoFiles: [],
     chapterAutoFolderLabel: '',
     chapterAutoRunning: false,
@@ -129,6 +173,24 @@ export function useQuestionBankWorkbench() {
     chapterAutoEntries: [],
     chapterAutoSummary: null,
     chapterAutoLive: null,
+    chapterManualChapters: [],
+    chapterManualRunning: false,
+    chapterManualStopping: false,
+    chapterManualStatus: '',
+    chapterManualError: false,
+    chapterManualLogs: '',
+    chapterManualSummary: null,
+    chapterManualLive: null,
+    examAutoFiles: [],
+    examAutoFolderLabel: '',
+    examAutoRunning: false,
+    examAutoStopping: false,
+    examAutoStatus: '',
+    examAutoError: false,
+    examAutoLogs: '',
+    examAutoEntries: [],
+    examAutoSummary: null,
+    examAutoLive: null,
     chapterBatchConcurrency: 2,
     chapterBatchTasks: [],
     chapterBatchRunning: false,
@@ -142,12 +204,28 @@ export function useQuestionBankWorkbench() {
       title: '',
       publisher: '',
       subject: '',
+      hasAnswer: true,
+    },
+    examJsonForm: {
+      version: 'v1.1',
+      courseId: '',
+      examId: '',
+      title: '',
+      subject: '',
+      examType: 'midterm',
+      hasAnswer: true,
     },
   })
 
   let selectedPdfSequence = 0
   let chapterAutoAbortController = null
+  let chapterManualAbortController = null
+  let examAutoAbortController = null
   let chapterBatchTaskSequence = 0
+  let chapterManualChapterSequence = 0
+  let chapterManualSectionSequence = 0
+  let examSectionTaskSequence = 0
+  let examStagedQuestionSequence = 0
   const chapterBatchAbortControllers = new Map()
 
   function createSelectedPdfEntry(file) {
@@ -237,6 +315,61 @@ export function useQuestionBankWorkbench() {
     )
   }
 
+  function findChapterManualChapter(chapterId) {
+    return state.chapterManualChapters.find((item) => item?.id === chapterId) || null
+  }
+
+  function findChapterManualSection(chapterId, sectionId) {
+    const chapter = findChapterManualChapter(chapterId)
+    if (!chapter) {
+      return { chapter: null, section: null }
+    }
+    return {
+      chapter,
+      section: (Array.isArray(chapter.sections) ? chapter.sections : []).find((item) => item?.id === sectionId) || null,
+    }
+  }
+
+  function getChapterManualSectionLabel(chapter, section) {
+    return [String(chapter?.chapterTitle || '').trim(), String(section?.sectionTitle || '').trim()]
+      .filter(Boolean)
+      .join(' / ') || '未命名片段'
+  }
+
+  function isChapterManualSectionReady(chapter, section) {
+    return Boolean(
+      String(chapter?.chapterTitle || '').trim()
+      && String(section?.sectionTitle || '').trim()
+      && Array.isArray(section?.imageFiles)
+      && section.imageFiles.length,
+    )
+  }
+
+  function isChapterManualConfigured(chapter) {
+    if (!chapter || typeof chapter !== 'object') {
+      return false
+    }
+    return Boolean(
+      String(chapter.chapterTitle || '').trim()
+      || (Array.isArray(chapter.sections) && chapter.sections.some((section) => isChapterManualSectionReady(chapter, section))),
+    )
+  }
+
+  function flattenChapterManualSections() {
+    const items = []
+    for (const chapter of Array.isArray(state.chapterManualChapters) ? state.chapterManualChapters : []) {
+      for (const section of Array.isArray(chapter?.sections) ? chapter.sections : []) {
+        items.push({
+          chapter,
+          section,
+          ready: isChapterManualSectionReady(chapter, section),
+          label: getChapterManualSectionLabel(chapter, section),
+        })
+      }
+    }
+    return items
+  }
+
   function resetPdfWorkspace() {
     state.batchId = ''
     state.outputFolder = ''
@@ -247,15 +380,136 @@ export function useQuestionBankWorkbench() {
     return {
       version: String(state.jsonForm.version || '').trim(),
       courseId: String(state.jsonForm.courseId || '').trim(),
+      documentType: 'textbook',
       textbook: {
         textbookId: String(state.jsonForm.textbookId || '').trim(),
         title: String(state.jsonForm.title || '').trim(),
         publisher: String(state.jsonForm.publisher || '').trim(),
         subject: String(state.jsonForm.subject || '').trim(),
+        hasAnswer: state.jsonForm.hasAnswer !== false,
       },
       chapters: [],
       questions: [],
     }
+  }
+
+  function createChapterManualSection() {
+    chapterManualSectionSequence += 1
+    return {
+      id: `chapter_manual_section_${Date.now()}_${chapterManualSectionSequence}`,
+      sectionTitle: '',
+      imageFiles: [],
+      status: '',
+      error: false,
+      running: false,
+      completed: false,
+      upsertedCount: 0,
+      questionsCount: 0,
+      logs: '',
+    }
+  }
+
+  function createChapterManualChapter() {
+    chapterManualChapterSequence += 1
+    return {
+      id: `chapter_manual_chapter_${Date.now()}_${chapterManualChapterSequence}`,
+      chapterTitle: '',
+      sections: [createChapterManualSection()],
+    }
+  }
+
+  function createExamSectionTask() {
+    examSectionTaskSequence += 1
+    return {
+      id: `exam_section_${Date.now()}_${examSectionTaskSequence}`,
+      majorTitle: '',
+      minorTitle: '',
+      questionType: 'SHORT_ANSWER',
+      libraryDocumentType: '',
+      imageFiles: [],
+      stagedQuestions: [],
+      confirmed: false,
+      status: '',
+      error: false,
+      running: false,
+      result: null,
+      searchQuery: '',
+      searchStatus: '',
+      searchError: false,
+      searchResults: [],
+      selectedRecordIds: [],
+    }
+  }
+
+  state.examSectionTasks.push(createExamSectionTask())
+  state.chapterManualChapters.push(createChapterManualChapter())
+
+  function buildExamPayload() {
+    return {
+      version: String(state.examJsonForm.version || '').trim(),
+      courseId: String(state.examJsonForm.courseId || '').trim(),
+      documentType: 'exam',
+      exam: {
+        examId: String(state.examJsonForm.examId || '').trim(),
+        title: String(state.examJsonForm.title || '').trim(),
+        subject: String(state.examJsonForm.subject || '').trim(),
+        examType: String(state.examJsonForm.examType || '').trim() || 'midterm',
+        hasAnswer: state.examJsonForm.hasAnswer !== false,
+      },
+      chapters: [],
+      questions: [],
+    }
+  }
+
+  function detectPayloadDocumentType(payload) {
+    if (String(payload?.documentType || '').trim().toLowerCase() === 'exam' || payload?.exam) {
+      return 'exam'
+    }
+    return 'textbook'
+  }
+
+  function getPayloadSourceMeta(payload) {
+    const documentType = detectPayloadDocumentType(payload)
+    if (documentType === 'exam') {
+      const exam = payload?.exam && typeof payload.exam === 'object' ? payload.exam : {}
+      return {
+        documentType,
+        externalId: String(exam.examId || '').trim(),
+        title: String(exam.title || '').trim(),
+        subject: String(exam.subject || '').trim(),
+        examType: String(exam.examType || '').trim(),
+        hasAnswer: exam.hasAnswer !== false,
+      }
+    }
+
+    const textbook = payload?.textbook && typeof payload.textbook === 'object' ? payload.textbook : {}
+    return {
+      documentType,
+      externalId: String(textbook.textbookId || '').trim(),
+      title: String(textbook.title || '').trim(),
+      subject: String(textbook.subject || '').trim(),
+      examType: '',
+      hasAnswer: textbook.hasAnswer !== false,
+    }
+  }
+
+  function applyWorkingJsonMeta(payload) {
+    const meta = getPayloadSourceMeta(payload || {})
+    state.workingJsonDocumentType = meta.documentType
+    state.workingJsonExamType = meta.examType || ''
+    state.workingJsonHasAnswer = typeof meta.hasAnswer === 'boolean' ? meta.hasAnswer : null
+    if (meta.documentType === 'exam') {
+      applyExamSourceMeta(meta)
+    }
+  }
+
+  function applyExamSourceMeta(meta) {
+    if (!meta || typeof meta !== 'object') {
+      return
+    }
+    state.examSessionTitle = String(meta.title || '').trim()
+    state.examSessionExamType = String(meta.examType || '').trim() || 'midterm'
+    state.examSessionHasAnswer = meta.hasAnswer !== false
   }
 
   async function parseApiResponse(resp) {
@@ -279,6 +533,9 @@ export function useQuestionBankWorkbench() {
       processImageEndpoint: isResponsesExperiment
         ? '/api/chapters/session/process-image-responses'
         : '/api/chapters/session/process-image',
+      processSegmentEndpoint: isResponsesExperiment
+        ? '/api/chapters/segments/append-from-images-responses'
+        : '/api/chapters/segments/append-from-images',
     }
   }
 
@@ -286,7 +543,7 @@ export function useQuestionBankWorkbench() {
     if (mode !== 'single' && mode !== 'multi') {
       return
     }
-    if (state.chapterProcessing || state.chapterAutoRunning || state.chapterBatchRunning) {
+    if (state.chapterProcessing || state.chapterAutoRunning || state.chapterBatchRunning || state.chapterManualRunning) {
       return
     }
     state.chapterRunMode = mode
@@ -295,8 +552,21 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function setChapterSingleMode(mode) {
+    if (mode !== 'session' && mode !== 'manual') {
+      return
+    }
+    if (state.chapterProcessing || state.chapterAutoRunning || state.chapterManualRunning) {
+      return
+    }
+    state.chapterSingleMode = mode
+  }
+
   function setChapterProcessingMode(mode) {
     if (mode !== 'original' && mode !== 'responses') {
+      return
+    }
+    if (state.chapterProcessing || state.chapterAutoRunning || state.chapterBatchRunning || state.chapterManualRunning) {
       return
     }
     state.chapterProcessingMode = mode
@@ -324,6 +594,15 @@ export function useQuestionBankWorkbench() {
     return arkApiKey ? { 'X-Ark-Api-Key': arkApiKey } : {}
   }
 
+  function getVisualizerArkApiKey() {
+    return String(state.visualizerArkApiKey || '').trim()
+  }
+
+  function buildVisualizerArkHeaders() {
+    const arkApiKey = getVisualizerArkApiKey()
+    return arkApiKey ? { 'X-Ark-Api-Key': arkApiKey } : {}
+  }
+
   function ensureChapterArkApiKey() {
     if (getChapterArkApiKey()) {
       return true
@@ -334,6 +613,10 @@ export function useQuestionBankWorkbench() {
     state.chapterAutoStatus = '请先在当前页面填写 API Key，再开始提取'
     state.chapterBatchError = true
     state.chapterBatchStatus = '请先在当前页面填写 API Key，再开始提取'
+    state.examSessionError = true
+    state.examSessionStatus = '请先在当前页面填写 API Key，再开始提取'
+    state.examAutoError = true
+    state.examAutoStatus = '请先在当前页面填写 API Key，再开始提取'
     return false
   }
 
@@ -350,6 +633,38 @@ export function useQuestionBankWorkbench() {
     state.chapterAutoEntries = []
     state.chapterAutoSummary = null
     state.chapterAutoLive = null
+  }
+
+  function resetChapterManualRuntimeState() {
+    state.chapterManualError = false
+    state.chapterManualStopping = false
+    state.chapterManualStatus = ''
+    state.chapterManualLogs = ''
+    state.chapterManualSummary = null
+    state.chapterManualLive = null
+    for (const chapter of Array.isArray(state.chapterManualChapters) ? state.chapterManualChapters : []) {
+      for (const section of Array.isArray(chapter?.sections) ? chapter.sections : []) {
+        section.running = false
+        section.error = false
+        section.completed = false
+        section.upsertedCount = 0
+        section.questionsCount = 0
+        section.logs = ''
+        if (!section.status || /处理中|完成|失败|停止/.test(section.status)) {
+          section.status = ''
+        }
+      }
+    }
+  }
+
+  function resetExamAutoRuntimeState() {
+    state.examAutoError = false
+    state.examAutoStopping = false
+    state.examAutoStatus = ''
+    state.examAutoLogs = ''
+    state.examAutoEntries = []
+    state.examAutoSummary = null
+    state.examAutoLive = null
   }
 
   function appendChapterBatchTaskLog(task, line) {
@@ -397,8 +712,12 @@ export function useQuestionBankWorkbench() {
 
     state.visualizerError = false
     state.visualizerStatus = '解析 JSON 中...'
+    state.visualizerAnswerProcessing = false
+    state.visualizerAnswerStatus = ''
+    state.visualizerAnswerError = false
     state.visualizerRepairError = false
     state.visualizerRepairStatus = ''
+    state.visualizerQuestionTypeProcessing = false
     state.visualizerRepairImageFiles = []
     state.visualizerRewriteResult = null
 
@@ -407,6 +726,7 @@ export function useQuestionBankWorkbench() {
       const parsed = JSON.parse(text)
       const chapters = Array.isArray(parsed?.chapters) ? parsed.chapters : null
       const questions = Array.isArray(parsed?.questions) ? parsed.questions : null
+      const sourceMeta = getPayloadSourceMeta(parsed)
 
       if (!chapters || !questions) {
         throw new Error('当前文件不是支持的题库 JSON，缺少 chapters 或 questions 数组')
@@ -417,13 +737,17 @@ export function useQuestionBankWorkbench() {
       state.visualizerFileName = file.name
       state.visualizerFileHandle = fileHandle
       state.visualizerServerJsonPath = String(imported.filePath || '')
-      state.visualizerStatus = `已加载 ${file.name}，共 ${chapters.length} 个章节节点，${questions.length} 道题`
+      state.visualizerStatus = `已加载 ${file.name}（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}），共 ${chapters.length} 个结构节点，${questions.length} 道题`
     } catch (error) {
       state.visualizerError = true
       state.visualizerPayload = null
       state.visualizerFileName = ''
       state.visualizerFileHandle = null
       state.visualizerServerJsonPath = ''
+      state.visualizerAnswerProcessing = false
+      state.visualizerAnswerStatus = ''
+      state.visualizerAnswerError = false
+      state.visualizerQuestionTypeProcessing = false
       state.visualizerRepairImageFiles = []
       state.visualizerRewriteResult = null
       state.visualizerStatus = error instanceof Error ? error.message : '解析 JSON 失败'
@@ -532,6 +856,7 @@ export function useQuestionBankWorkbench() {
       targetType,
       repairedText,
       childNo = null,
+      childQuestionId = '',
     } = params
     const payload = state.visualizerPayload
     const questions = Array.isArray(payload?.questions) ? payload.questions : []
@@ -552,6 +877,7 @@ export function useQuestionBankWorkbench() {
 
     const children = Array.isArray(question.children) ? question.children : []
     const child =
+      children.find((item) => String(item?.questionId || '').trim() === String(childQuestionId || '').trim()) ||
       children.find((item) => Number(item?.orderNo) === Number(childNo)) ||
       children.find((item) => typeof item?.questionId === 'string' && item.questionId.endsWith(`_${childNo}`))
     if (!child || typeof child !== 'object') {
@@ -567,11 +893,131 @@ export function useQuestionBankWorkbench() {
     return true
   }
 
+  function applyVisualizerImageAttachToPayload(params) {
+    const {
+      questionId,
+      mediaItems = [],
+      childNo = null,
+      childQuestionId = '',
+    } = params || {}
+    const payload = state.visualizerPayload
+    const questions = Array.isArray(payload?.questions) ? payload.questions : []
+    const question = questions.find((item) => item && item.questionId === questionId)
+    if (!question || typeof question !== 'object') {
+      return false
+    }
+
+    const normalizedMediaItems = Array.isArray(mediaItems) ? mediaItems : []
+    const children = Array.isArray(question.children) ? question.children : []
+    const child =
+      children.find((item) => String(item?.questionId || '').trim() === String(childQuestionId || '').trim()) ||
+      children.find((item) => Number(item?.orderNo) === Number(childNo)) ||
+      children.find((item) => typeof item?.questionId === 'string' && item.questionId.endsWith(`_${childNo}`))
+
+    if (child && typeof child === 'object') {
+      if (child.prompt && typeof child.prompt === 'object') {
+        child.prompt.media = normalizedMediaItems
+      } else {
+        child.prompt = {
+          text: typeof child.prompt === 'string' ? child.prompt : String(child.prompt?.text || ''),
+          media: normalizedMediaItems,
+        }
+      }
+      return true
+    }
+
+    const targetField = String(question.nodeType || '').toUpperCase() === 'GROUP' ? 'stem' : 'prompt'
+    if (question[targetField] && typeof question[targetField] === 'object') {
+      question[targetField].media = normalizedMediaItems
+    } else {
+      question[targetField] = {
+        text: typeof question[targetField] === 'string' ? question[targetField] : String(question[targetField]?.text || ''),
+        media: normalizedMediaItems,
+      }
+    }
+    return true
+  }
+
+  function applyVisualizerQuestionTypeToPayload(params) {
+    const {
+      questionId,
+      questionType,
+      childNo = null,
+      childQuestionId = '',
+    } = params || {}
+    const payload = state.visualizerPayload
+    const questions = Array.isArray(payload?.questions) ? payload.questions : []
+    const question = questions.find((item) => item && item.questionId === questionId)
+    if (!question || typeof question !== 'object') {
+      return false
+    }
+
+    const normalizedQuestionType = String(questionType || '').trim()
+    if (!normalizedQuestionType) {
+      return false
+    }
+
+    const children = Array.isArray(question.children) ? question.children : []
+    const child =
+      children.find((item) => String(item?.questionId || '').trim() === String(childQuestionId || '').trim()) ||
+      children.find((item) => Number(item?.orderNo) === Number(childNo)) ||
+      children.find((item) => typeof item?.questionId === 'string' && item.questionId.endsWith(`_${childNo}`))
+
+    if (child && typeof child === 'object') {
+      child.questionType = normalizedQuestionType
+      return true
+    }
+
+    question.questionType = normalizedQuestionType
+    return true
+  }
+
+  function applyVisualizerGeneratedAnswerToPayload(params) {
+    const {
+      questionId,
+      answerText,
+      childNo = null,
+      childQuestionId = '',
+    } = params || {}
+    const payload = state.visualizerPayload
+    const questions = Array.isArray(payload?.questions) ? payload.questions : []
+    const question = questions.find((item) => item && item.questionId === questionId)
+    if (!question || typeof question !== 'object') {
+      return false
+    }
+
+    const normalizedAnswerText = String(answerText || '')
+    const children = Array.isArray(question.children) ? question.children : []
+    const child =
+      children.find((item) => String(item?.questionId || '').trim() === String(childQuestionId || '').trim()) ||
+      children.find((item) => Number(item?.orderNo) === Number(childNo)) ||
+      children.find((item) => typeof item?.questionId === 'string' && item.questionId.endsWith(`_${childNo}`))
+
+    if (child && typeof child === 'object') {
+      if (child.standardAnswer && typeof child.standardAnswer === 'object') {
+        child.standardAnswer.text = normalizedAnswerText
+        child.standardAnswer.media = []
+      } else {
+        child.standardAnswer = { text: normalizedAnswerText, media: [] }
+      }
+      return true
+    }
+
+    if (question.standardAnswer && typeof question.standardAnswer === 'object') {
+      question.standardAnswer.text = normalizedAnswerText
+      question.standardAnswer.media = []
+    } else {
+      question.standardAnswer = { text: normalizedAnswerText, media: [] }
+    }
+    return true
+  }
+
   async function repairMathFormatFromVisualizer(params) {
     const {
       questionId,
       targetType,
       childNo = null,
+      childQuestionId = '',
       blockLabel = '',
     } = params || {}
 
@@ -581,16 +1027,9 @@ export function useQuestionBankWorkbench() {
       return
     }
 
-    const parts = parseQuestionIdParts(questionId)
-    if (!parts) {
-      state.visualizerRepairError = true
-      state.visualizerRepairStatus = `无法从 questionId 解析章节信息：${questionId || 'unknown'}`
-      return
-    }
-
     const effectiveChildNo =
       targetType === 'childPrompt' || targetType === 'childStandardAnswer'
-        ? Number(childNo || parts.childNo || 0)
+        ? Number(childNo || 0)
         : null
 
     state.visualizerRepairProcessing = true
@@ -602,15 +1041,15 @@ export function useQuestionBankWorkbench() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...buildVisualizerArkHeaders(),
         },
         body: JSON.stringify({
           jsonFilePath: state.visualizerServerJsonPath,
           sourceFileName: state.visualizerFileName || '',
-          chapterNo: parts.chapterNo,
-          sectionNo: parts.sectionNo,
-          questionNo: parts.questionNo,
+          questionId,
           targetType,
           childNo: effectiveChildNo,
+          childQuestionId: childQuestionId || '',
         }),
       })
       const data = await parseApiResponse(resp)
@@ -623,6 +1062,7 @@ export function useQuestionBankWorkbench() {
         targetType,
         repairedText: String(data.repairedText || ''),
         childNo: effectiveChildNo,
+        childQuestionId: childQuestionId || '',
       })
       state.visualizerRepairStatus = `已修复 ${blockLabel || data.targetLabel || targetType}`
     } catch (error) {
@@ -646,6 +1086,220 @@ export function useQuestionBankWorkbench() {
     state.visualizerRepairImageFiles = []
   }
 
+  async function attachImagesFromVisualizer(params) {
+    const questionId = String(params?.questionId || '').trim()
+    const questionTitle = String(params?.questionTitle || '').trim()
+    const childQuestionId = String(params?.childQuestionId || '').trim()
+    const childNoRaw = params?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const blockLabel = String(params?.blockLabel || '').trim()
+
+    if (!state.visualizerServerJsonPath) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      return
+    }
+    if (!state.visualizerRepairImageFiles.length) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '请先上传用于补图的图片'
+      return
+    }
+
+    state.visualizerRepairProcessing = true
+    state.visualizerRepairError = false
+    state.visualizerRepairStatus = `正在为 ${blockLabel || questionTitle || questionId} 补充图片...`
+    state.visualizerRewriteResult = null
+
+    try {
+      const formData = new FormData()
+      formData.append('jsonFilePath', state.visualizerServerJsonPath)
+      formData.append('sourceFileName', state.visualizerFileName || '')
+      formData.append('questionId', questionId)
+      if (childQuestionId) {
+        formData.append('childQuestionId', childQuestionId)
+      }
+      if (Number.isInteger(childNo) && childNo > 0) {
+        formData.append('childNo', String(childNo))
+      }
+      for (const file of state.visualizerRepairImageFiles) {
+        formData.append('images', file, file.name)
+      }
+
+      const resp = await fetch('/api/textbook-json/attach-images', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '当前题目补图失败')
+      }
+
+      applyVisualizerImageAttachToPayload({
+        questionId,
+        mediaItems: Array.isArray(data.mediaItems) ? data.mediaItems : [],
+        childNo,
+        childQuestionId: String(data.childQuestionId || childQuestionId),
+      })
+      state.visualizerRepairImageFiles = []
+
+      let syncWarning = ''
+      try {
+        await syncVisualizerJsonToLocalFile()
+      } catch (syncError) {
+        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
+      }
+      state.visualizerRepairStatus = syncWarning
+        ? `已为 ${blockLabel || questionTitle || questionId} 补图，但回写本地文件失败：${syncWarning}`
+        : `已为 ${blockLabel || questionTitle || questionId} 补充 ${Number(data.mediaCount ?? 0)} 张图片`
+    } catch (error) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = error instanceof Error ? error.message : '当前题目补图失败'
+    } finally {
+      state.visualizerRepairProcessing = false
+    }
+  }
+
+  async function updateQuestionTypeFromVisualizer(params) {
+    const questionId = String(params?.questionId || '').trim()
+    const questionType = String(params?.questionType || '').trim()
+    const questionTitle = String(params?.questionTitle || '').trim()
+    const childQuestionId = String(params?.childQuestionId || '').trim()
+    const childNoRaw = params?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const blockLabel = String(params?.blockLabel || '').trim()
+
+    if (!state.visualizerServerJsonPath) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      return
+    }
+    if (!questionId || !questionType) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '缺少 questionId 或 questionType，无法保存题型'
+      return
+    }
+
+    state.visualizerQuestionTypeProcessing = true
+    state.visualizerRepairError = false
+    state.visualizerRepairStatus = `正在保存 ${blockLabel || questionTitle || questionId} 的题型...`
+    state.visualizerRewriteResult = null
+
+    try {
+      const resp = await fetch('/api/textbook-json/update-question-type', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonFilePath: state.visualizerServerJsonPath,
+          sourceFileName: state.visualizerFileName || '',
+          questionId,
+          questionType,
+          childQuestionId,
+          childNo,
+        }),
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '题型修改失败')
+      }
+
+      applyVisualizerQuestionTypeToPayload({
+        questionId,
+        questionType: String(data.questionType || questionType),
+        childNo,
+        childQuestionId: String(data.childQuestionId || childQuestionId),
+      })
+
+      let syncWarning = ''
+      try {
+        await syncVisualizerJsonToLocalFile()
+      } catch (syncError) {
+        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
+      }
+      state.visualizerRepairStatus = syncWarning
+        ? `已更新 ${blockLabel || questionTitle || questionId} 的题型，但回写本地文件失败：${syncWarning}`
+        : `已更新 ${blockLabel || questionTitle || questionId} 的题型为 ${String(data.questionTypeLabel || data.questionType || questionType)}`
+    } catch (error) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = error instanceof Error ? error.message : '题型修改失败'
+    } finally {
+      state.visualizerQuestionTypeProcessing = false
+    }
+  }
+
+  async function generateAnswerFromVisualizer(params) {
+    const questionId = String(params?.questionId || '').trim()
+    const questionTitle = String(params?.questionTitle || '').trim()
+    const childQuestionId = String(params?.childQuestionId || '').trim()
+    const childNoRaw = params?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const blockLabel = String(params?.blockLabel || '').trim()
+
+    if (!state.visualizerServerJsonPath) {
+      state.visualizerAnswerError = true
+      state.visualizerAnswerStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      return
+    }
+    if (!questionId) {
+      state.visualizerAnswerError = true
+      state.visualizerAnswerStatus = '缺少 questionId，无法生成答案'
+      return
+    }
+
+    state.visualizerAnswerProcessing = true
+    state.visualizerAnswerError = false
+    state.visualizerAnswerStatus = `正在为 ${blockLabel || questionTitle || questionId} 生成答案...`
+    state.visualizerRewriteResult = null
+
+    try {
+      const resp = await fetch('/api/textbook-json/generate-answer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildVisualizerArkHeaders(),
+        },
+        body: JSON.stringify({
+          jsonFilePath: state.visualizerServerJsonPath,
+          sourceFileName: state.visualizerFileName || '',
+          questionId,
+          childQuestionId,
+          childNo,
+          answerPrompt: String(state.visualizerAnswerPrompt || '').trim(),
+        }),
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '答案生成失败')
+      }
+
+      applyVisualizerGeneratedAnswerToPayload({
+        questionId,
+        answerText: String(data.answerText || ''),
+        childNo,
+        childQuestionId: String(data.childQuestionId || childQuestionId),
+      })
+
+      let syncWarning = ''
+      try {
+        await syncVisualizerJsonToLocalFile()
+      } catch (syncError) {
+        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
+      }
+      state.visualizerAnswerStatus = syncWarning
+        ? `已为 ${blockLabel || questionTitle || questionId} 生成答案，但回写本地文件失败：${syncWarning}`
+        : `已为 ${blockLabel || questionTitle || questionId} 生成答案，并已写回当前 JSON`
+    } catch (error) {
+      state.visualizerAnswerError = true
+      state.visualizerAnswerStatus = error instanceof Error ? error.message : '答案生成失败'
+    } finally {
+      state.visualizerAnswerProcessing = false
+    }
+  }
+
   async function repairQuestionFromVisualizer(params) {
     const questionId = String(params?.questionId || '').trim()
     const questionTitle = String(params?.questionTitle || '').trim()
@@ -661,13 +1315,6 @@ export function useQuestionBankWorkbench() {
       return
     }
 
-    const parts = parseQuestionIdParts(questionId)
-    if (!parts) {
-      state.visualizerRepairError = true
-      state.visualizerRepairStatus = `无法从 questionId 解析章节信息：${questionId || 'unknown'}`
-      return
-    }
-
     state.visualizerRepairProcessing = true
     state.visualizerRepairError = false
     state.visualizerRepairStatus = `正在根据图片重写 ${questionTitle || questionId}...`
@@ -677,15 +1324,16 @@ export function useQuestionBankWorkbench() {
       const formData = new FormData()
       formData.append('jsonFilePath', state.visualizerServerJsonPath)
       formData.append('sourceFileName', state.visualizerFileName || '')
-      formData.append('chapterNo', String(parts.chapterNo))
-      formData.append('sectionNo', String(parts.sectionNo))
-      formData.append('questionNo', String(parts.questionNo))
+      formData.append('questionId', questionId)
       for (const file of state.visualizerRepairImageFiles) {
         formData.append('images', file, file.name)
       }
 
       const resp = await fetch('/api/textbook-json/repair-question', {
         method: 'POST',
+        headers: {
+          ...buildVisualizerArkHeaders(),
+        },
         body: formData,
       })
       const data = await parseApiResponse(resp)
@@ -931,6 +1579,16 @@ export function useQuestionBankWorkbench() {
     return ''
   }
 
+  function buildExamStructureLabel(result) {
+    return [String(result?.currentMajorTitle || '').trim(), String(result?.currentMinorTitle || '').trim()]
+      .filter(Boolean)
+      .join(' / ')
+  }
+
+  function appendExamAutoLog(line) {
+    state.examAutoLogs = state.examAutoLogs ? `${state.examAutoLogs}\n${line}` : line
+  }
+
   function isFatalAutoRunErrorMessage(message) {
     const normalized = String(message || '').toLowerCase()
   return [
@@ -992,10 +1650,13 @@ export function useQuestionBankWorkbench() {
     await writable.close()
   }
 
-  async function importJsonFileToWorkspace(file) {
+  async function importJsonFileToWorkspace(file, payload = null) {
     const data = await uploadJsonFileToWorkspace(file)
     state.chapterSessionServerJsonPath = String(data.filePath || '')
     state.chapterSessionJsonLabel = file.name
+    if (payload) {
+      applyWorkingJsonMeta(payload)
+    }
     return data
   }
 
@@ -1027,6 +1688,10 @@ export function useQuestionBankWorkbench() {
     await syncJsonHandleFromWorkspace(state.visualizerServerJsonPath, state.visualizerFileHandle)
   }
 
+  async function syncExamWorkingJsonToLocalFile() {
+    await syncJsonHandleFromWorkspace(state.examSessionServerJsonPath, state.examSessionJsonHandle)
+  }
+
   async function pickJsonFileFromPicker() {
     if (!supportsPicker('showOpenFilePicker')) {
       throw new Error('当前浏览器不支持 JSON 文件选择器，请使用 Chromium 内核浏览器')
@@ -1046,10 +1711,12 @@ export function useQuestionBankWorkbench() {
     })
     const file = await handle.getFile()
     const text = await fileToText(file)
-    JSON.parse(text)
+    const payload = JSON.parse(text)
     return {
       handle,
       file,
+      payload,
+      sourceMeta: getPayloadSourceMeta(payload),
     }
   }
 
@@ -1148,14 +1815,173 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
+  async function requestChapterSegmentAppend(params) {
+    const formData = new FormData()
+    formData.append('jsonFilePath', params?.jsonFilePath || '')
+    formData.append('chapterTitle', params?.chapterTitle || '')
+    formData.append('sectionTitle', params?.sectionTitle || '')
+    for (const file of Array.isArray(params?.imageFiles) ? params.imageFiles : []) {
+      formData.append('images', file, file.name)
+    }
+
+    const resp = await fetch(params?.processingProfile?.processSegmentEndpoint || '/api/chapters/segments/append-from-images', {
+      method: 'POST',
+      headers: {
+        ...params?.chapterArkHeaders,
+      },
+      body: formData,
+      signal: params?.signal,
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || params?.errorMessage || '手工分段处理失败')
+    }
+    return data
+  }
+
+  async function requestExamSessionInit(params) {
+    const { jsonFilePath = '' } = params || {}
+
+    const resp = await fetch('/api/exams/session/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonFilePath,
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '初始化失败')
+    }
+    return data
+  }
+
+  async function requestExamProcessImage(params) {
+    const {
+      chapterArkHeaders = {},
+      sessionId = '',
+      imageFile = null,
+      lookaheadFile = null,
+      signal,
+      errorMessage = '自动处理失败',
+    } = params || {}
+
+    const formData = new FormData()
+    formData.append('sessionId', sessionId)
+    formData.append('image', imageFile, imageFile?.name || 'image')
+    if (lookaheadFile) {
+      formData.append('lookaheadImage', lookaheadFile, lookaheadFile.name || 'lookahead')
+    }
+
+    const resp = await fetch('/api/exams/session/process-image', {
+      method: 'POST',
+      headers: chapterArkHeaders,
+      body: formData,
+      signal,
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || errorMessage)
+    }
+    return data
+  }
+
+  async function requestExamQuestionTypeOptions() {
+    const resp = await fetch('/api/question-bank-db/question-types')
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '读取题型列表失败')
+    }
+    return Array.isArray(data.items) ? data.items : []
+  }
+
+  async function requestQuestionBankQuestionSearch(params) {
+    const resp = await fetch('/api/question-bank-db/questions/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: params?.query || '',
+        courseId: params?.courseId || '',
+        textbookId: params?.textbookId || '',
+        documentType: params?.documentType || '',
+        questionType: params?.questionType || '',
+        limit: params?.limit ?? 12,
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '检索题库失败')
+    }
+    return Array.isArray(data.items) ? data.items : []
+  }
+
+  async function requestExamSectionExtractFromImages(params) {
+    const formData = new FormData()
+    formData.append('jsonFilePath', params?.jsonFilePath || '')
+    formData.append('majorTitle', params?.majorTitle || '')
+    formData.append('minorTitle', params?.minorTitle || '')
+    formData.append('questionType', params?.questionType || '')
+    for (const file of Array.isArray(params?.imageFiles) ? params.imageFiles : []) {
+      formData.append('images', file, file.name)
+    }
+
+    const resp = await fetch('/api/exams/sections/extract-from-images', {
+      method: 'POST',
+      headers: {
+        ...params?.chapterArkHeaders,
+      },
+      body: formData,
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '按指定部分提取试卷图片失败')
+    }
+    return data
+  }
+
+  async function requestExamSectionAppendFromLibrary(params) {
+    const resp = await fetch('/api/exams/sections/append-from-library', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonFilePath: params?.jsonFilePath || '',
+        majorTitle: params?.majorTitle || '',
+        minorTitle: params?.minorTitle || '',
+        questionType: params?.questionType || '',
+        recordIds: Array.isArray(params?.recordIds) ? params.recordIds : [],
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '从题库选题写入试卷失败')
+    }
+    return data
+  }
+
+  async function requestFinalizeExamSections(params) {
+    const resp = await fetch('/api/exams/sections/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonFilePath: params?.jsonFilePath || '',
+        sections: Array.isArray(params?.sections) ? params.sections : [],
+      }),
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '确认整份试卷失败')
+    }
+    return data
+  }
+
   async function syncChapterBatchTaskToLocalFile(task) {
     await syncJsonHandleFromWorkspace(task?.serverJsonPath, task?.jsonHandle)
   }
 
   async function chooseJsonSessionFile() {
     try {
-      const { handle, file } = await pickJsonFileFromPicker()
-      await importJsonFileToWorkspace(file)
+      const { handle, file, payload } = await pickJsonFileFromPicker()
+      await importJsonFileToWorkspace(file, payload)
       state.chapterSessionJsonHandle = handle
       state.chapterSessionError = false
       state.chapterSessionStatus = `已选择 JSON 文件：${file.name}`
@@ -1165,6 +1991,472 @@ export function useQuestionBankWorkbench() {
       }
       state.chapterSessionError = true
       state.chapterSessionStatus = error instanceof Error ? error.message : '选择 JSON 文件失败'
+    }
+  }
+
+  async function chooseExamJsonSessionFile() {
+    try {
+      const { handle, file, payload, sourceMeta } = await pickJsonFileFromPicker()
+      if (sourceMeta.documentType !== 'exam') {
+        throw new Error('当前文件不是试卷 JSON，请选择包含 exam 元数据的文件')
+      }
+      const data = await importJsonFileToWorkspace(file, payload)
+      state.chapterSessionJsonHandle = handle
+      state.examSessionJsonHandle = handle
+      state.examSessionJsonLabel = file.name
+      state.examSessionServerJsonPath = String(data.filePath || '')
+      state.examSessionError = false
+      state.examSessionStatus = `已选择试卷 JSON：${file.name}`
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return
+      }
+      state.examSessionError = true
+      state.examSessionStatus = error instanceof Error ? error.message : '选择试卷 JSON 失败'
+    }
+  }
+
+  function findExamSectionTask(taskId) {
+    return state.examSectionTasks.find((item) => item?.id === taskId) || null
+  }
+
+  function getDefaultExamQuestionType() {
+    return String(state.examQuestionTypeOptions?.[0]?.value || 'SHORT_ANSWER').trim() || 'SHORT_ANSWER'
+  }
+
+  function normalizeExamSectionTaskQuestionType(task) {
+    if (!task || typeof task !== 'object') {
+      return
+    }
+    if (!state.examQuestionTypeOptions.length) {
+      if (!String(task.questionType || '').trim()) {
+        task.questionType = 'SHORT_ANSWER'
+      }
+      return
+    }
+    const exists = state.examQuestionTypeOptions.some((item) => item?.value === task.questionType)
+    if (!exists) {
+      task.questionType = getDefaultExamQuestionType()
+    }
+  }
+
+  async function loadExamQuestionTypeOptions(force = false) {
+    if (state.examQuestionTypeLoading) {
+      return state.examQuestionTypeOptions
+    }
+    if (!force && state.examQuestionTypeOptions.length) {
+      return state.examQuestionTypeOptions
+    }
+
+    state.examQuestionTypeLoading = true
+    state.examQuestionTypeError = false
+    state.examQuestionTypeStatus = '加载题型配置中...'
+    try {
+      const items = await requestExamQuestionTypeOptions()
+      state.examQuestionTypeOptions = items
+      state.examQuestionTypeStatus = items.length ? `已载入 ${items.length} 种题型` : '题型列表为空'
+      state.examSectionTasks.forEach((task) => normalizeExamSectionTaskQuestionType(task))
+      return items
+    } catch (error) {
+      state.examQuestionTypeError = true
+      state.examQuestionTypeStatus = error instanceof Error ? error.message : '加载题型配置失败'
+      return state.examQuestionTypeOptions
+    } finally {
+      state.examQuestionTypeLoading = false
+    }
+  }
+
+  function addExamSectionTask() {
+    const task = createExamSectionTask()
+    task.questionType = getDefaultExamQuestionType()
+    state.examSectionTasks.push(task)
+  }
+
+  function removeExamSectionTask(taskId) {
+    if (state.examSectionTasks.length <= 1) {
+      const onlyTask = state.examSectionTasks[0]
+      if (!onlyTask) {
+        state.examSectionTasks = [createExamSectionTask()]
+        return
+      }
+      onlyTask.majorTitle = ''
+      onlyTask.minorTitle = ''
+      onlyTask.questionType = getDefaultExamQuestionType()
+      onlyTask.libraryDocumentType = ''
+      onlyTask.imageFiles = []
+      onlyTask.stagedQuestions = []
+      onlyTask.confirmed = false
+      onlyTask.status = ''
+      onlyTask.error = false
+      onlyTask.running = false
+      onlyTask.result = null
+      onlyTask.searchQuery = ''
+      onlyTask.searchStatus = ''
+      onlyTask.searchError = false
+      onlyTask.searchResults = []
+      onlyTask.selectedRecordIds = []
+      return
+    }
+    state.examSectionTasks = state.examSectionTasks.filter((item) => item?.id !== taskId)
+  }
+
+  function onExamSectionImagesChange(taskId, event) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    task.imageFiles = Array.from(event?.target?.files ?? [])
+    task.error = false
+    task.status = task.imageFiles.length ? `已选择 ${task.imageFiles.length} 张图片` : ''
+    if (event?.target) {
+      event.target.value = ''
+    }
+  }
+
+  function clearExamSectionImages(taskId) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    task.imageFiles = []
+    task.error = false
+    task.status = '已清空当前部分的待提取图片'
+  }
+
+  function toggleExamSectionRecord(taskId, recordId) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    const normalizedId = String(recordId || '').trim()
+    if (!normalizedId) {
+      return
+    }
+    const exists = task.selectedRecordIds.includes(normalizedId)
+    task.selectedRecordIds = exists
+      ? task.selectedRecordIds.filter((item) => item !== normalizedId)
+      : [...task.selectedRecordIds, normalizedId]
+  }
+
+  function ensureExamSectionTaskReady(task) {
+    if (!task) {
+      throw new Error('试卷部分任务不存在')
+    }
+    if (!state.examSessionServerJsonPath) {
+      throw new Error('请先选择试卷 JSON 文件')
+    }
+    if (!String(task.majorTitle || '').trim()) {
+      throw new Error('请先填写当前部分的大结构标题')
+    }
+    if (!String(task.questionType || '').trim()) {
+      throw new Error('请先选择题型')
+    }
+  }
+
+  function cloneExamQuestion(question) {
+    return JSON.parse(JSON.stringify(question))
+  }
+
+  function createExamStagedQuestion(task, question, source) {
+    examStagedQuestionSequence += 1
+    return {
+      ...cloneExamQuestion(question),
+      localId: `exam_stage_${Date.now()}_${examStagedQuestionSequence}`,
+      source,
+      sectionQuestionType: String(task.questionType || '').trim(),
+    }
+  }
+
+  function stripExamStagedQuestionMeta(question) {
+    if (!question || typeof question !== 'object') {
+      return question
+    }
+    const cloned = cloneExamQuestion(question)
+    delete cloned.localId
+    delete cloned.source
+    delete cloned.sectionQuestionType
+    return cloned
+  }
+
+  function appendQuestionsToExamSectionTask(task, questions, source, successText) {
+    const incoming = (Array.isArray(questions) ? questions : []).map((question) => createExamStagedQuestion(task, question, source))
+    task.stagedQuestions = [...task.stagedQuestions, ...incoming]
+    task.confirmed = false
+    task.error = false
+    task.result = {
+      questionType: String(task.questionType || ''),
+      questionTypeLabel: questionTypeLabelByValue(task.questionType),
+      currentMajorTitle: String(task.majorTitle || ''),
+      currentMinorTitle: String(task.minorTitle || ''),
+      currentStructureChapterId: '',
+      upsertedCount: incoming.length,
+      questionsCount: task.stagedQuestions.length,
+      reason: successText || '',
+    }
+    task.status = successText || `已暂存 ${incoming.length} 道题`
+    state.examSectionError = false
+    state.examSectionStatus = task.status
+    state.examFinalizeError = false
+    state.examFinalizeStatus = ''
+  }
+
+  function moveExamSectionQuestion(taskId, localId, direction) {
+    const task = findExamSectionTask(taskId)
+    if (!task || !Array.isArray(task.stagedQuestions)) {
+      return
+    }
+    const index = task.stagedQuestions.findIndex((item) => item?.localId === localId)
+    if (index < 0) {
+      return
+    }
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= task.stagedQuestions.length) {
+      return
+    }
+    const next = [...task.stagedQuestions]
+    const [current] = next.splice(index, 1)
+    next.splice(targetIndex, 0, current)
+    task.stagedQuestions = next
+    task.confirmed = false
+    task.status = '已调整当前部分题目顺序，请重新确认这一部分'
+  }
+
+  function removeExamSectionQuestion(taskId, localId) {
+    const task = findExamSectionTask(taskId)
+    if (!task || !Array.isArray(task.stagedQuestions)) {
+      return
+    }
+    task.stagedQuestions = task.stagedQuestions.filter((item) => item?.localId !== localId)
+    task.confirmed = false
+    task.status = '已移除一道题，请重新确认这一部分'
+    task.error = false
+  }
+
+  function questionTypeLabelByValue(value) {
+    const matched = state.examQuestionTypeOptions.find((item) => item?.value === value)
+    return matched?.label || String(value || '').trim() || '未分类'
+  }
+
+  function confirmExamSection(taskId) {
+    const task = findExamSectionTask(taskId)
+    try {
+      ensureExamSectionTaskReady(task)
+      if (!Array.isArray(task.stagedQuestions) || !task.stagedQuestions.length) {
+        throw new Error('当前部分还没有暂存题目')
+      }
+      task.confirmed = true
+      task.error = false
+      task.status = `这一部分已确认，共 ${task.stagedQuestions.length} 道题`
+      state.examSectionError = false
+      state.examSectionStatus = task.status
+      state.examSessionCurrentMajor = String(task.majorTitle || '').trim()
+      state.examSessionCurrentMinor = String(task.minorTitle || '').trim()
+    } catch (error) {
+      task.error = true
+      task.status = error instanceof Error ? error.message : '确认当前部分失败'
+      state.examSectionError = true
+      state.examSectionStatus = task.status
+    }
+  }
+
+  function reopenExamSection(taskId) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    task.confirmed = false
+    task.error = false
+    task.status = '已返回当前部分，你可以继续加题、调序和改分'
+    state.examSectionError = false
+    state.examSectionStatus = task.status
+  }
+
+  function finalizeExamSectionPayload() {
+    const sections = state.examSectionTasks.map((task) => ({
+      majorTitle: String(task.majorTitle || '').trim(),
+      minorTitle: String(task.minorTitle || '').trim(),
+      questionType: String(task.questionType || '').trim(),
+      questions: (Array.isArray(task.stagedQuestions) ? task.stagedQuestions : []).map((item) =>
+        stripExamStagedQuestionMeta(item),
+      ),
+      confirmed: task.confirmed === true,
+    }))
+
+    const invalid = sections.find(
+      (item) => !item.confirmed || !item.majorTitle || !item.questionType || !Array.isArray(item.questions) || !item.questions.length,
+    )
+    if (invalid) {
+      throw new Error('请先把每一个试卷部分都配置完整并确认后，再做总确认')
+    }
+
+    return sections.map(({ confirmed, ...rest }) => rest)
+  }
+
+  async function finalizeExamSections() {
+    if (!state.examSessionServerJsonPath) {
+      state.examFinalizeError = true
+      state.examFinalizeStatus = '请先选择试卷 JSON 文件'
+      return
+    }
+
+    state.examFinalizeProcessing = true
+    state.examFinalizeError = false
+    state.examFinalizeStatus = '正在生成完整试卷 JSON...'
+    try {
+      const sections = finalizeExamSectionPayload()
+      const data = await requestFinalizeExamSections({
+        jsonFilePath: state.examSessionServerJsonPath,
+        sections,
+      })
+      state.examFinalizeStatus = `整份试卷已确认，共 ${Number(data.sectionCount ?? sections.length)} 个部分，${Number(data.questionsCount ?? 0)} 道题`
+      state.examSessionStatus = state.examFinalizeStatus
+      state.examSessionCurrentMajor = ''
+      state.examSessionCurrentMinor = ''
+      await syncExamWorkingJsonToLocalFile().catch(() => {})
+    } catch (error) {
+      state.examFinalizeError = true
+      state.examFinalizeStatus = error instanceof Error ? error.message : '确认整份试卷失败'
+    } finally {
+      state.examFinalizeProcessing = false
+    }
+  }
+
+  function applyExamSectionPreviewMeta(task, data, successText) {
+    task.error = false
+    task.result = {
+      questionType: String(data.questionType || task.questionType || ''),
+      questionTypeLabel: String(data.questionTypeLabel || ''),
+      currentMajorTitle: String(data.currentMajorTitle || task.majorTitle || ''),
+      currentMinorTitle: String(data.currentMinorTitle || task.minorTitle || ''),
+      currentStructureChapterId: String(data.currentStructureChapterId || ''),
+      chaptersCount: Number(data.chaptersCount ?? 0),
+      questionsCount: Array.isArray(task.stagedQuestions) ? task.stagedQuestions.length : 0,
+      upsertedCount: Number(data.question?.upsertedCount ?? 0),
+      reason: String(data.question?.reason || ''),
+    }
+    task.status = successText || `已暂存 ${task.result.upsertedCount} 道题`
+    state.examSectionError = false
+    state.examSectionStatus = task.status
+    state.examSessionTitle = String(data.examTitle || state.examSessionTitle || '')
+    state.examSessionExamType = String(data.examType || state.examSessionExamType || '')
+    state.examSessionHasAnswer = data.hasAnswer !== false
+    state.examSessionCurrentMajor = task.result.currentMajorTitle
+    state.examSessionCurrentMinor = task.result.currentMinorTitle
+    state.examSessionStatus = task.status
+  }
+
+  async function searchExamSectionLibrary(taskId) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    await loadExamQuestionTypeOptions()
+    normalizeExamSectionTaskQuestionType(task)
+
+    task.searchError = false
+    task.searchStatus = '检索题库中...'
+    task.searchResults = []
+    task.selectedRecordIds = []
+
+    try {
+      const items = await requestQuestionBankQuestionSearch({
+        query: String(task.searchQuery || '').trim(),
+        courseId: String(state.examJsonForm.courseId || '').trim(),
+        documentType: String(task.libraryDocumentType || '').trim(),
+        questionType: String(task.questionType || '').trim(),
+        limit: 12,
+      })
+      task.searchResults = items
+      task.searchStatus = items.length ? `已找到 ${items.length} 条候选题` : '没有找到符合条件的题目'
+    } catch (error) {
+      task.searchError = true
+      task.searchStatus = error instanceof Error ? error.message : '检索题库失败'
+    }
+  }
+
+  async function appendExamSectionFromImages(taskId) {
+    const task = findExamSectionTask(taskId)
+    try {
+      ensureExamSectionTaskReady(task)
+      if (!Array.isArray(task.imageFiles) || !task.imageFiles.length) {
+        throw new Error('请先为当前部分上传图片')
+      }
+      if (!ensureChapterArkApiKey()) {
+        return
+      }
+      task.running = true
+      task.error = false
+      task.status = '正在按当前部分配置提取图片...'
+      state.examSectionError = false
+      state.examSectionStatus = task.status
+
+      const data = await requestExamSectionExtractFromImages({
+        chapterArkHeaders: buildChapterArkHeaders(),
+        jsonFilePath: state.examSessionServerJsonPath,
+        majorTitle: String(task.majorTitle || '').trim(),
+        minorTitle: String(task.minorTitle || '').trim(),
+        questionType: String(task.questionType || '').trim(),
+        imageFiles: task.imageFiles,
+      })
+      appendQuestionsToExamSectionTask(
+        task,
+        data.questionsToStage,
+        'image',
+        `已从图片暂存 ${Number(data.question?.upsertedCount ?? 0)} 道题，请继续调序或赋分`,
+      )
+      applyExamSectionPreviewMeta(task, data, task.status)
+    } catch (error) {
+      if (task) {
+        task.error = true
+        task.status = error instanceof Error ? error.message : '当前部分图片提取失败'
+      }
+      state.examSectionError = true
+      state.examSectionStatus = task?.status || '当前部分图片提取失败'
+    } finally {
+      if (task) {
+        task.running = false
+      }
+    }
+  }
+
+  async function appendExamSectionFromLibrary(taskId) {
+    const task = findExamSectionTask(taskId)
+    try {
+      ensureExamSectionTaskReady(task)
+      if (!Array.isArray(task.selectedRecordIds) || !task.selectedRecordIds.length) {
+        throw new Error('请先从题库里勾选题目')
+      }
+      task.running = true
+      task.error = false
+      task.status = '正在把题库选题加入当前部分...'
+      state.examSectionError = false
+      state.examSectionStatus = task.status
+
+      const data = await requestExamSectionAppendFromLibrary({
+        jsonFilePath: state.examSessionServerJsonPath,
+        majorTitle: String(task.majorTitle || '').trim(),
+        minorTitle: String(task.minorTitle || '').trim(),
+        questionType: String(task.questionType || '').trim(),
+        recordIds: task.selectedRecordIds,
+      })
+      appendQuestionsToExamSectionTask(
+        task,
+        data.questionsToStage,
+        'library',
+        `已从题库暂存 ${Number(data.question?.upsertedCount ?? 0)} 道题，请继续调序或赋分`,
+      )
+      applyExamSectionPreviewMeta(task, data, task.status)
+    } catch (error) {
+      if (task) {
+        task.error = true
+        task.status = error instanceof Error ? error.message : '题库选题写入失败'
+      }
+      state.examSectionError = true
+      state.examSectionStatus = task?.status || '题库选题写入失败'
+    } finally {
+      if (task) {
+        task.running = false
+      }
     }
   }
 
@@ -1184,11 +2476,294 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  async function chooseExamAutoImageFolder() {
+    try {
+      const { handle, images } = await pickImageFolderFromPicker()
+      state.examAutoFiles = images
+      state.examAutoFolderLabel = handle.name
+      state.examAutoError = false
+      state.examAutoStatus = `已选择文件夹：${handle.name}，共 ${images.length} 张图片`
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return
+      }
+      state.examAutoError = true
+      state.examAutoStatus = error instanceof Error ? error.message : '选择文件夹失败'
+    }
+  }
+
+  function addChapterManualChapter() {
+    state.chapterManualChapters.push(createChapterManualChapter())
+  }
+
+  function removeChapterManualChapter(chapterId) {
+    if (state.chapterManualRunning) {
+      return
+    }
+    if (state.chapterManualChapters.length <= 1) {
+      state.chapterManualChapters = [createChapterManualChapter()]
+      return
+    }
+    state.chapterManualChapters = state.chapterManualChapters.filter((item) => item?.id !== chapterId)
+  }
+
+  function addChapterManualSection(chapterId) {
+    const chapter = findChapterManualChapter(chapterId)
+    if (!chapter || state.chapterManualRunning) {
+      return
+    }
+    chapter.sections = [...(Array.isArray(chapter.sections) ? chapter.sections : []), createChapterManualSection()]
+  }
+
+  function removeChapterManualSection(chapterId, sectionId) {
+    const chapter = findChapterManualChapter(chapterId)
+    if (!chapter || state.chapterManualRunning) {
+      return
+    }
+    const sections = Array.isArray(chapter.sections) ? chapter.sections : []
+    if (sections.length <= 1) {
+      chapter.sections = [createChapterManualSection()]
+      return
+    }
+    chapter.sections = sections.filter((item) => item?.id !== sectionId)
+  }
+
+  function onChapterManualSectionImagesChange(chapterId, sectionId, event) {
+    const { section } = findChapterManualSection(chapterId, sectionId)
+    if (!section) {
+      return
+    }
+    section.imageFiles = Array.from(event?.target?.files ?? [])
+    section.error = false
+    section.completed = false
+    section.status = section.imageFiles.length ? `已选择 ${section.imageFiles.length} 张图片` : ''
+    if (event?.target) {
+      event.target.value = ''
+    }
+  }
+
+  function clearChapterManualSectionImages(chapterId, sectionId) {
+    const { section } = findChapterManualSection(chapterId, sectionId)
+    if (!section) {
+      return
+    }
+    section.imageFiles = []
+    section.error = false
+    section.completed = false
+    section.status = '已清空当前小节图片'
+  }
+
+  function appendChapterManualLog(line) {
+    const text = String(line || '').trim()
+    if (!text) {
+      return
+    }
+    state.chapterManualLogs = state.chapterManualLogs
+      ? `${state.chapterManualLogs}\n${text}`
+      : text
+  }
+
+  async function runChapterManualBatch() {
+    if (!state.chapterSessionServerJsonPath) {
+      state.chapterManualError = true
+      state.chapterManualStatus = '请先选择目标 JSON 文件'
+      return
+    }
+    if (state.workingJsonDocumentType === 'exam') {
+      state.chapterManualError = true
+      state.chapterManualStatus = '当前文件是试卷 JSON，请切换到试卷流程'
+      return
+    }
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
+
+    const sections = flattenChapterManualSections()
+    const readySections = sections.filter((item) => item.ready)
+    if (!readySections.length) {
+      state.chapterManualError = true
+      state.chapterManualStatus = '请至少配置一个完整的小节片段：章名、小节名和图片都要填写'
+      return
+    }
+
+    chapterManualAbortController?.abort()
+    chapterManualAbortController = new AbortController()
+    const processingProfile = getChapterProcessingProfile()
+    const chapterArkHeaders = buildChapterArkHeaders()
+    state.chapterManualRunning = true
+    state.chapterManualStopping = false
+    state.chapterManualError = false
+    state.chapterManualStatus = '正在按手工分段批量生成...'
+    state.chapterManualLogs = ''
+    state.chapterManualSummary = {
+      totalCount: readySections.length,
+      completedCount: 0,
+      successCount: 0,
+      failedCount: 0,
+      currentLabel: '',
+      modeLabel: processingProfile.modeLabel,
+    }
+    state.chapterManualLive = {
+      totalCount: readySections.length,
+      completedCount: 0,
+      successCount: 0,
+      failedCount: 0,
+      currentLabel: '',
+      modeLabel: processingProfile.modeLabel,
+    }
+
+    let successCount = 0
+    let failedCount = 0
+
+    try {
+      for (let index = 0; index < readySections.length; index += 1) {
+        const item = readySections[index]
+        const { chapter, section, label } = item
+
+        if (state.chapterManualStopping || chapterManualAbortController.signal.aborted) {
+          appendChapterManualLog(`手工分段已停止：${label}`)
+          state.chapterManualSummary = {
+            totalCount: readySections.length,
+            completedCount: index,
+            successCount,
+            failedCount,
+            currentLabel: label,
+            modeLabel: processingProfile.modeLabel,
+            stopped: true,
+          }
+          state.chapterManualStatus = `已手动停止，停在 ${label}`
+          return
+        }
+
+        section.running = true
+        section.error = false
+        section.completed = false
+        section.status = '正在处理这一段图片...'
+        state.chapterManualLive = {
+          totalCount: readySections.length,
+          completedCount: index,
+          successCount,
+          failedCount,
+          currentLabel: label,
+          modeLabel: processingProfile.modeLabel,
+        }
+        appendChapterManualLog(`处理中 ${index + 1}/${readySections.length}: ${label}`)
+
+        try {
+          const data = await requestChapterSegmentAppend({
+            processingProfile,
+            chapterArkHeaders,
+            jsonFilePath: state.chapterSessionServerJsonPath,
+            chapterTitle: String(chapter.chapterTitle || '').trim(),
+            sectionTitle: String(section.sectionTitle || '').trim(),
+            imageFiles: section.imageFiles,
+            signal: chapterManualAbortController.signal,
+            errorMessage: '手工分段处理失败',
+          })
+
+          section.running = false
+          section.completed = true
+          section.error = false
+          section.upsertedCount = Number(data.question?.upsertedCount ?? 0)
+          section.questionsCount = Number(data.questionsCount ?? 0)
+          section.logs = JSON.stringify(
+            {
+              passLogs: data.passLogs || [],
+              question: data.question || {},
+              prefixCacheExperiment: data.prefixCacheExperiment || null,
+            },
+            null,
+            2,
+          )
+          section.status = `处理完成，新增 ${section.upsertedCount} 题，当前总题数 ${section.questionsCount}`
+          state.chapterSessionCurrentChapter = String(data.currentChapterTitle || chapter.chapterTitle || '')
+          state.chapterSessionCurrentSection = String(data.currentSectionTitle || section.sectionTitle || '')
+          successCount += 1
+          state.chapterManualLive = {
+            totalCount: readySections.length,
+            completedCount: index + 1,
+            successCount,
+            failedCount,
+            currentLabel: label,
+            modeLabel: processingProfile.modeLabel,
+            lastUpsertedCount: section.upsertedCount,
+          }
+          appendChapterManualLog(`完成 ${index + 1}/${readySections.length}: ${label} | 新增 ${section.upsertedCount} 题 | 总题数 ${section.questionsCount}`)
+          await syncWorkingJsonToLocalFile().catch(() => {})
+        } catch (error) {
+          section.running = false
+          section.completed = false
+          section.error = true
+          section.status = error instanceof Error ? error.message : '手工分段处理失败'
+          failedCount += 1
+          state.chapterManualError = true
+          state.chapterManualLive = {
+            totalCount: readySections.length,
+            completedCount: index + 1,
+            successCount,
+            failedCount,
+            currentLabel: label,
+            modeLabel: processingProfile.modeLabel,
+            error: section.status,
+          }
+          appendChapterManualLog(`失败 ${index + 1}/${readySections.length}: ${label} | ${section.status}`)
+        }
+      }
+
+      state.chapterManualSummary = {
+        totalCount: readySections.length,
+        completedCount: readySections.length,
+        successCount,
+        failedCount,
+        currentLabel: '',
+        modeLabel: processingProfile.modeLabel,
+      }
+      state.chapterManualStatus = failedCount
+        ? `手工分段处理完成，成功 ${successCount} 段，失败 ${failedCount} 段`
+        : `手工分段处理完成，共生成 ${successCount} 段`
+    } catch (error) {
+      state.chapterManualError = true
+      state.chapterManualStatus = error instanceof Error ? error.message : '手工分段处理失败'
+    } finally {
+      for (const item of readySections) {
+        item.section.running = false
+      }
+      state.chapterManualRunning = false
+      state.chapterManualStopping = false
+      chapterManualAbortController = null
+    }
+  }
+
+  function stopChapterManualBatch() {
+    if (!state.chapterManualRunning || state.chapterManualStopping) {
+      return
+    }
+    state.chapterManualStopping = true
+    state.chapterManualError = false
+    state.chapterManualStatus = '正在停止手工分段处理...'
+    chapterManualAbortController?.abort()
+  }
+
+  function resetChapterManualBatch() {
+    if (state.chapterManualRunning) {
+      return
+    }
+    resetChapterManualRuntimeState()
+  }
+
   function createSuggestedJsonFileName() {
     const base =
       String(state.jsonForm.textbookId || '').trim() ||
       String(state.jsonForm.title || '').trim() ||
       'textbook'
+    return `${base.replace(/[\\/:*?"<>|]+/g, '_')}.json`
+  }
+
+  function createSuggestedExamJsonFileName() {
+    const base =
+      String(state.examJsonForm.examId || '').trim() ||
+      String(state.examJsonForm.title || '').trim() ||
+      'exam'
     return `${base.replace(/[\\/:*?"<>|]+/g, '_')}.json`
   }
 
@@ -1205,6 +2780,21 @@ export function useQuestionBankWorkbench() {
     state.jsonSaveStatus = ''
     state.jsonSaveError = false
     state.generatedTextbookJson = JSON.stringify(payload, null, 2)
+  }
+
+  function generateExamJson() {
+    const payload = buildExamPayload()
+
+    if (!payload.version || !payload.courseId || !payload.exam.examId || !payload.exam.title) {
+      state.examJsonFormError = '请至少填写 version、courseId、examId、试卷名称'
+      state.generatedExamJson = ''
+      return
+    }
+
+    state.examJsonFormError = ''
+    state.examJsonSaveStatus = ''
+    state.examJsonSaveError = false
+    state.generatedExamJson = JSON.stringify(payload, null, 2)
   }
 
   async function saveTextbookJson() {
@@ -1240,14 +2830,14 @@ export function useQuestionBankWorkbench() {
         await writable.close()
 
         const localFile = new File([text], handle.name || suggestedName, { type: 'application/json' })
-        await importJsonFileToWorkspace(localFile)
+        await importJsonFileToWorkspace(localFile, payload)
         state.chapterSessionJsonHandle = handle
         state.generatedTextbookJson = text.trim()
         state.jsonSaveStatus = `已保存并载入当前工作副本：${handle.name || suggestedName}`
       } else {
         triggerJsonDownload(suggestedName, text)
         const localFile = new File([text], suggestedName, { type: 'application/json' })
-        await importJsonFileToWorkspace(localFile)
+        await importJsonFileToWorkspace(localFile, payload)
         state.generatedTextbookJson = text.trim()
         state.jsonSaveStatus = '当前浏览器不支持原生保存选择器，已下载 JSON 并载入后端工作副本'
       }
@@ -1261,7 +2851,71 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  async function saveExamJson() {
+    const payload = buildExamPayload()
+    if (!payload.version || !payload.courseId || !payload.exam.examId || !payload.exam.title) {
+      state.examJsonFormError = '请至少填写 version、courseId、examId、试卷名称'
+      state.generatedExamJson = ''
+      return
+    }
+
+    state.examJsonFormError = ''
+    state.examJsonSaveError = false
+    state.examJsonSaveStatus = '保存中...'
+
+    const text = `${JSON.stringify(payload, null, 2)}\n`
+    const suggestedName = createSuggestedExamJsonFileName()
+
+    try {
+      if (supportsPicker('showSaveFilePicker')) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [
+            {
+              description: '试卷 JSON',
+              accept: {
+                'application/json': ['.json'],
+              },
+            },
+          ],
+        })
+        const writable = await handle.createWritable()
+        await writable.write(text)
+        await writable.close()
+
+        const localFile = new File([text], handle.name || suggestedName, { type: 'application/json' })
+        const data = await importJsonFileToWorkspace(localFile, payload)
+        state.chapterSessionJsonHandle = handle
+        state.examSessionJsonHandle = handle
+        state.examSessionJsonLabel = handle.name || suggestedName
+        state.examSessionServerJsonPath = String(data.filePath || '')
+        state.generatedExamJson = text.trim()
+        state.examJsonSaveStatus = `已保存并载入当前工作副本：${handle.name || suggestedName}`
+      } else {
+        triggerJsonDownload(suggestedName, text)
+        const localFile = new File([text], suggestedName, { type: 'application/json' })
+        const data = await importJsonFileToWorkspace(localFile, payload)
+        state.examSessionJsonLabel = suggestedName
+        state.examSessionServerJsonPath = String(data.filePath || '')
+        state.generatedExamJson = text.trim()
+        state.examJsonSaveStatus = '当前浏览器不支持原生保存选择器，已下载 JSON 并载入后端工作副本'
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        state.examJsonSaveStatus = '已取消保存'
+        return
+      }
+      state.examJsonSaveError = true
+      state.examJsonSaveStatus = error instanceof Error ? error.message : '保存失败'
+    }
+  }
+
   async function initChapterSession() {
+    if (state.workingJsonDocumentType === 'exam') {
+      state.chapterSessionError = true
+      state.chapterSessionStatus = '当前文件是试卷 JSON，请切换到试卷流程初始化会话'
+      return
+    }
     if (!state.chapterSessionServerJsonPath || !state.chapterSessionInitChapter || !state.chapterSessionInitSection) {
       state.chapterSessionError = true
       state.chapterSessionStatus = '请先选择 JSON 文件，并填写当前章、当前小节'
@@ -1288,6 +2942,269 @@ export function useQuestionBankWorkbench() {
       state.chapterSessionError = true
       state.chapterSessionStatus = error instanceof Error ? error.message : '初始化失败'
     }
+  }
+
+  async function initExamSession() {
+    if (state.workingJsonDocumentType && state.workingJsonDocumentType !== 'exam') {
+      state.examSessionError = true
+      state.examSessionStatus = '当前文件不是试卷 JSON，请重新选择试卷文件'
+      return
+    }
+    if (!state.examSessionServerJsonPath) {
+      state.examSessionError = true
+      state.examSessionStatus = '请先选择试卷 JSON 文件'
+      return
+    }
+
+    state.examSessionError = false
+    state.examSessionStatus = '初始化中...'
+    state.examPassLogs = ''
+    state.examPassResult = null
+    resetExamAutoRuntimeState()
+
+    try {
+      const data = await requestExamSessionInit({
+        jsonFilePath: state.examSessionServerJsonPath,
+      })
+      state.examSessionId = String(data.sessionId || '')
+      state.examSessionTitle = String(data.examTitle || '')
+      state.examSessionExamType = String(data.examType || '')
+      state.examSessionHasAnswer = data.hasAnswer !== false
+      state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
+      state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
+      state.examSessionStatus = `初始化成功，结构节点 ${Number(data.chaptersCount ?? 0)} 个，题目 ${Number(data.questionsCount ?? 0)} 道`
+      await syncExamWorkingJsonToLocalFile().catch(() => {})
+    } catch (error) {
+      state.examSessionError = true
+      state.examSessionStatus = error instanceof Error ? error.message : '初始化失败'
+    }
+  }
+
+  function onExamImageChange(event) {
+    state.examImageFile = event?.target?.files?.[0] ?? null
+  }
+
+  async function processExamImage() {
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
+    if (!state.examSessionId) {
+      state.examSessionError = true
+      state.examSessionStatus = '请先初始化试卷会话'
+      return
+    }
+    if (!state.examImageFile) {
+      state.examSessionError = true
+      state.examSessionStatus = '请先上传当前图片'
+      return
+    }
+
+    state.examProcessing = true
+    state.examSessionError = false
+    state.examSessionStatus = '处理中...'
+    state.examPassLogs = ''
+    state.examPassResult = null
+
+    try {
+      const data = await requestExamProcessImage({
+        chapterArkHeaders: buildChapterArkHeaders(),
+        sessionId: state.examSessionId,
+        imageFile: state.examImageFile,
+      })
+      const structureLabel = buildExamStructureLabel(data)
+      state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
+      state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
+      state.examPassResult = {
+        structureLabel,
+        chaptersCount: Number(data.chaptersCount ?? 0),
+        questionsCount: Number(data.questionsCount ?? 0),
+        question: buildQuestionSummary(data.question, data.questionsCount ?? 0),
+      }
+      state.examPassLogs = [
+        `当前结构：${structureLabel || '未识别'}`,
+        `结构节点：${state.examPassResult.chaptersCount}`,
+        `题目总数：${state.examPassResult.questionsCount}`,
+        `本次新增：${state.examPassResult.question.upsertedCount}`,
+        `跨页待续：${state.examPassResult.question.pending ? '是' : '否'}`,
+        state.examPassResult.question.reason ? `说明：${state.examPassResult.question.reason}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+      state.examSessionStatus = `处理完成，当前结构：${structureLabel || '未识别'}，题目总数 ${state.examPassResult.questionsCount}`
+      await syncExamWorkingJsonToLocalFile().catch(() => {})
+    } catch (error) {
+      state.examSessionError = true
+      state.examSessionStatus = error instanceof Error ? error.message : '处理失败'
+    } finally {
+      state.examProcessing = false
+    }
+  }
+
+  async function runExamAuto() {
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
+    if (!state.examSessionId) {
+      state.examAutoError = true
+      state.examAutoStatus = '请先初始化试卷会话'
+      return
+    }
+    const files = Array.isArray(state.examAutoFiles) ? state.examAutoFiles : []
+    if (!files.length) {
+      state.examAutoError = true
+      state.examAutoStatus = '请先选择图片文件夹'
+      return
+    }
+
+    resetExamAutoRuntimeState()
+    state.examAutoRunning = true
+    state.examAutoStopping = false
+    state.examAutoError = false
+    state.examAutoStatus = '试卷自动处理进行中...'
+    examAutoAbortController = new AbortController()
+    let successCount = 0
+    let failedCount = 0
+    let firstFailureMessage = ''
+
+    appendExamAutoLog(`开始自动处理，共 ${files.length} 页`)
+
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const current = files[index]
+        const lookahead = files[index + 1] || null
+
+        if (state.examAutoStopping || examAutoAbortController.signal.aborted) {
+          appendExamAutoLog(`手动停止于 ${current.name}`)
+          state.examAutoSummary = {
+            phase: 'stopped',
+            currentIndex: index,
+            totalCount: files.length,
+            successCount,
+            failedCount,
+            currentFileName: current.name,
+          }
+          state.examAutoStatus = `已手动停止，停在 ${current.name}`
+          return
+        }
+
+        appendExamAutoLog(`处理中 ${index + 1}/${files.length}: ${current.name}`)
+        try {
+          const data = await requestExamProcessImage({
+            chapterArkHeaders: buildChapterArkHeaders(),
+            sessionId: state.examSessionId,
+            imageFile: current.file,
+            lookaheadFile: lookahead?.file || null,
+            signal: examAutoAbortController.signal,
+          })
+          successCount += 1
+          const structureLabel = buildExamStructureLabel(data)
+          state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
+          state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
+          const question = buildQuestionSummary(data.question, data.questionsCount ?? 0)
+          appendExamAutoLog(
+            `第 ${index + 1}/${files.length} 页完成: ${current.name} | 当前结构: ${structureLabel || '未识别'} | 新增 ${question.upsertedCount} | ${question.pending ? '待续页' : '已完成'}`,
+          )
+          state.examAutoEntries.push({
+            fileName: current.name,
+            status: 'success',
+            structureLabel,
+            question,
+          })
+          state.examAutoLive = {
+            phase: question.pending ? 'pending' : 'success',
+            currentIndex: index + 1,
+            totalCount: files.length,
+            currentFileName: current.name,
+            successCount,
+            failedCount,
+            structureLabel,
+            question,
+          }
+          await syncExamWorkingJsonToLocalFile().catch(() => {})
+        } catch (error) {
+          if (state.examAutoStopping || isAbortRequestError(error) || examAutoAbortController.signal.aborted) {
+            appendExamAutoLog(`手动停止于 ${current.name}`)
+            state.examAutoSummary = {
+              phase: 'stopped',
+              currentIndex: index,
+              totalCount: files.length,
+              successCount,
+              failedCount,
+              currentFileName: current.name,
+            }
+            state.examAutoStatus = `已手动停止，停在 ${current.name}`
+            return
+          }
+
+          const message = error instanceof Error ? error.message : String(error)
+          if (!firstFailureMessage) {
+            firstFailureMessage = message
+          }
+          failedCount += 1
+          appendExamAutoLog(`第 ${index + 1}/${files.length} 页失败: ${current.name} | ${message}`)
+          state.examAutoEntries.push({
+            fileName: current.name,
+            status: 'failed',
+            error: message,
+          })
+          state.examAutoLive = {
+            phase: 'failed',
+            currentIndex: index + 1,
+            totalCount: files.length,
+            currentFileName: current.name,
+            successCount,
+            failedCount,
+            error: message,
+          }
+
+          if (isFatalAutoRunErrorMessage(message)) {
+            throw error
+          }
+        }
+      }
+
+      state.examAutoSummary = {
+        phase: 'done',
+        currentIndex: files.length,
+        totalCount: files.length,
+        successCount,
+        failedCount,
+        currentFileName: '',
+        structureLabel: buildExamStructureLabel({
+          currentMajorTitle: state.examSessionCurrentMajor,
+          currentMinorTitle: state.examSessionCurrentMinor,
+        }),
+      }
+      state.examAutoStatus =
+        failedCount && firstFailureMessage
+          ? `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张。首个错误：${firstFailureMessage}`
+          : `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张`
+      appendExamAutoLog(`自动处理完成，成功 ${successCount} 页，失败 ${failedCount} 页`)
+    } catch (error) {
+      state.examAutoError = true
+      state.examAutoStatus = error instanceof Error ? error.message : '自动处理失败'
+    } finally {
+      state.examAutoRunning = false
+      state.examAutoStopping = false
+      examAutoAbortController = null
+    }
+  }
+
+  function stopExamAuto() {
+    if (!state.examAutoRunning || state.examAutoStopping) {
+      return
+    }
+    state.examAutoStopping = true
+    state.examAutoError = false
+    state.examAutoStatus = '正在请求停止自动处理...'
+    examAutoAbortController?.abort()
+  }
+
+  function resetExamAuto() {
+    if (state.examAutoRunning) {
+      return
+    }
+    resetExamAutoRuntimeState()
   }
 
   function onRepairImageChange(event) {
@@ -1452,6 +3369,7 @@ export function useQuestionBankWorkbench() {
         database: String(data.database || ''),
         counts: {
           textbookCount: Number(data.counts?.textbookCount ?? 0),
+          examCount: Number(data.counts?.examCount ?? 0),
           chapterCount: Number(data.counts?.chapterCount ?? 0),
           textbookSchoolScopeCount: Number(data.counts?.textbookSchoolScopeCount ?? 0),
           questionRowCount: Number(data.counts?.questionRowCount ?? 0),
@@ -1462,7 +3380,8 @@ export function useQuestionBankWorkbench() {
         },
         textbooks: Array.isArray(data.textbooks) ? data.textbooks : [],
       }
-      state.dbSummaryStatus = `当前 schema：${state.dbSummary.schema}，教材 ${state.dbSummary.counts.textbookCount} 本，题目行 ${state.dbSummary.counts.questionRowCount} 条`
+      const sourceCount = state.dbSummary.counts.textbookCount + state.dbSummary.counts.examCount
+      state.dbSummaryStatus = `当前 schema：${state.dbSummary.schema}，来源文档 ${sourceCount} 份（教材 ${state.dbSummary.counts.textbookCount} / 试卷 ${state.dbSummary.counts.examCount}），题目行 ${state.dbSummary.counts.questionRowCount} 条`
     } catch (error) {
       state.dbSummaryError = true
       state.dbSummary = null
@@ -1481,7 +3400,7 @@ export function useQuestionBankWorkbench() {
 
     state.dbImportProcessing = true
     state.dbImportError = false
-    state.dbImportStatus = `正在导入 ${state.dbImportFiles.length} 个 JSON 文件到数据库...`
+    state.dbImportStatus = `正在导入 ${state.dbImportFiles.length} 个来源 JSON 到数据库...`
     state.dbImportResult = null
 
     try {
@@ -1603,10 +3522,25 @@ export function useQuestionBankWorkbench() {
       return
     }
 
+    const isExam = state.workingJsonDocumentType === 'exam'
+    const questionId = String(state.repairForm.questionId || '').trim()
     const chapterNo = Number(state.repairForm.chapterNo)
     const sectionNo = Number(state.repairForm.sectionNo)
     const questionNo = Number(state.repairForm.questionNo)
-    if (!Number.isInteger(chapterNo) || chapterNo <= 0 || !Number.isInteger(sectionNo) || sectionNo <= 0 || !Number.isInteger(questionNo) || questionNo <= 0) {
+    if (isExam) {
+      if (!questionId) {
+        state.repairError = true
+        state.repairStatus = '试卷修复请填写 questionId'
+        return
+      }
+    } else if (
+      !Number.isInteger(chapterNo) ||
+      chapterNo <= 0 ||
+      !Number.isInteger(sectionNo) ||
+      sectionNo <= 0 ||
+      !Number.isInteger(questionNo) ||
+      questionNo <= 0
+    ) {
       state.repairError = true
       state.repairStatus = '章、小节、题号都必须是正整数'
       return
@@ -1620,10 +3554,14 @@ export function useQuestionBankWorkbench() {
     try {
       const formData = new FormData()
       formData.append('jsonFilePath', state.chapterSessionServerJsonPath)
-      formData.append('chapterNo', String(chapterNo))
-      formData.append('sectionNo', String(sectionNo))
-      formData.append('questionNo', String(questionNo))
       formData.append('sourceFileName', state.chapterSessionJsonLabel || '')
+      if (isExam) {
+        formData.append('questionId', questionId)
+      } else {
+        formData.append('chapterNo', String(chapterNo))
+        formData.append('sectionNo', String(sectionNo))
+        formData.append('questionNo', String(questionNo))
+      }
       for (const file of state.repairImageFiles) {
         formData.append('images', file, file.name)
       }
@@ -1671,13 +3609,22 @@ export function useQuestionBankWorkbench() {
       return
     }
 
+    const isExam = state.workingJsonDocumentType === 'exam'
     const chapterNo = Number(state.imageAttachForm.chapterNo)
     const sectionNo = Number(state.imageAttachForm.sectionNo)
     const questionNo = Number(state.imageAttachForm.questionNo)
     const childNoText = String(state.imageAttachForm.childNo || '').trim()
     const childNo = childNoText ? Number(childNoText) : null
+    const questionId = String(state.imageAttachForm.questionId || '').trim()
+    const childQuestionId = String(state.imageAttachForm.childQuestionId || '').trim()
 
-    if (
+    if (isExam) {
+      if (!questionId) {
+        state.imageAttachError = true
+        state.imageAttachStatus = '试卷补图请填写 questionId'
+        return
+      }
+    } else if (
       !Number.isInteger(chapterNo) ||
       chapterNo <= 0 ||
       !Number.isInteger(sectionNo) ||
@@ -1704,11 +3651,18 @@ export function useQuestionBankWorkbench() {
       const formData = new FormData()
       formData.append('jsonFilePath', state.chapterSessionServerJsonPath)
       formData.append('sourceFileName', state.chapterSessionJsonLabel || '')
-      formData.append('chapterNo', String(chapterNo))
-      formData.append('sectionNo', String(sectionNo))
-      formData.append('questionNo', String(questionNo))
+      if (isExam) {
+        formData.append('questionId', questionId)
+      } else {
+        formData.append('chapterNo', String(chapterNo))
+        formData.append('sectionNo', String(sectionNo))
+        formData.append('questionNo', String(questionNo))
+      }
       if (childNoText) {
         formData.append('childNo', String(childNo))
+      }
+      if (childQuestionId) {
+        formData.append('childQuestionId', childQuestionId)
       }
       for (const file of state.imageAttachFiles) {
         formData.append('images', file, file.name)
@@ -1751,10 +3705,28 @@ export function useQuestionBankWorkbench() {
       return
     }
 
+    const isExam = state.workingJsonDocumentType === 'exam'
     const chapterNo = Number(state.repairForm.chapterNo)
     const sectionNo = Number(state.repairForm.sectionNo)
     const questionNo = Number(state.repairForm.questionNo)
-    if (
+    const questionId = String(state.mathFormatRepairForm.questionId || state.repairForm.questionId || '').trim()
+
+    const targetType = String(state.mathFormatRepairForm.targetType || '').trim()
+    const requiresChildNo = targetType === 'childPrompt' || targetType === 'childStandardAnswer'
+    const childNo = String(state.mathFormatRepairForm.childNo || '').trim()
+    const childQuestionId = String(state.mathFormatRepairForm.childQuestionId || '').trim()
+    if (!targetType) {
+      state.mathFormatRepairError = true
+      state.mathFormatRepairStatus = '请选择要修复的字段'
+      return
+    }
+    if (isExam) {
+      if (!questionId) {
+        state.mathFormatRepairError = true
+        state.mathFormatRepairStatus = '试卷公式修复请填写 questionId'
+        return
+      }
+    } else if (
       !Number.isInteger(chapterNo) ||
       chapterNo <= 0 ||
       !Number.isInteger(sectionNo) ||
@@ -1766,20 +3738,11 @@ export function useQuestionBankWorkbench() {
       state.mathFormatRepairStatus = '章、小节、题号都必须是正整数'
       return
     }
-
-    const targetType = String(state.mathFormatRepairForm.targetType || '').trim()
-    const requiresChildNo = targetType === 'childPrompt' || targetType === 'childStandardAnswer'
-    const childNo = String(state.mathFormatRepairForm.childNo || '').trim()
-    if (!targetType) {
-      state.mathFormatRepairError = true
-      state.mathFormatRepairStatus = '请选择要修复的字段'
-      return
-    }
     if (requiresChildNo) {
       const numericChildNo = Number(childNo)
-      if (!Number.isInteger(numericChildNo) || numericChildNo <= 0) {
+      if (!childQuestionId && (!Number.isInteger(numericChildNo) || numericChildNo <= 0)) {
         state.mathFormatRepairError = true
-        state.mathFormatRepairStatus = '修复小题字段时，小题号必须是正整数'
+        state.mathFormatRepairStatus = '修复小题字段时，请填写 childQuestionId，或提供正整数小题号'
         return
       }
     }
@@ -1798,11 +3761,13 @@ export function useQuestionBankWorkbench() {
         body: JSON.stringify({
           jsonFilePath: state.chapterSessionServerJsonPath,
           sourceFileName: state.chapterSessionJsonLabel || '',
-          chapterNo,
-          sectionNo,
-          questionNo,
+          questionId: isExam ? questionId : '',
+          chapterNo: isExam ? null : chapterNo,
+          sectionNo: isExam ? null : sectionNo,
+          questionNo: isExam ? null : questionNo,
           targetType,
-          childNo: requiresChildNo ? Number(childNo) : null,
+          childNo: requiresChildNo && !childQuestionId ? Number(childNo) : null,
+          childQuestionId: requiresChildNo ? childQuestionId : '',
         }),
       })
       const data = await parseApiResponse(resp)
@@ -2734,10 +4699,17 @@ export function useQuestionBankWorkbench() {
   }
 
   const actions = {
+    addExamSectionTask,
     addChapterBatchTask,
+    addChapterManualChapter,
+    addChapterManualSection,
+    appendExamSectionFromImages,
+    appendExamSectionFromLibrary,
     chooseAutoImageFolder,
     chooseChapterBatchTaskFolder,
     chooseChapterBatchTaskJson,
+    chooseExamAutoImageFolder,
+    chooseExamJsonSessionFile,
     chooseJsonSessionFile,
     chooseVisualizerJsonFile,
     onDbImportFilesChange,
@@ -2747,45 +4719,77 @@ export function useQuestionBankWorkbench() {
     importQuestionBankDbJsonFiles,
     fillAssistantPrompt,
     clearQuestionBankAssistantChat,
+    clearChapterManualSectionImages,
+    clearExamSectionImages,
+    confirmExamSection,
     sendQuestionBankAssistantMessage,
+    finalizeExamSections,
+    generateExamJson,
     generateTextbookJson,
+    saveExamJson,
     saveTextbookJson,
+    initExamSession,
     initChapterSession,
     onVisualizerJsonChange,
     onVisualizerRepairImageChange,
     clearVisualizerRepairImages,
+    attachImagesFromVisualizer,
+    generateAnswerFromVisualizer,
     reloadVisualizerJsonFile,
     repairQuestionFromVisualizer,
     repairMathFormatFromVisualizer,
+    updateQuestionTypeFromVisualizer,
     onMergeJsonFilesChange,
     removeMergeJsonFile,
     clearMergeJsonFiles,
     mergeJsonFiles,
+    loadExamQuestionTypeOptions,
     onImageAttachFilesChange,
     onImageAttachPaste,
+    onChapterManualSectionImagesChange,
+    onExamSectionImagesChange,
     clearImageAttachFiles,
     attachImagesToQuestionJson,
     onRepairImageChange,
     repairQuestionInJson,
     repairQuestionMathFormat,
     onChapterImageChange,
+    onExamImageChange,
     removeChapterBatchTask,
+    removeChapterManualChapter,
+    removeChapterManualSection,
+    removeExamSectionTask,
+    removeExamSectionQuestion,
+    processExamImage,
+    reopenExamSection,
     resetChapterBatch,
+    resetChapterManualBatch,
+    resetExamAuto,
     runChapterBatch,
+    runChapterManualBatch,
+    runExamAuto,
+    searchExamSectionLibrary,
     setChapterBatchConcurrency,
     setChapterProcessingMode,
     setChapterRunMode,
+    setChapterSingleMode,
     processChapterImage,
     runChapterAuto,
+    stopExamAuto,
     stopChapterBatch,
+    stopChapterManualBatch,
     stopChapterAuto,
     resetChapterAuto,
+    moveExamSectionQuestion,
+    toggleExamSectionRecord,
     onFileChange,
     moveSelectedPdf,
     removeSelectedPdf,
     clearSelectedPdfs,
     uploadPdf,
   }
+
+  void loadExamQuestionTypeOptions()
 
   return {
     state,

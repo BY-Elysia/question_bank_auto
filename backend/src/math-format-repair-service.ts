@@ -1,12 +1,18 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { ARK_API_KEY, ARK_MODEL, REPAIR_JSON_DIR } from './config'
+import { ARK_MODEL, REPAIR_JSON_DIR } from './config'
+import {
+  buildLegacyQuestionId,
+  isObject,
+  resolveQuestionTarget,
+} from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import {
   extractArkText,
   extractFirstJsonObject,
   loadTextbookJson,
   normalizeJsonFileName,
+  payloadExpectsAnswer,
   parseModelJsonObject,
   repairModelJsonByDoubao,
   requestArkRawWithRetry,
@@ -22,10 +28,6 @@ type MathFormatRepairTargetType =
 
 type JsonNode = Record<string, unknown>
 
-function findChapterById(payload: TextbookJsonPayload, chapterId: string) {
-  return payload.chapters.find((item) => item.chapterId === chapterId) || null
-}
-
 function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
   const preferred = String(sourceFileName || '').trim()
   if (preferred) {
@@ -33,10 +35,6 @@ function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
     return base.toLowerCase().endsWith('.json') ? base : `${base}.json`
   }
   return normalizeJsonFileName(path.basename(jsonFilePath))
-}
-
-function isObject(value: unknown): value is JsonNode {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function getOrCreateTextBlock(host: JsonNode, key: string) {
@@ -60,116 +58,67 @@ function getOrCreateTextBlock(host: JsonNode, key: string) {
   return block
 }
 
-function findQuestionNode(payload: TextbookJsonPayload, questionId: string) {
-  const questions = Array.isArray(payload.questions) ? payload.questions : []
-  return (
-    questions.find((item) => isObject(item) && typeof item.questionId === 'string' && item.questionId.trim() === questionId) ||
-    null
-  ) as JsonNode | null
-}
-
-function findChildNode(questionNode: JsonNode, childNo: number) {
-  const children = Array.isArray(questionNode.children) ? questionNode.children.filter(isObject) : []
-  if (!children.length) {
-    return null
-  }
-
-  const byOrder = children.find((child) => Number(child.orderNo) === childNo)
-  if (byOrder) {
-    return byOrder
-  }
-
-  const suffix = `_${childNo}`
-  const byId = children.find(
-    (child) => typeof child.questionId === 'string' && child.questionId.trim().endsWith(suffix),
-  )
-  if (byId) {
-    return byId
-  }
-
-  return children[childNo - 1] || null
-}
-
 function resolveRepairTarget(params: {
   payload: TextbookJsonPayload
-  chapterNo: number
-  sectionNo: number
-  questionNo: number
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
   targetType: MathFormatRepairTargetType
+  childQuestionId?: string
   childNo?: number | null
 }) {
-  const { payload, chapterNo, sectionNo, questionNo, targetType, childNo = null } = params
-  const topChapterId = `ch_${chapterNo}`
-  const sectionChapterId = `ch_${chapterNo}_${sectionNo}`
-  const questionId = `q_${chapterNo}_${sectionNo}_${questionNo}`
+  const {
+    payload,
+    chapterNo,
+    sectionNo,
+    questionNo,
+    questionId = '',
+    targetType,
+    childQuestionId = '',
+    childNo = null,
+  } = params
+  const resolvedQuestionId = String(questionId || '').trim()
+    || (
+      Number.isInteger(chapterNo) &&
+      Number.isInteger(sectionNo) &&
+      Number.isInteger(questionNo)
+        ? buildLegacyQuestionId(Number(chapterNo), Number(sectionNo), Number(questionNo))
+        : ''
+    )
 
-  const topChapter = findChapterById(payload, topChapterId)
-  if (!topChapter) {
-    throw new Error(`chapterId ${topChapterId} not found in JSON`)
-  }
-  const section = findChapterById(payload, sectionChapterId)
-  if (!section) {
-    throw new Error(`chapterId ${sectionChapterId} not found in JSON`)
-  }
-  const questionNode = findQuestionNode(payload, questionId)
-  if (!questionNode) {
-    throw new Error(`questionId ${questionId} not found in JSON`)
-  }
-
-  const questionTitle =
-    typeof questionNode.title === 'string' && questionNode.title.trim() ? questionNode.title.trim() : questionId
+  const target = resolveQuestionTarget({
+    payload,
+    questionId: resolvedQuestionId,
+    childQuestionId,
+    childNo,
+  })
 
   if (targetType === 'stem') {
-    const textBlock = getOrCreateTextBlock(questionNode, 'stem')
     return {
-      topChapter,
-      section,
-      questionNode,
-      childNode: null,
-      textBlock,
+      ...target,
+      textBlock: getOrCreateTextBlock(target.questionNode, 'stem'),
       targetLabel: '题目 stem',
-      questionId,
-      childQuestionId: '',
-      questionTitle,
     }
   }
 
   if (targetType === 'prompt' || targetType === 'standardAnswer') {
-    const textBlock = getOrCreateTextBlock(questionNode, targetType)
     return {
-      topChapter,
-      section,
-      questionNode,
-      childNode: null,
-      textBlock,
+      ...target,
+      textBlock: getOrCreateTextBlock(target.questionNode, targetType),
       targetLabel: targetType === 'prompt' ? '题目 prompt' : '题目 standardAnswer',
-      questionId,
-      childQuestionId: '',
-      questionTitle,
     }
   }
 
-  if (!Number.isInteger(childNo) || Number(childNo) <= 0) {
-    throw new Error('childNo must be a positive integer when repairing child fields')
-  }
-
-  const childNode = findChildNode(questionNode, Number(childNo))
-  if (!childNode) {
-    throw new Error(`childNo ${childNo} not found under questionId ${questionId}`)
+  if (!target.childNode) {
+    throw new Error('childQuestionId or childNo is required when repairing child fields')
   }
 
   const childField = targetType === 'childPrompt' ? 'prompt' : 'standardAnswer'
-  const textBlock = getOrCreateTextBlock(childNode, childField)
   return {
-    topChapter,
-    section,
-    questionNode,
-    childNode,
-    textBlock,
-    targetLabel: targetType === 'childPrompt' ? `小题 ${childNo} prompt` : `小题 ${childNo} standardAnswer`,
-    questionId,
-    childQuestionId: typeof childNode.questionId === 'string' ? childNode.questionId : '',
-    questionTitle,
+    ...target,
+    textBlock: getOrCreateTextBlock(target.childNode, childField),
+    targetLabel: targetType === 'childPrompt' ? '小题 prompt' : '小题 standardAnswer',
   }
 }
 
@@ -182,10 +131,6 @@ async function repairMathFormatByModel(params: {
   originalText: string
 }) {
   const { chapterTitle, sectionTitle, questionTitle, questionId, targetLabel, originalText } = params
-
-  if (!ARK_API_KEY) {
-    throw new Error('ARK_API_KEY is missing')
-  }
 
   const instruction = [
     '你是教材题库 JSON 的公式格式修复器。你只修复一个指定文本块中的数学公式格式，使其更稳定地通过 KaTeX 渲染。',
@@ -265,10 +210,12 @@ async function repairMathFormatByModel(params: {
 export async function repairMathFormatInTextbookJson(params: {
   jsonFilePath: string
   sourceFileName?: string
-  chapterNo: number
-  sectionNo: number
-  questionNo: number
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
   targetType: MathFormatRepairTargetType
+  childQuestionId?: string
   childNo?: number | null
 }) {
   const {
@@ -277,7 +224,9 @@ export async function repairMathFormatInTextbookJson(params: {
     chapterNo,
     sectionNo,
     questionNo,
+    questionId = '',
     targetType,
+    childQuestionId = '',
     childNo = null,
   } = params
 
@@ -288,15 +237,16 @@ export async function repairMathFormatInTextbookJson(params: {
     'childPrompt',
     'childStandardAnswer',
   ])
+  const hasLegacyQuestionRef =
+    Number.isInteger(chapterNo) &&
+    Number(chapterNo) > 0 &&
+    Number.isInteger(sectionNo) &&
+    Number(sectionNo) > 0 &&
+    Number.isInteger(questionNo) &&
+    Number(questionNo) > 0
 
-  if (!Number.isInteger(chapterNo) || chapterNo <= 0) {
-    throw new Error('chapterNo must be a positive integer')
-  }
-  if (!Number.isInteger(sectionNo) || sectionNo <= 0) {
-    throw new Error('sectionNo must be a positive integer')
-  }
-  if (!Number.isInteger(questionNo) || questionNo <= 0) {
-    throw new Error('questionNo must be a positive integer')
+  if (!String(questionId || '').trim() && !hasLegacyQuestionRef) {
+    throw new Error('questionId is required, or chapterNo/sectionNo/questionNo must all be positive integers')
   }
   if (!allowedTargetTypes.has(targetType)) {
     throw new Error(`targetType is invalid: ${targetType}`)
@@ -308,7 +258,9 @@ export async function repairMathFormatInTextbookJson(params: {
     chapterNo,
     sectionNo,
     questionNo,
+    questionId,
     targetType,
+    childQuestionId,
     childNo,
   })
 
@@ -318,8 +270,8 @@ export async function repairMathFormatInTextbookJson(params: {
   }
 
   const repaired = await repairMathFormatByModel({
-    chapterTitle: target.topChapter.title,
-    sectionTitle: target.section.title,
+    chapterTitle: target.chapterTitle,
+    sectionTitle: target.sectionTitle,
     questionTitle: target.questionTitle,
     questionId: target.childQuestionId || target.questionId,
     targetLabel: target.targetLabel,
@@ -339,8 +291,8 @@ export async function repairMathFormatInTextbookJson(params: {
     jsonFilePath,
     repairJsonFileName,
     repairJsonPath,
-    chapterTitle: target.topChapter.title,
-    sectionTitle: target.section.title,
+    chapterTitle: target.chapterTitle,
+    sectionTitle: target.sectionTitle,
     questionId: target.questionId,
     childQuestionId: target.childQuestionId,
     questionTitle: target.questionTitle,
@@ -351,5 +303,6 @@ export async function repairMathFormatInTextbookJson(params: {
     repairedText: repaired.repairedText,
     reason: repaired.reason,
     rawText: repaired.rawText,
+    expectAnswer: payloadExpectsAnswer(payload),
   }
 }

@@ -2,7 +2,7 @@
   <GlassPanel
     eyebrow="Visualizer"
     title="题库可视化"
-    description="本地读取题库 JSON，按章节树筛选后单题查看题目与标准答案，并渲染 LaTeX 公式。"
+    description="本地读取来源 JSON，按章节树或试卷结构筛选后查看单题内容，并支持在页面内直接修公式、补图、改题型和生成答案。"
     tone="mint"
     prominent
   >
@@ -25,7 +25,7 @@
       </div>
 
       <label class="file-shell field-span-2">
-        <span>普通上传兜底</span>
+        <span>普通上传入口</span>
         <input type="file" accept="application/json,.json" @change="actions.onVisualizerJsonChange" />
       </label>
     </div>
@@ -42,18 +42,34 @@
       {{ state.visualizerRepairStatus }}
     </p>
 
+    <p
+      v-if="state.visualizerAnswerStatus"
+      class="panel-status"
+      :class="{ 'is-error': state.visualizerAnswerError }"
+    >
+      {{ state.visualizerAnswerStatus }}
+    </p>
+
     <div v-if="model" class="info-grid">
       <article class="info-card">
-        <span class="info-label">教材</span>
-        <strong>{{ model.textbook.title || model.textbook.textbookId || '未命名教材' }}</strong>
+        <span class="info-label">{{ documentTypeLabel }}</span>
+        <strong>{{ model.source.title || model.source.externalId || `未命名${documentTypeLabel}` }}</strong>
       </article>
       <article class="info-card">
-        <span class="info-label">章节数</span>
+        <span class="info-label">{{ structureCountLabel }}</span>
         <strong>{{ model.totalChapters }}</strong>
       </article>
       <article class="info-card">
         <span class="info-label">题目数</span>
         <strong>{{ model.totalQuestions }}</strong>
+      </article>
+      <article v-if="isExamDocument" class="info-card">
+        <span class="info-label">考试类型</span>
+        <strong>{{ examTypeLabel }}</strong>
+      </article>
+      <article v-if="isExamDocument" class="info-card">
+        <span class="info-label">答案模式</span>
+        <strong>{{ hasAnswerLabel }}</strong>
       </article>
       <article class="info-card">
         <span class="info-label">当前文件</span>
@@ -61,12 +77,42 @@
       </article>
     </div>
 
+    <section v-if="model" class="subpanel">
+      <div class="subpanel-head">
+        <h3>模型解题配置</h3>
+        <p>留空会使用服务端环境变量 `ARK_API_KEY`；也可以只在当前页面内临时填写一个 Key。补充要求会跟题目文字和题图一起发给模型。</p>
+      </div>
+
+      <div class="field-grid compact-grid">
+        <label class="field">
+          <span>火山 Ark API Key</span>
+          <input
+            v-model.trim="state.visualizerArkApiKey"
+            class="glass-input"
+            type="password"
+            placeholder="可选，留空则使用后端环境变量"
+          />
+        </label>
+
+        <label class="field field-span-2">
+          <span>解题要求提示词</span>
+          <textarea
+            v-model="state.visualizerAnswerPrompt"
+            class="glass-input assistant-input"
+            rows="4"
+            placeholder="例如：请尽量写得规范一些；如果是编程题，请给出思路、核心代码和复杂度。"
+          />
+        </label>
+      </div>
+    </section>
+
     <div v-if="model" class="visualizer-layout">
       <aside class="visualizer-sidebar">
         <div class="visualizer-sidebar__head">
-          <strong>章节目录</strong>
+          <strong>{{ sidebarTitle }}</strong>
           <span>{{ model.flatChapters.length }} 个节点</span>
         </div>
+
         <button
           v-for="chapter in model.flatChapters"
           :key="chapter.chapterId"
@@ -83,10 +129,11 @@
       <section class="visualizer-detail">
         <header v-if="selectedChapter" class="visualizer-detail__head">
           <div>
-            <p class="panel-eyebrow">Chapter</p>
+            <p class="panel-eyebrow">{{ detailEyebrow }}</p>
             <h3 class="visualizer-detail__title">{{ selectedChapter.title }}</h3>
             <p class="visualizer-detail__meta">
-              {{ selectedChapter.chapterId }} · 当前章节树共 {{ flattenedQuestions.length }} 道题
+              {{ selectedChapter.chapterId }} · 当前{{ isExamDocument ? '结构树' : '章节树' }}共有
+              {{ flattenedQuestions.length }} 道题
             </p>
           </div>
         </header>
@@ -94,9 +141,9 @@
         <div v-if="flattenedQuestions.length" class="visualizer-filter-panel">
           <div class="field-grid compact-grid">
             <label class="field">
-              <span>小节筛选</span>
+              <span>{{ sectionFilterLabel }}</span>
               <select v-model="selectedSectionId" class="glass-input">
-                <option value="">全部小节</option>
+                <option value="">{{ allSectionOptionLabel }}</option>
                 <option v-for="group in questionGroups" :key="group.chapterId" :value="group.chapterId">
                   {{ group.title }}（{{ group.questions.length }} 题）
                 </option>
@@ -126,12 +173,8 @@
           </div>
 
           <div class="visualizer-toolbar">
-            <span class="glass-pill is-active">
-              {{ currentQuestionIndex + 1 }}/{{ filteredQuestions.length }} 题
-            </span>
-            <span class="glass-pill">
-              {{ currentQuestionMeta?.groupTitle || '未命名小节' }}
-            </span>
+            <span class="glass-pill is-active">{{ currentQuestionIndex + 1 }}/{{ filteredQuestions.length }} 题</span>
+            <span class="glass-pill">{{ currentQuestionMeta?.groupTitle || unnamedGroupLabel }}</span>
             <button class="ghost-button" :disabled="currentQuestionIndex <= 0" @click="goPrevQuestion">
               上一题
             </button>
@@ -150,13 +193,23 @@
           :question="currentQuestionMeta.question"
           :repair-enabled="Boolean(state.visualizerServerJsonPath)"
           :repairing-target="state.visualizerRepairProcessing ? repairingTargetType : ''"
+          :question-type-options="questionTypeOptions"
+          :question-type-saving="state.visualizerQuestionTypeProcessing"
+          :attach-enabled="Boolean(state.visualizerServerJsonPath)"
+          :attach-processing="state.visualizerRepairProcessing"
+          :has-pending-images="state.visualizerRepairImageFiles.length > 0"
+          :answer-enabled="Boolean(state.visualizerServerJsonPath)"
+          :answer-processing="state.visualizerAnswerProcessing"
           @repair-math-format="handleRepairMathFormat"
+          @update-question-type="handleUpdateQuestionType"
+          @attach-images="handleAttachImages"
+          @generate-answer="handleGenerateAnswer"
         />
 
         <section v-if="currentQuestionMeta" class="subpanel visualizer-rewrite-panel">
           <div class="subpanel-head">
-            <h3>按图片重写当前题</h3>
-            <p>当前已选题目会自动带出章节、小节和题号。你只需要上传连续页图片，不用再手工记题号。</p>
+            <h3>当前题图片操作</h3>
+            <p>上传后的图片可以直接用于“补图到当前题/当前小题”，也可以直接按图片重写当前题。</p>
           </div>
 
           <div class="visualizer-rewrite-meta">
@@ -166,19 +219,13 @@
             </article>
             <article class="visualizer-rewrite-card">
               <span>自动定位</span>
-              <strong>
-                {{
-                  currentQuestionParts
-                    ? `第 ${currentQuestionParts.chapterNo} 章 / 第 ${currentQuestionParts.sectionNo} 小节 / 第 ${currentQuestionParts.questionNo} 题`
-                    : currentQuestionMeta.question.questionId
-                }}
-              </strong>
+              <strong>{{ currentQuestionLocatorText }}</strong>
             </article>
           </div>
 
           <div class="visualizer-rewrite-upload-wrap">
             <label class="file-shell visualizer-rewrite-upload">
-              <span>上传重写图片</span>
+              <span>上传图片</span>
               <input
                 type="file"
                 multiple
@@ -196,6 +243,7 @@
                   : '可选择多张连续页图片'
               }}
             </span>
+
             <button
               class="ghost-button"
               :disabled="state.visualizerRepairProcessing || !state.visualizerRepairImageFiles.length"
@@ -205,7 +253,15 @@
             </button>
           </div>
 
-          <div class="action-row">
+          <div class="action-row visualizer-rewrite-primary-actions">
+            <button
+              class="secondary-button"
+              :disabled="state.visualizerRepairProcessing || !state.visualizerRepairImageFiles.length || !state.visualizerServerJsonPath"
+              @click="handleAttachCurrentQuestion"
+            >
+              {{ state.visualizerRepairProcessing ? '处理中...' : '补图到当前题' }}
+            </button>
+
             <button
               class="primary-button"
               :disabled="state.visualizerRepairProcessing || !state.visualizerRepairImageFiles.length || !state.visualizerServerJsonPath"
@@ -270,19 +326,19 @@
 
         <div v-else-if="flattenedQuestions.length" class="empty-state">
           <strong>当前筛选条件下没有题目</strong>
-          <span>可以切换小节或清空关键词筛选。</span>
+          <span>可以切换结构筛选，或者清空关键词后再看。</span>
         </div>
 
         <div v-else class="empty-state">
-          <strong>当前章节下没有题目</strong>
-          <span>可以切换到下一级小节查看，或者检查 JSON 中 question.chapterId 是否与章节树一致。</span>
+          <strong>{{ isExamDocument ? '当前结构下没有题目' : '当前章节下没有题目' }}</strong>
+          <span>可以切换到下一级结构查看，或者检查 JSON 里的 `question.chapterId` 是否与结构树一致。</span>
         </div>
       </section>
     </div>
 
     <div v-else class="empty-state">
       <strong>还没有加载题库 JSON</strong>
-      <span>选择一个已生成的题库文件后，这里会按章节树筛选并单题展示题目和答案。</span>
+      <span>选择一个已生成的来源 JSON 后，这里会按章节树或结构树筛选并单题展示内容。</span>
     </div>
   </GlassPanel>
 </template>
@@ -292,6 +348,16 @@ import { computed, ref, watch } from 'vue'
 import GlassPanel from './GlassPanel.vue'
 import QuestionPreviewCard from './QuestionPreviewCard.vue'
 import { buildTextbookVisualizerModel, collectQuestionGroups } from '../utils/textbookVisualizer'
+
+const FALLBACK_QUESTION_TYPE_OPTIONS = [
+  { value: 'SHORT_ANSWER', label: '填空/简答题' },
+  { value: 'PROOF', label: '证明题' },
+  { value: 'CALCULATION', label: '计算题' },
+  { value: 'PROGRAMMING', label: '编程题' },
+  { value: 'SINGLE_CHOICE', label: '单选题' },
+  { value: 'MULTI_CHOICE', label: '多选题' },
+  { value: 'JUDGE', label: '判断题' },
+]
 
 const props = defineProps({
   state: {
@@ -308,6 +374,7 @@ const selectedChapterId = ref('')
 const selectedSectionId = ref('')
 const selectedQuestionKey = ref('')
 const keyword = ref('')
+const repairingTargetType = ref('')
 
 const model = computed(() => {
   if (!props.state.visualizerPayload) {
@@ -315,6 +382,30 @@ const model = computed(() => {
   }
   return buildTextbookVisualizerModel(props.state.visualizerPayload)
 })
+
+const isExamDocument = computed(() => model.value?.documentType === 'exam')
+const documentTypeLabel = computed(() => (isExamDocument.value ? '试卷' : '教材'))
+const structureCountLabel = computed(() => (isExamDocument.value ? '结构节点数' : '章节数'))
+const sidebarTitle = computed(() => (isExamDocument.value ? '结构目录' : '章节目录'))
+const detailEyebrow = computed(() => (isExamDocument.value ? 'Structure' : 'Chapter'))
+const sectionFilterLabel = computed(() => (isExamDocument.value ? '结构筛选' : '小节筛选'))
+const allSectionOptionLabel = computed(() => (isExamDocument.value ? '全部结构' : '全部小节'))
+const unnamedGroupLabel = computed(() => (isExamDocument.value ? '未命名结构' : '未命名小节'))
+const questionTypeOptions = computed(() =>
+  Array.isArray(props.state.examQuestionTypeOptions) && props.state.examQuestionTypeOptions.length
+    ? props.state.examQuestionTypeOptions
+    : FALLBACK_QUESTION_TYPE_OPTIONS,
+)
+
+const examTypeLabel = computed(() => {
+  if (!isExamDocument.value) return ''
+  const raw = String(model.value?.exam?.examType || '').trim()
+  if (raw === 'quiz') return '小测'
+  if (raw === 'final') return '期末'
+  return '期中'
+})
+
+const hasAnswerLabel = computed(() => (model.value?.source?.hasAnswer === false ? '无答案' : '有答案'))
 
 watch(
   model,
@@ -357,7 +448,7 @@ function buildQuestionSearchText(question) {
   if (question.nodeType === 'GROUP') {
     parts.push(question.stem?.text || '')
     for (const child of question.children || []) {
-      parts.push(child.questionId, child.title, child.prompt?.text || '', child.standardAnswer?.text || '')
+      parts.push(child.questionId, child.title, child.questionType, child.prompt?.text || '', child.standardAnswer?.text || '')
     }
   } else {
     parts.push(question.prompt?.text || '', question.standardAnswer?.text || '')
@@ -434,7 +525,17 @@ const currentQuestionParts = computed(() =>
   parseQuestionIdParts(currentQuestionMeta.value?.question?.questionId || ''),
 )
 
-const repairingTargetType = ref('')
+const currentQuestionLocatorText = computed(() => {
+  if (!currentQuestionMeta.value?.question) {
+    return ''
+  }
+  if (isExamDocument.value) {
+    return currentQuestionMeta.value.question.questionId
+  }
+  return currentQuestionParts.value
+    ? `第 ${currentQuestionParts.value.chapterNo} 章 / 第 ${currentQuestionParts.value.sectionNo} 小节 / 第 ${currentQuestionParts.value.questionNo} 题`
+    : currentQuestionMeta.value.question.questionId
+})
 
 function goPrevQuestion() {
   if (currentQuestionIndex.value <= 0) {
@@ -457,6 +558,32 @@ async function handleRepairMathFormat(payload) {
   } finally {
     repairingTargetType.value = ''
   }
+}
+
+async function handleUpdateQuestionType(payload) {
+  await props.actions.updateQuestionTypeFromVisualizer(payload)
+}
+
+async function handleAttachImages(payload) {
+  await props.actions.attachImagesFromVisualizer(payload)
+}
+
+async function handleGenerateAnswer(payload) {
+  await props.actions.generateAnswerFromVisualizer(payload)
+}
+
+async function handleAttachCurrentQuestion() {
+  const question = currentQuestionMeta.value?.question
+  if (!question) {
+    return
+  }
+  await props.actions.attachImagesFromVisualizer({
+    questionId: question.questionId,
+    questionTitle: question.title || question.questionId,
+    childQuestionId: '',
+    childNo: null,
+    blockLabel: question.nodeType === 'GROUP' ? '当前题干' : '当前题目',
+  })
 }
 
 async function handleRewriteQuestion() {

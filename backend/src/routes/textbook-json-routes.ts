@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { OUTPUT_JSON_DIR } from '../config'
+import { runWithArkApiKey } from '../ark-request-context'
 import {
   batchId,
   isValidTextbookPayload,
@@ -12,11 +13,17 @@ import {
 } from '../question-bank-service'
 import { mergeTextbookJsonFiles } from '../json-merge-service'
 import { repairMathFormatInTextbookJson } from '../math-format-repair-service'
+import { generateQuestionAnswerInTextbookJson } from '../question-answer-generate-service'
 import { attachImagesToQuestionInTextbookJson } from '../question-image-attach-service'
 import { repairQuestionInTextbookJson } from '../question-repair-service'
+import { updateQuestionTypeInTextbookJson } from '../question-type-update-service'
 import { upload } from '../upload'
 
 const router = Router()
+
+function getArkApiKeyFromRequest(req: Request) {
+  return String(req.header('x-ark-api-key') || '').trim()
+}
 
 router.post('/api/textbook-json/save', async (req: Request, res: Response) => {
   try {
@@ -148,6 +155,7 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
     const chapterNo = Number(req.body?.chapterNo)
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
+    const questionId = String(req.body?.questionId || '').trim()
     const sourceFileName = String(req.body?.sourceFileName || '').trim()
     const filesRaw = (req.files as Express.Multer.File[] | undefined) ?? []
     const files = filesRaw.filter((file) => /^(images?|repairImages?)$/i.test(file.fieldname))
@@ -165,15 +173,18 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
       return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
     }
 
-    const result = await repairQuestionInTextbookJson({
-      jsonFilePath,
-      chapterNo,
-      sectionNo,
-      questionNo,
-      imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
-      imageLabels: files.map((file) => file.originalname || ''),
-      sourceFileName,
-    })
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      repairQuestionInTextbookJson({
+        jsonFilePath,
+        chapterNo,
+        sectionNo,
+        questionNo,
+        questionId,
+        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageLabels: files.map((file) => file.originalname || ''),
+        sourceFileName,
+      }),
+    )
 
     return res.json(result)
   } catch (error) {
@@ -189,7 +200,9 @@ router.post('/api/textbook-json/repair-math-format', async (req: Request, res: R
     const chapterNo = Number(req.body?.chapterNo)
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
+    const questionId = String(req.body?.questionId || '').trim()
     const targetType = String(req.body?.targetType || '').trim()
+    const childQuestionId = String(req.body?.childQuestionId || '').trim()
     const childNoRaw = req.body?.childNo
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
@@ -204,15 +217,19 @@ router.post('/api/textbook-json/repair-math-format', async (req: Request, res: R
       return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
     }
 
-    const result = await repairMathFormatInTextbookJson({
-      jsonFilePath,
-      sourceFileName,
-      chapterNo,
-      sectionNo,
-      questionNo,
-      targetType: targetType as 'stem' | 'prompt' | 'standardAnswer' | 'childPrompt' | 'childStandardAnswer',
-      childNo,
-    })
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      repairMathFormatInTextbookJson({
+        jsonFilePath,
+        sourceFileName,
+        chapterNo,
+        sectionNo,
+        questionNo,
+        questionId,
+        targetType: targetType as 'stem' | 'prompt' | 'standardAnswer' | 'childPrompt' | 'childStandardAnswer',
+        childQuestionId,
+        childNo,
+      }),
+    )
 
     return res.json(result)
   } catch (error) {
@@ -228,6 +245,8 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
     const chapterNo = Number(req.body?.chapterNo)
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
+    const questionId = String(req.body?.questionId || '').trim()
+    const childQuestionId = String(req.body?.childQuestionId || '').trim()
     const childNoRaw = req.body?.childNo
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
@@ -252,6 +271,8 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
       chapterNo,
       sectionNo,
       questionNo,
+      questionId,
+      childQuestionId,
       childNo,
       files,
     })
@@ -260,6 +281,91 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Attach images failed: ${msg}` })
+  }
+})
+
+router.post('/api/textbook-json/generate-answer', async (req: Request, res: Response) => {
+  try {
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const sourceFileName = String(req.body?.sourceFileName || '').trim()
+    const questionId = String(req.body?.questionId || '').trim()
+    const childQuestionId = String(req.body?.childQuestionId || '').trim()
+    const answerPrompt = String(req.body?.answerPrompt || '').trim()
+    const childNoRaw = req.body?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+
+    if (!jsonFilePathRaw) {
+      return res.status(400).json({ message: 'jsonFilePath is required' })
+    }
+    if (!questionId) {
+      return res.status(400).json({ message: 'questionId is required' })
+    }
+
+    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const fileStat = await fsp.stat(jsonFilePath).catch(() => null)
+    if (!fileStat || !fileStat.isFile()) {
+      return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
+    }
+
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      generateQuestionAnswerInTextbookJson({
+        jsonFilePath,
+        sourceFileName,
+        questionId,
+        childQuestionId,
+        childNo,
+        answerPrompt,
+      }),
+    )
+
+    return res.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Generate answer failed: ${msg}` })
+  }
+})
+
+router.post('/api/textbook-json/update-question-type', async (req: Request, res: Response) => {
+  try {
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const sourceFileName = String(req.body?.sourceFileName || '').trim()
+    const questionId = String(req.body?.questionId || '').trim()
+    const questionType = String(req.body?.questionType || '').trim()
+    const childQuestionId = String(req.body?.childQuestionId || '').trim()
+    const childNoRaw = req.body?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+
+    if (!jsonFilePathRaw) {
+      return res.status(400).json({ message: 'jsonFilePath is required' })
+    }
+    if (!questionId) {
+      return res.status(400).json({ message: 'questionId is required' })
+    }
+    if (!questionType) {
+      return res.status(400).json({ message: 'questionType is required' })
+    }
+
+    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const fileStat = await fsp.stat(jsonFilePath).catch(() => null)
+    if (!fileStat || !fileStat.isFile()) {
+      return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
+    }
+
+    const result = await updateQuestionTypeInTextbookJson({
+      jsonFilePath,
+      sourceFileName,
+      questionId,
+      questionType,
+      childQuestionId,
+      childNo,
+    })
+
+    return res.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Update question type failed: ${msg}` })
   }
 })
 

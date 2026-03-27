@@ -2,12 +2,49 @@ import crypto from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { QUESTION_BANK_DATABASE_URL, QUESTION_BANK_DB_SCHEMA } from './config'
 import { questionBankMigrations } from './question-bank-db-migrations'
-import { isValidTextbookPayload, normalizeQuestionItem } from './question-bank-service'
+import {
+  QUESTION_TYPE_OPTIONS,
+  getPayloadAnswerHandlingMode,
+  getPayloadSourceMeta,
+  isValidTextbookPayload,
+  normalizeQuestionItem,
+  normalizeQuestionType,
+  payloadExpectsAnswer,
+} from './question-bank-service'
 import type { ChapterItem, QuestionItem, TextbookJsonPayload } from './types'
 
 type UploadedJsonSource = {
   fileName: string
   text: string
+}
+
+type QuestionTypeOption = {
+  value: string
+  label: string
+  aliases: string[]
+}
+
+type QuestionBankSearchItem = {
+  recordId: string
+  questionCode: string
+  nodeType: 'LEAF' | 'GROUP'
+  questionType: string
+  title: string
+  description: string
+  chapterId: string | null
+  chapterTitle: string | null
+  textbookId: string
+  textbookTitle: string
+  documentType: string
+  examType: string | null
+  hasAnswer: boolean | null
+  courseId: string
+  defaultScore: string
+  contentPreview: string
+}
+
+type QuestionBankTopLevelRow = QuestionBankSearchItem & {
+  rawPayloadJson: unknown
 }
 
 type ImportQuestionRow = {
@@ -38,11 +75,14 @@ type ImportSnapshot = {
   textbook: {
     id: string
     courseId: string
+    documentType: string
     externalId: string
     title: string
     subject: string
     publisher: string | null
     version: string
+    examType: string | null
+    hasAnswer: boolean | null
     createdBy: string | null
     sourceFileName: string
     rawPayloadJson: unknown
@@ -125,6 +165,70 @@ function normalizeJsonValue(value: unknown) {
   return value === undefined ? null : value
 }
 
+function compactText(value: string, maxLength = 220) {
+  const normalized = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
+}
+
+function toCompactJsonText(value: unknown, maxLength = 220) {
+  if (value == null) return ''
+  if (typeof value === 'string') {
+    return compactText(value, maxLength)
+  }
+  if (typeof value === 'object') {
+    const text =
+      typeof (value as Record<string, unknown>).text === 'string'
+        ? String((value as Record<string, unknown>).text || '')
+        : JSON.stringify(value)
+    return compactText(text, maxLength)
+  }
+  return compactText(String(value), maxLength)
+}
+
+function buildQuestionContentPreview(params: {
+  description: string
+  rawPayloadJson: unknown
+}) {
+  const payload = params.rawPayloadJson && typeof params.rawPayloadJson === 'object'
+    ? (params.rawPayloadJson as Record<string, unknown>)
+    : {}
+  const parts = [
+    params.description,
+    toCompactJsonText(payload.stem, 180),
+    toCompactJsonText(payload.prompt, 180),
+  ].filter(Boolean)
+  return compactText(parts.join(' '), 260)
+}
+
+function normalizeDocumentTypeFilter(value: unknown) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'textbook' || normalized === 'exam') {
+    return normalized
+  }
+  return ''
+}
+
+function normalizeQuestionTypeFilter(value: unknown) {
+  const normalized = normalizeQuestionType(value)
+  if (QUESTION_TYPE_OPTIONS.some((item) => item.value === normalized)) {
+    return normalized
+  }
+  return ''
+}
+
+function normalizeSearchLimit(value: unknown, fallback = 12) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.max(1, Math.min(50, Math.trunc(numeric)))
+}
+
 function toQuestionDescription(question: QuestionItem) {
   return question.nodeType === 'GROUP' ? question.stem.text : question.prompt.text
 }
@@ -187,6 +291,9 @@ function assertQuestionChapterExists(
 function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): ImportSnapshot {
   const timestamp = new Date().toISOString()
   const textbookId = crypto.randomUUID()
+  const sourceMeta = getPayloadSourceMeta(payload)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const expectAnswer = payloadExpectsAnswer(payload)
   const sortedChapters = sortChaptersForInsert(payload.chapters)
   const chapterIdMap = new Map<string, string>()
 
@@ -229,7 +336,10 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
         ? rawRecord.chapterId.trim()
         : fallbackChapterId
     const fallbackSectionTitle = chapterTitleMap.get(rawChapterId) || ''
-    const normalized = normalizeQuestionItem(rawQuestion, rawChapterId, fallbackSectionTitle)
+    const normalized = normalizeQuestionItem(rawQuestion, rawChapterId, fallbackSectionTitle, {
+      expectAnswer,
+      answerHandlingMode,
+    })
     if (!normalized) {
       continue
     }
@@ -334,14 +444,17 @@ function buildSnapshot(payload: TextbookJsonPayload, sourceFileName: string): Im
     textbook: {
       id: textbookId,
       courseId: payload.courseId,
-      externalId: payload.textbook.textbookId,
-      title: payload.textbook.title,
-      subject: payload.textbook.subject,
-      publisher: payload.textbook.publisher || null,
+      documentType: sourceMeta.documentType,
+      externalId: sourceMeta.externalId,
+      title: sourceMeta.title,
+      subject: sourceMeta.subject || '试卷',
+      publisher: sourceMeta.publisher || null,
       version: payload.version,
+      examType: sourceMeta.examType || null,
+      hasAnswer: sourceMeta.hasAnswer,
       createdBy: null,
       sourceFileName,
-      rawPayloadJson: payload.textbook,
+      rawPayloadJson: sourceMeta.rawMeta,
       createdAt: timestamp,
       updatedAt: timestamp,
     },
@@ -464,10 +577,10 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
     `
       SELECT id, created_at AS "createdAt"
       FROM ${textbookTable}
-      WHERE course_id = $1 AND external_id = $2
+      WHERE course_id = $1 AND document_type = $2 AND external_id = $3
       LIMIT 1
     `,
-    [snapshot.textbook.courseId, snapshot.textbook.externalId],
+    [snapshot.textbook.courseId, snapshot.textbook.documentType, snapshot.textbook.externalId],
   )
 
   const textbookId = existing.rows[0]?.id || snapshot.textbook.id
@@ -478,24 +591,29 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
       INSERT INTO ${textbookTable} (
         id,
         course_id,
+        document_type,
         external_id,
         title,
         subject,
         publisher,
         version,
+        exam_type,
+        has_answer,
         created_by,
         source_file_name,
         raw_payload_json,
         created_at,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::timestamptz, $12::timestamptz
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::timestamptz, $15::timestamptz
       )
-      ON CONFLICT (course_id, external_id) DO UPDATE SET
+      ON CONFLICT (course_id, document_type, external_id) DO UPDATE SET
         title = EXCLUDED.title,
         subject = EXCLUDED.subject,
         publisher = EXCLUDED.publisher,
         version = EXCLUDED.version,
+        exam_type = EXCLUDED.exam_type,
+        has_answer = EXCLUDED.has_answer,
         created_by = EXCLUDED.created_by,
         source_file_name = EXCLUDED.source_file_name,
         raw_payload_json = EXCLUDED.raw_payload_json,
@@ -504,11 +622,14 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
     [
       textbookId,
       snapshot.textbook.courseId,
+      snapshot.textbook.documentType,
       snapshot.textbook.externalId,
       snapshot.textbook.title,
       snapshot.textbook.subject,
       snapshot.textbook.publisher,
       snapshot.textbook.version,
+      snapshot.textbook.examType,
+      snapshot.textbook.hasAnswer,
       snapshot.textbook.createdBy,
       snapshot.textbook.sourceFileName,
       JSON.stringify(snapshot.textbook.rawPayloadJson),
@@ -623,9 +744,12 @@ async function upsertImportSnapshot(client: PoolClient, snapshot: ImportSnapshot
   }
 
   return {
+    documentType: snapshot.textbook.documentType,
     textbookId: snapshot.textbook.externalId,
     title: snapshot.textbook.title,
     courseId: snapshot.textbook.courseId,
+    examType: snapshot.textbook.examType,
+    hasAnswer: snapshot.textbook.hasAnswer,
     chapters: snapshot.counts.chapters,
     questionRows: snapshot.counts.questionRows,
     leafQuestions: snapshot.counts.leafQuestions,
@@ -646,9 +770,12 @@ export async function importQuestionBankJsonUploads(files: UploadedJsonSource[])
     await assertQuestionBankSchemaReady(client)
     const items: Array<{
       fileName: string
+      documentType: string
       textbookId: string
       title: string
       courseId: string
+      examType: string | null
+      hasAnswer: boolean | null
       chapters: number
       questionRows: number
       leafQuestions: number
@@ -695,6 +822,7 @@ export async function getQuestionBankDatabaseSummary() {
 
     const counts = await client.query<{
       textbookCount: string
+      examCount: string
       chapterCount: string
       textbookSchoolScopeCount: string
       questionRowCount: string
@@ -705,7 +833,8 @@ export async function getQuestionBankDatabaseSummary() {
     }>(
       `
         SELECT
-          (SELECT COUNT(*)::text FROM ${tableName('textbooks')}) AS "textbookCount",
+          (SELECT COUNT(*)::text FROM ${tableName('textbooks')} WHERE document_type = 'textbook') AS "textbookCount",
+          (SELECT COUNT(*)::text FROM ${tableName('textbooks')} WHERE document_type = 'exam') AS "examCount",
           (SELECT COUNT(*)::text FROM ${tableName('chapters')}) AS "chapterCount",
           (SELECT COUNT(*)::text FROM ${tableName('question_bank_textbook_schools')}) AS "textbookSchoolScopeCount",
           (SELECT COUNT(*)::text FROM ${tableName('assignment_questions')}) AS "questionRowCount",
@@ -719,10 +848,13 @@ export async function getQuestionBankDatabaseSummary() {
     const textbooks = await client.query<{
       courseId: string
       textbookId: string
+      documentType: string
       title: string
       subject: string
       publisher: string | null
       version: string
+      examType: string | null
+      hasAnswer: boolean | null
       sourceFileName: string
       updatedAt: string
       chapters: string
@@ -735,10 +867,13 @@ export async function getQuestionBankDatabaseSummary() {
         SELECT
           t.course_id AS "courseId",
           t.external_id AS "textbookId",
+          t.document_type AS "documentType",
           t.title,
           t.subject,
           t.publisher,
           t.version,
+          t.exam_type AS "examType",
+          t.has_answer AS "hasAnswer",
           t.source_file_name AS "sourceFileName",
           t.updated_at AS "updatedAt",
           COUNT(DISTINCT c.id)::text AS "chapters",
@@ -759,6 +894,7 @@ export async function getQuestionBankDatabaseSummary() {
       database: String(databaseMeta.rows[0]?.databaseName || ''),
       counts: {
         textbookCount: Number(counts.rows[0]?.textbookCount || 0),
+        examCount: Number(counts.rows[0]?.examCount || 0),
         chapterCount: Number(counts.rows[0]?.chapterCount || 0),
         textbookSchoolScopeCount: Number(counts.rows[0]?.textbookSchoolScopeCount || 0),
         questionRowCount: Number(counts.rows[0]?.questionRowCount || 0),
@@ -776,6 +912,235 @@ export async function getQuestionBankDatabaseSummary() {
         childQuestions: Number(row.childQuestions || 0),
       })),
     }
+  } finally {
+    client.release()
+  }
+}
+
+export function getQuestionBankQuestionTypeOptions(): QuestionTypeOption[] {
+  return QUESTION_TYPE_OPTIONS.map((item) => ({
+    value: item.value,
+    label: item.label,
+    aliases: [...item.aliases],
+  }))
+}
+
+export async function searchQuestionBankQuestions(params: {
+  query?: string
+  courseId?: string
+  textbookId?: string
+  documentType?: string
+  questionType?: string
+  limit?: number
+}) {
+  const pool = getQuestionBankPool()
+  const client = await pool.connect()
+
+  try {
+    await assertQuestionBankSchemaReady(client)
+
+    const conditions = [`q.parent_id IS NULL`, `q.status = 'ACTIVE'`]
+    const values: Array<string | number> = []
+    const query = String(params.query || '').trim()
+    if (query) {
+      values.push(`%${query}%`)
+      conditions.push(`
+        (
+          q.title ILIKE $${values.length}
+          OR q.description ILIKE $${values.length}
+          OR COALESCE(c.title, '') ILIKE $${values.length}
+          OR COALESCE(t.title, '') ILIKE $${values.length}
+        )
+      `)
+    }
+
+    const courseId = String(params.courseId || '').trim()
+    if (courseId) {
+      values.push(courseId)
+      conditions.push(`q.course_id = $${values.length}`)
+    }
+
+    const textbookId = String(params.textbookId || '').trim()
+    if (textbookId) {
+      values.push(textbookId)
+      conditions.push(`t.external_id = $${values.length}`)
+    }
+
+    const documentType = normalizeDocumentTypeFilter(params.documentType)
+    if (documentType) {
+      values.push(documentType)
+      conditions.push(`t.document_type = $${values.length}`)
+    }
+
+    const questionType = normalizeQuestionTypeFilter(params.questionType)
+    if (questionType) {
+      values.push(questionType)
+      conditions.push(`q.question_type = $${values.length}`)
+    }
+
+    if (conditions.length <= 2) {
+      throw new Error('至少提供一个检索条件，例如关键词、courseId、textbookId、documentType 或 questionType')
+    }
+
+    values.push(normalizeSearchLimit(params.limit, 12))
+    const result = await client.query<{
+      recordId: string
+      questionCode: string
+      nodeType: 'LEAF' | 'GROUP'
+      questionType: string
+      title: string
+      description: string
+      chapterId: string | null
+      chapterTitle: string | null
+      textbookId: string
+      textbookTitle: string
+      documentType: string
+      examType: string | null
+      hasAnswer: boolean | null
+      courseId: string
+      defaultScore: string
+      rawPayloadJson: unknown
+    }>(
+      `
+        SELECT
+          q.id AS "recordId",
+          q.question_code AS "questionCode",
+          q.node_type AS "nodeType",
+          q.question_type AS "questionType",
+          q.title,
+          q.description,
+          c.external_id AS "chapterId",
+          c.title AS "chapterTitle",
+          t.external_id AS "textbookId",
+          t.title AS "textbookTitle",
+          t.document_type AS "documentType",
+          t.exam_type AS "examType",
+          t.has_answer AS "hasAnswer",
+          q.course_id AS "courseId",
+          q.default_score::text AS "defaultScore",
+          q.raw_payload_json AS "rawPayloadJson"
+        FROM ${tableName('assignment_questions')} q
+        INNER JOIN ${tableName('textbooks')} t ON t.id = q.textbook_id
+        LEFT JOIN ${tableName('chapters')} c ON c.id = q.chapter_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY t.updated_at DESC, COALESCE(c.order_no, 0) ASC, q.order_no ASC NULLS LAST, q.question_code ASC
+        LIMIT $${values.length}
+      `,
+      values,
+    )
+
+    return result.rows.map((row) => ({
+      recordId: row.recordId,
+      questionCode: row.questionCode,
+      nodeType: row.nodeType,
+      questionType: row.questionType,
+      title: row.title,
+      description: row.description,
+      chapterId: row.chapterId,
+      chapterTitle: row.chapterTitle,
+      textbookId: row.textbookId,
+      textbookTitle: row.textbookTitle,
+      documentType: row.documentType,
+      examType: row.examType,
+      hasAnswer: row.hasAnswer,
+      courseId: row.courseId,
+      defaultScore: row.defaultScore,
+      contentPreview: buildQuestionContentPreview({
+        description: row.description,
+        rawPayloadJson: row.rawPayloadJson,
+      }),
+    })) as QuestionBankSearchItem[]
+  } finally {
+    client.release()
+  }
+}
+
+export async function loadQuestionBankTopLevelQuestionsByIds(recordIds: string[]) {
+  const normalizedIds = [...new Set((Array.isArray(recordIds) ? recordIds : []).map((item) => String(item || '').trim()).filter(Boolean))]
+  if (!normalizedIds.length) {
+    return [] as QuestionBankTopLevelRow[]
+  }
+
+  const pool = getQuestionBankPool()
+  const client = await pool.connect()
+
+  try {
+    await assertQuestionBankSchemaReady(client)
+    const result = await client.query<{
+      recordId: string
+      questionCode: string
+      nodeType: 'LEAF' | 'GROUP'
+      questionType: string
+      title: string
+      description: string
+      chapterId: string | null
+      chapterTitle: string | null
+      textbookId: string
+      textbookTitle: string
+      documentType: string
+      examType: string | null
+      hasAnswer: boolean | null
+      courseId: string
+      defaultScore: string
+      rawPayloadJson: unknown
+    }>(
+      `
+        SELECT
+          q.id AS "recordId",
+          q.question_code AS "questionCode",
+          q.node_type AS "nodeType",
+          q.question_type AS "questionType",
+          q.title,
+          q.description,
+          c.external_id AS "chapterId",
+          c.title AS "chapterTitle",
+          t.external_id AS "textbookId",
+          t.title AS "textbookTitle",
+          t.document_type AS "documentType",
+          t.exam_type AS "examType",
+          t.has_answer AS "hasAnswer",
+          q.course_id AS "courseId",
+          q.default_score::text AS "defaultScore",
+          q.raw_payload_json AS "rawPayloadJson"
+        FROM ${tableName('assignment_questions')} q
+        INNER JOIN ${tableName('textbooks')} t ON t.id = q.textbook_id
+        LEFT JOIN ${tableName('chapters')} c ON c.id = q.chapter_id
+        WHERE q.parent_id IS NULL
+          AND q.status = 'ACTIVE'
+          AND q.id = ANY($1::uuid[])
+      `,
+      [normalizedIds],
+    )
+
+    const byId = new Map(
+      result.rows.map((row) => [
+        row.recordId,
+        {
+          recordId: row.recordId,
+          questionCode: row.questionCode,
+          nodeType: row.nodeType,
+          questionType: row.questionType,
+          title: row.title,
+          description: row.description,
+          chapterId: row.chapterId,
+          chapterTitle: row.chapterTitle,
+          textbookId: row.textbookId,
+          textbookTitle: row.textbookTitle,
+          documentType: row.documentType,
+          examType: row.examType,
+          hasAnswer: row.hasAnswer,
+          courseId: row.courseId,
+          defaultScore: row.defaultScore,
+          contentPreview: buildQuestionContentPreview({
+            description: row.description,
+            rawPayloadJson: row.rawPayloadJson,
+          }),
+          rawPayloadJson: row.rawPayloadJson,
+        } as QuestionBankTopLevelRow,
+      ]),
+    )
+
+    return normalizedIds.map((id) => byId.get(id)).filter(Boolean) as QuestionBankTopLevelRow[]
   } finally {
     client.release()
   }

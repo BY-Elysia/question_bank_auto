@@ -3,7 +3,7 @@
     <GlassPanel
       eyebrow="Database"
       title="题库数据库导入"
-      description="这个页面按当前五张表来设计。题库 JSON 会直接写入 textbooks、chapters、assignment_questions；question_bank_textbook_schools 和 question_bank_papers 是辅助表，不会从这类 JSON 自动生成。"
+      description="这个页面按当前五张表来设计。来源 JSON 会直接写入 textbooks、chapters、assignment_questions；question_bank_textbook_schools 和 question_bank_papers 是辅助表，不会从这类 JSON 自动生成。"
       tone="berry"
     >
       <div class="db-table-grid">
@@ -23,7 +23,7 @@
       </div>
 
       <label class="file-shell">
-        <span>选择题库 JSON</span>
+        <span>选择来源 JSON</span>
         <input type="file" accept=".json,application/json" multiple @change="actions.onDbImportFilesChange" />
       </label>
 
@@ -58,10 +58,15 @@
       </p>
 
       <div v-if="state.dbImportResult?.items?.length" class="db-result-list">
-        <div v-for="item in state.dbImportResult.items" :key="`${item.fileName}_${item.textbookId}`" class="db-result-item">
+        <div v-for="item in state.dbImportResult.items" :key="`${item.fileName}_${item.documentType}_${item.textbookId}`" class="db-result-item">
           <strong>{{ item.title }}</strong>
           <span>{{ item.fileName }}</span>
-          <span>写入 textbooks 1 / chapters {{ item.chapters }} / assignment_questions {{ item.questionRows }}</span>
+          <span>
+            {{ item.documentType === 'exam' ? '试卷' : '教材' }}
+            {{ item.examType ? `· ${formatExamType(item.examType)}` : '' }}
+            {{ typeof item.hasAnswer === 'boolean' ? `· ${item.hasAnswer === false ? '无答案' : '有答案'}` : '' }}
+            · 写入 textbooks 1 / chapters {{ item.chapters }} / assignment_questions {{ item.questionRows }}
+          </span>
         </div>
       </div>
     </GlassPanel>
@@ -69,7 +74,7 @@
     <GlassPanel
       eyebrow="Schema"
       title="数据库摘要"
-      description="这里显示当前题库 schema 的导入结果，便于确认 JSON 是否已经落入新库。"
+      description="这里显示当前题库 schema 的导入结果，便于确认教材和试卷来源是否已经落入新库。"
       tone="ice"
     >
       <p v-if="state.dbSummaryStatus" class="panel-status" :class="{ 'is-error': state.dbSummaryError }">
@@ -87,6 +92,11 @@
             <span>教材</span>
             <strong>{{ state.dbSummary.counts.textbookCount }}</strong>
             <small>已导入教材数</small>
+          </article>
+          <article class="summary-stat">
+            <span>试卷</span>
+            <strong>{{ state.dbSummary.counts.examCount }}</strong>
+            <small>已导入试卷数</small>
           </article>
           <article class="summary-stat">
             <span>章节</span>
@@ -111,7 +121,7 @@
         </div>
 
         <div v-if="state.dbSummary.textbooks.length" class="db-summary-list">
-          <article v-for="item in state.dbSummary.textbooks" :key="`${item.courseId}_${item.textbookId}`" class="db-summary-item">
+          <article v-for="item in state.dbSummary.textbooks" :key="`${item.courseId}_${item.documentType}_${item.textbookId}`" class="db-summary-item">
             <div class="db-summary-item__head">
               <div>
                 <h3>{{ item.title }}</h3>
@@ -120,6 +130,9 @@
               <span class="db-summary-item__stamp">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div class="db-summary-item__metrics">
+              <span>{{ item.documentType === 'exam' ? '试卷' : '教材' }}</span>
+              <span v-if="item.examType">{{ formatExamType(item.examType) }}</span>
+              <span v-if="typeof item.hasAnswer === 'boolean'">{{ item.hasAnswer === false ? '无答案' : '有答案' }}</span>
               <span>章节 {{ item.chapters }}</span>
               <span>题目行 {{ item.questionRows }}</span>
               <span>大题 {{ item.groupQuestions }}</span>
@@ -153,13 +166,13 @@ const tableCards = computed(() => [
   {
     name: 'textbooks',
     directWrite: true,
-    description: '教材主表，保存 course_id、external_id、标题、学科、出版社等信息。',
-    count: props.state.dbSummary?.counts?.textbookCount ?? 0,
+    description: '来源文档主表，统一保存教材/试卷的 course_id、external_id、来源类型、标题和元数据。',
+    count: (props.state.dbSummary?.counts?.textbookCount ?? 0) + (props.state.dbSummary?.counts?.examCount ?? 0),
   },
   {
     name: 'chapters',
     directWrite: true,
-    description: '章节树结构，保存教材下的章、小节、父子关系与顺序。',
+    description: '结构树表，保存教材章节或试卷结构节点的父子关系与顺序。',
     count: props.state.dbSummary?.counts?.chapterCount ?? 0,
   },
   {
@@ -191,6 +204,12 @@ function formatSize(size) {
     return `${(value / 1024).toFixed(1)} KB`
   }
   return `${value} B`
+}
+
+function formatExamType(value) {
+  if (value === 'quiz') return '小测'
+  if (value === 'final') return '期末'
+  return value === 'midterm' ? '半期' : String(value || '')
 }
 
 function formatDate(value) {

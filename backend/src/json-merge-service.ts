@@ -1,7 +1,12 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { MERGED_JSON_DIR } from './config'
-import { batchId, isValidTextbookPayload, normalizeJsonFileName } from './question-bank-service'
+import {
+  batchId,
+  getPayloadSourceMeta,
+  isValidTextbookPayload,
+  normalizeJsonFileName,
+} from './question-bank-service'
 import type { ChapterItem, TextbookJsonPayload } from './types'
 
 function chapterIdentity(item: ChapterItem) {
@@ -18,11 +23,19 @@ function stableJson(value: unknown) {
 }
 
 function ensureCompatibleBase(base: TextbookJsonPayload, current: TextbookJsonPayload, fileName: string) {
+  const baseMeta = getPayloadSourceMeta(base)
+  const currentMeta = getPayloadSourceMeta(current)
   if (base.courseId !== current.courseId) {
     throw new Error(`文件 ${fileName} 的 courseId 与首个文件不一致`)
   }
-  if (base.textbook.textbookId !== current.textbook.textbookId) {
-    throw new Error(`文件 ${fileName} 的 textbookId 与首个文件不一致`)
+  if (baseMeta.documentType !== currentMeta.documentType) {
+    throw new Error(`文件 ${fileName} 的 documentType 与首个文件不一致`)
+  }
+  if (baseMeta.externalId !== currentMeta.externalId) {
+    throw new Error(`文件 ${fileName} 的来源 external_id 与首个文件不一致`)
+  }
+  if (baseMeta.hasAnswer !== currentMeta.hasAnswer) {
+    throw new Error(`文件 ${fileName} 的 hasAnswer 与首个文件不一致`)
   }
 }
 
@@ -236,10 +249,13 @@ export async function mergeTextbookJsonFiles(params: {
   })
 
   const base = parsedFiles[0].payload
+  const baseMeta = getPayloadSourceMeta(base)
   const merged: TextbookJsonPayload = {
     version: base.version,
     courseId: base.courseId,
-    textbook: { ...base.textbook },
+    documentType: baseMeta.documentType,
+    ...(base.textbook ? { textbook: { ...base.textbook } } : {}),
+    ...(base.exam ? { exam: { ...base.exam } } : {}),
     chapters: [...base.chapters],
     questions: Array.isArray(base.questions) ? [...base.questions] : [],
   }

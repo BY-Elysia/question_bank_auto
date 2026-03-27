@@ -20,10 +20,12 @@ import {
 import { getArkApiKeyOverride } from './ark-request-context'
 import { chapterSessions, questionSessions } from './state'
 import type {
+  AnswerHandlingMode,
   ChapterDetectResult,
   ChapterItem,
   ChapterSessionState,
   CombinedExtractResult,
+  DocumentType,
   LastQuestionLookaheadResult,
   QuestionBoundaryResult,
   QuestionExtractResult,
@@ -344,6 +346,44 @@ function toRubric(value: unknown): QuestionRubricItem[] {
   return normalized
 }
 
+const QUESTION_TYPE_OPTIONS = [
+  {
+    value: 'SHORT_ANSWER',
+    label: '填空/简答题',
+    aliases: ['填空题', '简答题'],
+  },
+  {
+    value: 'PROOF',
+    label: '证明题',
+    aliases: ['证明题'],
+  },
+  {
+    value: 'CALCULATION',
+    label: '计算题',
+    aliases: ['计算题', '解答题'],
+  },
+  {
+    value: 'PROGRAMMING',
+    label: '编程题',
+    aliases: ['编程题', '程序题', '代码题'],
+  },
+  {
+    value: 'SINGLE_CHOICE',
+    label: '单选题',
+    aliases: ['单选题'],
+  },
+  {
+    value: 'MULTI_CHOICE',
+    label: '多选题',
+    aliases: ['多选题'],
+  },
+  {
+    value: 'JUDGE',
+    label: '判断题',
+    aliases: ['判断题'],
+  },
+] as const
+
 function normalizeQuestionType(value: unknown) {
   const raw = String(value || '').trim()
   return raw ? raw.toUpperCase() : 'SHORT_ANSWER'
@@ -406,7 +446,15 @@ function normalizeMediaItems(media: Array<Record<string, unknown>>, questionId: 
   })
 }
 
-function toTextBlock(value: unknown, questionIdForMedia: string, isStandardAnswer = false): QuestionTextBlock {
+function toTextBlock(
+  value: unknown,
+  questionIdForMedia: string,
+  isStandardAnswer = false,
+  forceEmpty = false,
+): QuestionTextBlock {
+  if (forceEmpty) {
+    return { text: '', media: [] }
+  }
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const sourceText = typeof raw.text === 'string' ? raw.text : ''
   const text = isStandardAnswer ? sanitizeStandardAnswerText(sourceText) : sourceText
@@ -582,7 +630,26 @@ function filterQuestionItemsByRange(params: {
   }
 }
 
-function isLikelyIncompleteForQueue(item: QuestionItem) {
+function isLikelyCodeQuestionText(value: string) {
+  const text = normalizeDigits(String(value || '')).toLowerCase()
+  return /(编程|代码|程序|算法实现|写程序|编写程序|实现算法|python|java|javascript|typescript|c\+\+|c语言|matlab|sql|伪代码)/.test(text)
+}
+
+function shouldAllowBlankGeneratedAnswer(item: QuestionItem) {
+  if (item.nodeType === 'GROUP') {
+    const combined = [item.title, item.stem.text, ...item.children.map((child) => child.prompt.text)].join('\n')
+    return isLikelyCodeQuestionText(combined)
+  }
+  return isLikelyCodeQuestionText([item.title, item.prompt.text].join('\n'))
+}
+
+function isLikelyIncompleteForQueue(item: QuestionItem, expectAnswer = true, allowBlankCodeAnswer = false) {
+  if (!expectAnswer) {
+    return false
+  }
+  if (allowBlankCodeAnswer && shouldAllowBlankGeneratedAnswer(item)) {
+    return false
+  }
   if (item.nodeType === 'GROUP') {
     const answeredCount = item.children.filter((child) => child.standardAnswer.text.trim()).length
     const emptyAnsweredChildren = item.children.filter(
@@ -612,7 +679,9 @@ function isLikelyTruncatedAnswerText(text: string) {
   return /(所以|则|得|即|因此|于是|从而)$/.test(value)
 }
 
-function detectQuestionIntegrityIssue(items: QuestionItem[]) {
+function detectQuestionIntegrityIssue(items: QuestionItem[], options?: { expectAnswer?: boolean; allowBlankCodeAnswer?: boolean }) {
+  const expectAnswer = options?.expectAnswer !== false
+  const allowBlankCodeAnswer = options?.allowBlankCodeAnswer === true
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index]
     if (item.nodeType === 'GROUP') {
@@ -631,7 +700,7 @@ function detectQuestionIntegrityIssue(items: QuestionItem[]) {
           reason: `${item.title || questionDisplayKey(item)} 子题序号不连续，判定为提取不完整，继续等待重试或后续页面。`,
         }
       }
-      if (isLikelyIncompleteForQueue(item)) {
+      if (isLikelyIncompleteForQueue(item, expectAnswer, allowBlankCodeAnswer)) {
         return {
           index,
           continueKey: item.title || questionDisplayKey(item),
@@ -649,7 +718,10 @@ function detectQuestionIntegrityIssue(items: QuestionItem[]) {
       continue
     }
 
-    if (isLikelyIncompleteForQueue(item) || isLikelyTruncatedAnswerText(item.standardAnswer.text)) {
+    if (
+      isLikelyIncompleteForQueue(item, expectAnswer, allowBlankCodeAnswer)
+      || isLikelyTruncatedAnswerText(item.standardAnswer.text)
+    ) {
       return {
         index,
         continueKey: item.title || questionDisplayKey(item),
@@ -660,7 +732,16 @@ function detectQuestionIntegrityIssue(items: QuestionItem[]) {
   return null
 }
 
-function detectQuestionEmptyAnswerIssue(item: QuestionItem) {
+function detectQuestionEmptyAnswerIssue(
+  item: QuestionItem,
+  options?: { expectAnswer?: boolean; allowBlankCodeAnswer?: boolean },
+) {
+  if (options?.expectAnswer === false) {
+    return ''
+  }
+  if (options?.allowBlankCodeAnswer === true && shouldAllowBlankGeneratedAnswer(item)) {
+    return ''
+  }
   const displayKey = item.title || questionDisplayKey(item)
   if (item.nodeType === 'GROUP') {
     if (!item.children.length) {
@@ -683,8 +764,9 @@ function detectQuestionEmptyAnswerIssue(item: QuestionItem) {
   return ''
 }
 
-function trimLikelyIncompleteTail(items: QuestionItem[]) {
-  const cutIndex = items.findIndex((item) => isLikelyIncompleteForQueue(item))
+function trimLikelyIncompleteTail(items: QuestionItem[], options?: { expectAnswer?: boolean }) {
+  const expectAnswer = options?.expectAnswer !== false
+  const cutIndex = items.findIndex((item) => isLikelyIncompleteForQueue(item, expectAnswer))
   if (cutIndex === -1) {
     return null
   }
@@ -789,28 +871,71 @@ function numberInstructionLines(startNo: number, lines: string[]) {
   return lines.map((line, index) => `${startNo + index}) ${line}`)
 }
 
-function buildSharedQuestionContentRuleLines(startNo: number, resultFieldName = 'questionsToUpsert') {
-  return numberInstructionLines(startNo, [
+function resolveAnswerHandlingMode(
+  value: boolean | AnswerHandlingMode | undefined,
+  fallback: AnswerHandlingMode = 'extract_visible',
+): AnswerHandlingMode {
+  if (value === 'extract_visible' || value === 'leave_empty' || value === 'generate_brief') {
+    return value
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'extract_visible' : 'leave_empty'
+  }
+  return fallback
+}
+
+function buildSharedQuestionContentRuleLines(
+  startNo: number,
+  resultFieldName = 'questionsToUpsert',
+  answerHandlingMode: boolean | AnswerHandlingMode = 'extract_visible',
+) {
+  const mode = resolveAnswerHandlingMode(answerHandlingMode)
+  const lines = [
     'GROUP 类型如有公共题干，必须写入 stem.text；不能漏掉，也不能把公共题干塞进 children.prompt，不能把小题的题目写入stem.text。',
     'GROUP.children 的 prompt.text 不要保留“(1)”“（2）”这类前缀编号；编号只用于 orderNo/子题顺序。',
     '长题必须完整覆盖所有可见小问；禁止只输出前几个和最后一个，中间大量缺失。',
-    '如果某道长题的小问序号明显断档、或最后一个答案只写了一半，就不要把这道题当成完整题输出。',
+    mode === 'generate_brief'
+      ? '如果某道长题的小问序号明显断档，就不要把这道题误判成已经完整收齐的小问结构。'
+      : '如果某道长题的小问序号明显断档、或最后一个答案只写了一半，就不要把这道题当成完整题输出。',
     `如果本次可见范围里有完整题号与题干，${resultFieldName} 不得为空。`,
     '题号按图片上显示的题号。',
     'questionId 必须以 q_ 开头，格式示例: q_9_3_1, q_9_3_1_2。',
     'chapterId 必须以 ch_ 开头，questionId 与 chapterId 前缀不可混用。',
     '不确定字符用【待校对】替代，禁止猜测。',
-    'prompt.text 与 standardAnswer.text 必须逐字贴近图片原文，不得总结改写，不得补充推导。',
-    '不得根据常识、公式套路或上下文自行补充图片中不可见的答案；课本没显示出来的内容不能自己续写。',
-    'standardAnswer 必须保留与答案相关的课本上有的推导/证明过程，不能编撰不存在的过程，删除思路探索、归纳总结、方法拓展等无关内容。',
-  ])
+  ]
+
+  if (mode === 'generate_brief') {
+    lines.push(
+      'prompt.text 必须逐字贴近图片原文，不得总结改写，不得补充题干。',
+      '本次文档无现成答案，standardAnswer.text 需要根据题目自行生成，不要伪装成图片原文。',
+      '生成答案时只保留必要结论、关键步骤或核心理由，内容必须适量；不要写成长篇讲义、题外拓展、多个解法对比。',
+      '若题目要求编程、写代码、设计算法实现或输出程序，standardAnswer.text="" 且 standardAnswer.media=[].',
+    )
+  } else if (mode === 'leave_empty') {
+    lines.push(
+      'prompt.text 必须逐字贴近图片原文，不得总结改写，不得补充推导。',
+      '本次文档无可提取答案，不得自行作答；所有 standardAnswer 字段保持空字符串与空 media。',
+      '即使题目看起来可以根据常识求解，也不能补写图片中不存在的答案。',
+    )
+  } else {
+    lines.push(
+      'prompt.text 与 standardAnswer.text 必须逐字贴近图片原文，不得总结改写，不得补充推导。',
+      '不得根据常识、公式套路或上下文自行补充图片中不可见的答案；课本没显示出来的内容不能自己续写。',
+      'standardAnswer 必须保留与答案相关的课本上有的推导/证明过程，不能编撰不存在的过程，删除思路探索、归纳总结、方法拓展等无关内容。',
+    )
+  }
+
+  return numberInstructionLines(startNo, lines)
 }
 
-function buildSharedQuestionStructureInstructionLines() {
-  return [
+function buildSharedQuestionStructureInstructionLines(
+  answerHandlingMode: boolean | AnswerHandlingMode = 'extract_visible',
+) {
+  const mode = resolveAnswerHandlingMode(answerHandlingMode)
+  const lines = [
     '题目对象必须是 LEAF 或 GROUP 两种之一。',
-    'questionType 只能取: PROOF, CALCULATION, SHORT_ANSWER, SINGLE_CHOICE, MULTI_CHOICE, JUDGE。',
-    'questionType 映射规则: 含“证明”=>PROOF；含“求/解/计算”=>CALCULATION；明确单选=>SINGLE_CHOICE；明确多选=>MULTI_CHOICE；明确判断=>JUDGE；无法判断=>SHORT_ANSWER。',
+    'questionType 只能取: PROOF, CALCULATION, PROGRAMMING, SHORT_ANSWER, SINGLE_CHOICE, MULTI_CHOICE, JUDGE。',
+    'questionType 映射规则: 含“证明”=>PROOF；含“编程/程序/代码”=>PROGRAMMING；含“求/解/计算”=>CALCULATION；明确单选=>SINGLE_CHOICE；明确多选=>MULTI_CHOICE；明确判断=>JUDGE；无法判断=>SHORT_ANSWER。',
     'LEAF 必填字段:',
     '- questionId, chapterId, nodeType("LEAF"), questionType, title, prompt, standardAnswer, defaultScore, rubric',
     'GROUP 必填字段:',
@@ -831,8 +956,15 @@ function buildSharedQuestionStructureInstructionLines() {
     'rubric 条数必须为 2-4 条；rubricItemKey 必须连续 key_1,key_2,...；criteria 不得为空字符串。',
     'rubric 每条 maxScore 必须为正数，所有 maxScore 总和必须等于 10。',
     '每题 defaultScore 固定 10，且 rubric 所有 maxScore 之和必须等于 10。',
-    '若图片中未给出标准答案: standardAnswer.text="" 且 standardAnswer.media=[].',
   ]
+  lines.push(
+    mode === 'generate_brief'
+      ? '本次文档无现成答案，standardAnswer 必须基于题目自行生成简洁适量的标准答案，并继续遵守 Markdown/LaTeX/TextBlock 结构；若题目是编程/写代码题，则 standardAnswer.text="" 且 standardAnswer.media=[].'
+      : mode === 'leave_empty'
+        ? '本次文档不提供答案，所有 standardAnswer 字段必须保留，但统一返回 standardAnswer.text="" 且 standardAnswer.media=[].'
+        : '若图片中未给出标准答案: standardAnswer.text="" 且 standardAnswer.media=[].',
+  )
+  return lines
 }
 
 function findChapterByTitle(payload: TextbookJsonPayload, chapterTitle: string) {
@@ -909,9 +1041,22 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
   })
 }
 
-function normalizeQuestionItem(rawQuestion: unknown, fallbackChapterId: string, fallbackSectionTitle: string): QuestionItem | null {
+function normalizeQuestionItem(
+  rawQuestion: unknown,
+  fallbackChapterId: string,
+  fallbackSectionTitle: string,
+  options?: {
+    expectAnswer?: boolean
+    answerHandlingMode?: boolean | AnswerHandlingMode
+  },
+): QuestionItem | null {
   if (!rawQuestion || typeof rawQuestion !== 'object') return null
   const source = rawQuestion as Record<string, unknown>
+  const answerHandlingMode = resolveAnswerHandlingMode(
+    options?.answerHandlingMode,
+    options?.expectAnswer !== false ? 'extract_visible' : 'leave_empty',
+  )
+  const forceEmptyAnswer = answerHandlingMode === 'leave_empty'
 
   const nodeTypeRaw = String(source.nodeType || 'LEAF').trim().toUpperCase()
   const nodeType = nodeTypeRaw === 'GROUP' ? 'GROUP' : 'LEAF'
@@ -954,7 +1099,7 @@ function normalizeQuestionItem(rawQuestion: unknown, fallbackChapterId: string, 
           questionType: normalizeQuestionType(row.questionType),
           chapterId: chapterId,
           prompt: toTextBlock(row.prompt, childQuestionId, false),
-          standardAnswer: toTextBlock(row.standardAnswer, childQuestionId, true),
+          standardAnswer: toTextBlock(row.standardAnswer, childQuestionId, true, forceEmptyAnswer),
           defaultScore: Number(row.defaultScore) || 10,
           rubric: toRubric(row.rubric),
         } as QuestionGroupChild
@@ -993,7 +1138,7 @@ function normalizeQuestionItem(rawQuestion: unknown, fallbackChapterId: string, 
     questionType,
     title: canonicalTitle,
     prompt,
-    standardAnswer: toTextBlock(source.standardAnswer, questionId, true),
+    standardAnswer: toTextBlock(source.standardAnswer, questionId, true, forceEmptyAnswer),
     defaultScore: Number(source.defaultScore) || 10,
     rubric: toRubric(source.rubric),
   }
@@ -1103,17 +1248,81 @@ function normalizeJsonFileName(fileName: string) {
   return finalName.toLowerCase().endsWith('.json') ? finalName : `${finalName}.json`
 }
 
+function getPayloadDocumentType(payload: unknown): DocumentType {
+  const data = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  if (String(data.documentType || '').trim().toLowerCase() === 'exam') {
+    return 'exam'
+  }
+  if (data.exam && typeof data.exam === 'object') {
+    return 'exam'
+  }
+  return 'textbook'
+}
+
+function getPayloadSourceMeta(payload: TextbookJsonPayload) {
+  const documentType = getPayloadDocumentType(payload)
+  if (documentType === 'exam') {
+    const exam = payload.exam && typeof payload.exam === 'object' ? payload.exam : null
+    return {
+      documentType,
+      externalId: String(exam?.examId || '').trim(),
+      title: String(exam?.title || '').trim(),
+      subject: String(exam?.subject || '').trim(),
+      publisher: '',
+      examType: String(exam?.examType || '').trim(),
+      hasAnswer: exam?.hasAnswer !== false,
+      rawMeta: exam,
+    }
+  }
+
+  const textbook = payload.textbook && typeof payload.textbook === 'object' ? payload.textbook : null
+  return {
+    documentType,
+    externalId: String(textbook?.textbookId || '').trim(),
+    title: String(textbook?.title || '').trim(),
+    subject: String(textbook?.subject || '').trim(),
+    publisher: String(textbook?.publisher || '').trim(),
+    examType: '',
+    hasAnswer: textbook?.hasAnswer !== false,
+    rawMeta: textbook,
+  }
+}
+
+function getPayloadAnswerHandlingMode(payload: TextbookJsonPayload): AnswerHandlingMode {
+  const sourceMeta = getPayloadSourceMeta(payload)
+  if (sourceMeta.documentType === 'exam') {
+    return sourceMeta.hasAnswer ? 'extract_visible' : 'leave_empty'
+  }
+  return sourceMeta.hasAnswer ? 'extract_visible' : 'generate_brief'
+}
+
+function payloadExpectsAnswer(payload: TextbookJsonPayload) {
+  return getPayloadAnswerHandlingMode(payload) !== 'leave_empty'
+}
+
 function isValidTextbookPayload(payload: unknown) {
   if (!payload || typeof payload !== 'object') return false
   const data = payload as Record<string, unknown>
   if (typeof data.version !== 'string' || !data.version.trim()) return false
   if (typeof data.courseId !== 'string' || !data.courseId.trim()) return false
-  if (!data.textbook || typeof data.textbook !== 'object') return false
-  const textbook = data.textbook as Record<string, unknown>
-  if (typeof textbook.textbookId !== 'string' || !textbook.textbookId.trim()) return false
-  if (typeof textbook.title !== 'string') return false
-  if (typeof textbook.publisher !== 'string') return false
-  if (typeof textbook.subject !== 'string') return false
+  const documentType = getPayloadDocumentType(data)
+  if (documentType === 'exam') {
+    if (!data.exam || typeof data.exam !== 'object') return false
+    const exam = data.exam as Record<string, unknown>
+    if (typeof exam.examId !== 'string' || !exam.examId.trim()) return false
+    if (typeof exam.title !== 'string') return false
+    if (typeof exam.subject !== 'string') return false
+    if (!['quiz', 'midterm', 'final'].includes(String(exam.examType || '').trim())) return false
+    if (typeof exam.hasAnswer !== 'boolean') return false
+  } else {
+    if (!data.textbook || typeof data.textbook !== 'object') return false
+    const textbook = data.textbook as Record<string, unknown>
+    if (typeof textbook.textbookId !== 'string' || !textbook.textbookId.trim()) return false
+    if (typeof textbook.title !== 'string') return false
+    if (typeof textbook.publisher !== 'string') return false
+    if (typeof textbook.subject !== 'string') return false
+    if (textbook.hasAnswer !== undefined && typeof textbook.hasAnswer !== 'boolean') return false
+  }
   if (!Array.isArray(data.chapters)) return false
   if (!Array.isArray(data.questions)) return false
   return true
@@ -1128,7 +1337,29 @@ async function loadTextbookJson(filePath: string): Promise<TextbookJsonPayload> 
   return parsed as TextbookJsonPayload
 }
 
+function stripMediaCaptionsDeep(value: unknown) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => stripMediaCaptionsDeep(item))
+    return
+  }
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  const record = value as Record<string, unknown>
+  if (Array.isArray(record.media)) {
+    record.media.forEach((item) => {
+      if (item && typeof item === 'object' && 'caption' in item) {
+        ;(item as Record<string, unknown>).caption = ''
+      }
+    })
+  }
+
+  Object.values(record).forEach((item) => stripMediaCaptionsDeep(item))
+}
+
 async function saveTextbookJson(filePath: string, payload: TextbookJsonPayload) {
+  stripMediaCaptionsDeep(payload)
   const text = `${JSON.stringify(payload, null, 2)}\n`
   await fsp.writeFile(filePath, text, { encoding: 'utf8' })
 }
@@ -1575,6 +1806,10 @@ async function detectChapterAndQuestionsByDoubao(params: {
   processingStartQuestionKey?: string | null
   extractEndBeforeQuestionKey?: string | null
   retryHint?: string
+  answerHandlingMode?: boolean | AnswerHandlingMode
+  questionSelectionMode?: 'complete_only' | 'all_visible'
+  fixedChapterSection?: boolean
+  allowLargeImageBatch?: boolean
 }): Promise<CombinedExtractResult> {
   const {
     imageDataUrls,
@@ -1586,12 +1821,16 @@ async function detectChapterAndQuestionsByDoubao(params: {
     processingStartQuestionKey = null,
     extractEndBeforeQuestionKey = null,
     retryHint,
+    answerHandlingMode = 'extract_visible',
+    questionSelectionMode = 'complete_only',
+    fixedChapterSection = false,
+    allowLargeImageBatch = false,
   } = params
 
   if (!getEffectiveArkApiKey()) {
     throw new Error('ARK_API_KEY is missing')
   }
-  if (mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
+  if (!allowLargeImageBatch && mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
     throw new Error(
       `cross_page_merge requires 2-${MAX_PENDING_QUEUE_PAGES} images, got ${imageDataUrls.length}`,
     )
@@ -1609,23 +1848,43 @@ async function detectChapterAndQuestionsByDoubao(params: {
     `{ "startQuestionKey": ${JSON.stringify(processingStartQuestionKey || null)}, "endBeforeQuestionKey": ${JSON.stringify(extractEndBeforeQuestionKey || null)} }`,
     retryHint ? `重试提示: ${retryHint}` : '',
     '章节规则:',
-    '1) 默认按当前章标题和当前小节标题编号。',
-    '2) 章节/小节切换只按输入队列的最后一页判断；前面的页只用于补题。',
-    '3) 最后一页未出现新章节/小节标题，则 chapterTitle/sectionTitle 返回 null。',
-    '4) 最后一页上半仍属当前小节、下半才切到新小节时，切换前题目保持当前小节编号，切换后题目改用新小节编号，并返回 switchSectionTitle。',
-    '5) 最后一页中途切到新章节或新小节时，切换点之后题目改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
-    '6) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
-    '7) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
+    ...(fixedChapterSection
+      ? [
+          '1) 本次章标题和小节标题完全以用户给定值为准，禁止根据图片自行切换章节或小节。',
+          '2) 所有题目的 chapterId 都必须固定使用当前小节 chapterId。',
+          '3) chapter.chapterTitle、chapter.sectionTitle、chapter.switchSectionTitle 一律返回 null。',
+        ]
+      : [
+          '1) 默认按当前章标题和当前小节标题编号。',
+          '2) 章节/小节切换只按输入队列的最后一页判断；前面的页只用于补题。',
+          '3) 最后一页未出现新章节/小节标题，则 chapterTitle/sectionTitle 返回 null。',
+          '4) 最后一页上半仍属当前小节、下半才切到新小节时，切换前题目保持当前小节编号，切换后题目改用新小节编号，并返回 switchSectionTitle。',
+          '5) 最后一页中途切到新章节或新小节时，切换点之后题目改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
+          '6) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
+          '7) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
+        ]),
     '题目规则:',
-    '1) 只提取给定范围内在图片上完整可见的顶层大题；未完整显示的题不要输出。',
+    questionSelectionMode === 'all_visible'
+      ? '1) 本次为无答案教材单页直提，不做跨页完整性判断；当前页出现的所有习题都要提取。若题目在页首或页尾被截断，也按当前页可见内容输出，不要等待下一页。'
+      : '1) 只提取给定范围内在图片上完整可见的顶层大题；未完整显示的题不要输出。',
     '2) startQuestionKey=null 时，从队列第一页实际出现的第一个顶层大题开始。',
     '3) endBeforeQuestionKey!=null 时，只提取到该题之前；该题本身严禁输出。',
     '4) endBeforeQuestionKey=null 时，必须提取从 startQuestionKey 开始到当前队列末尾之间所有完整顶层大题；绝不能自行制造新的截止题号，也绝不能只提取起点题。',
     '5) startQuestionKey 与 endBeforeQuestionKey 指向同一道题时，不表示空范围；表示当前正在续这道题。若它在当前队列里已完整结束，就输出它；否则不要输出。',
     '6) 典型场景：起点=第2题，截止=第4题，当前队列里第2题已完整、后面第3题完整 => 必须同时输出第2题和第3题，不输出第4题。',
     '7) 典型场景：起点=第6题，截止=null，当前队列里第6题已完整、后面第7题完整 => 必须同时输出第6题和第7题。',
-    ...buildSharedQuestionContentRuleLines(8),
-    ...buildSharedQuestionStructureInstructionLines(),
+    questionSelectionMode === 'all_visible'
+      ? '8) 因为本次答案需要由模型生成，所以不要再根据答案是否跨页来决定是否丢题；题干以当前页可见内容为准。'
+      : '',
+    questionSelectionMode === 'all_visible'
+      ? '9) 本次单页直提时，如与通用“完整性”约束冲突，以“当前页所有习题都要提取”为准。'
+      : '',
+    ...buildSharedQuestionContentRuleLines(
+      questionSelectionMode === 'all_visible' ? 10 : 8,
+      'questionsToUpsert',
+      answerHandlingMode,
+    ),
+    ...buildSharedQuestionStructureInstructionLines(answerHandlingMode),
     '严格输出 JSON（不要 markdown，不要解释）：',
     '{',
     '  "chapter": {',
@@ -1900,6 +2159,136 @@ async function detectQuestionsByDoubao(params: {
   return combined.question
 }
 
+async function appendChapterSegmentFromImages(params: {
+  jsonFilePath: string
+  chapterTitle: string
+  sectionTitle: string
+  imageDataUrls: string[]
+  imageLabels?: string[]
+}) {
+  const {
+    jsonFilePath,
+    chapterTitle,
+    sectionTitle,
+    imageDataUrls,
+    imageLabels = [],
+  } = params
+
+  const payload = await loadTextbookJson(jsonFilePath)
+  const normalizedChapterTitle = normalizeTitle(chapterTitle)
+  const normalizedSectionTitle = normalizeTitle(sectionTitle)
+  const chapter = ensureTopChapter(payload, normalizedChapterTitle)
+  const section = ensureSectionChapter(payload, chapter.chapterId, normalizedSectionTitle)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const questionSelectionMode = answerHandlingMode === 'generate_brief' ? 'all_visible' : 'complete_only'
+  const mode: 'single_page' | 'cross_page_merge' = imageDataUrls.length > 1 ? 'cross_page_merge' : 'single_page'
+
+  const extractDetect = await detectChapterAndQuestionsByDoubao({
+    imageDataUrls,
+    currentChapterTitle: normalizedChapterTitle,
+    currentSectionTitle: normalizedSectionTitle,
+    currentSectionChapterId: section.chapterId,
+    afterSwitchMode: false,
+    mode,
+    answerHandlingMode,
+    questionSelectionMode,
+    fixedChapterSection: true,
+    allowLargeImageBatch: true,
+  })
+
+  const rawQuestions = Array.isArray(extractDetect.question.questionsToUpsert)
+    ? extractDetect.question.questionsToUpsert
+    : []
+  if (!rawQuestions.length) {
+    throw new Error(extractDetect.question.reason || '当前片段没有提取到可写入的题目')
+  }
+
+  let normalizedQuestions = rawQuestions
+    .map((item) =>
+      normalizeQuestionItem(item, section.chapterId, normalizedSectionTitle, {
+        answerHandlingMode,
+      }),
+    )
+    .filter(Boolean) as QuestionItem[]
+  normalizedQuestions = rewriteQuestionTitlesByResolvedChapter(payload, normalizedQuestions)
+
+  const pendingReviewLogs = collectPendingReviewLogs(normalizedQuestions)
+  upsertQuestionsById(payload, normalizedQuestions)
+  await appendPendingReviewLogs('manual_segment', pendingReviewLogs)
+  await saveTextbookJson(jsonFilePath, payload)
+
+  return {
+    message: 'success',
+    jsonFilePath,
+    currentChapterTitle: normalizedChapterTitle,
+    currentSectionTitle: normalizedSectionTitle,
+    currentSectionChapterId: section.chapterId,
+    chaptersCount: payload.chapters.length,
+    questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+    question: {
+      pending: false,
+      reason: extractDetect.question.reason || '',
+      processingStartQuestionKey: null,
+      nextStartQuestionKey: null,
+      pendingPagesCount: 0,
+      pendingPageLabels: [],
+      upsertedCount: normalizedQuestions.length,
+      pendingReviewCount: pendingReviewLogs.length,
+      droppedPendingQuestionCount: 0,
+      boundaryHasExtractableQuestions: rawQuestions.length > 0,
+      boundaryNeedNextPage: false,
+      boundaryContinueQuestionKey: null,
+      boundaryLookaheadLabel: null,
+      boundaryLookaheadReason: '手工分段模式按整段图片一次处理，不做预读判断。',
+      boundaryReason: '手工分段模式固定章/小节并按整段图片一次提取。',
+      extractReason: extractDetect.question.reason || '',
+      retryExtractReason: '',
+      integrityRetryReason: '',
+      rangeRetryReason: '',
+      extractReturnedCount: rawQuestions.length,
+      normalizedCount: normalizedQuestions.length,
+      sessionStoredProcessingStartQuestionKey: null,
+      sessionStoredPendingContinueQuestionKey: null,
+      effectiveProcessingStartQuestionKey: null,
+      effectiveExtractEndBeforeQuestionKey: null,
+      effectiveExtractMode: 'manual_segment',
+      integrityFixRetried: false,
+      pendingReviewFixRetried: false,
+      rangeFixRetried: false,
+      rangeMismatchBlocked: false,
+      rawText: extractDetect.question.rawText,
+      retried: false,
+    },
+    segment: {
+      chapterTitle: normalizedChapterTitle,
+      sectionTitle: normalizedSectionTitle,
+      imageCount: imageDataUrls.length,
+      imageLabels: imageLabels.filter((item) => typeof item === 'string' && item.trim()),
+      upsertedCount: normalizedQuestions.length,
+    },
+    passLogs: [
+      {
+        pass: 1,
+        chapterTitle: normalizedChapterTitle,
+        sectionTitle: normalizedSectionTitle,
+        switched: false,
+        needReprocessSameImage: false,
+        reason: '手工分段模式固定章节与小节',
+        question: {
+          mode: 'manual_segment',
+          pending: false,
+          reason: extractDetect.question.reason || '',
+          upsertedCount: normalizedQuestions.length,
+          extractReturnedCount: rawQuestions.length,
+          normalizedCount: normalizedQuestions.length,
+          imageCount: imageDataUrls.length,
+          imageLabels: imageLabels.filter((item) => typeof item === 'string' && item.trim()),
+        },
+      },
+    ],
+  }
+}
+
 async function processChapterSessionImage(params: {
   sessionId: string
   imageDataUrl: string
@@ -1955,6 +2344,168 @@ async function processChapterSessionImage(params: {
     pendingUpsertedCount: 0,
     updatedAt: new Date().toISOString(),
   }
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
+  const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
+  const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
+
+  if (answerHandlingMode === 'generate_brief') {
+    const extractDetect = await detectChapterAndQuestionsByDoubao({
+      imageDataUrls: [imageDataUrl],
+      currentChapterTitle: activeChapterTitle,
+      currentSectionTitle: activeSectionTitle,
+      currentSectionChapterId: activeSectionChapterId,
+      afterSwitchMode: false,
+      mode: 'single_page',
+      answerHandlingMode,
+      questionSelectionMode: 'all_visible',
+    })
+
+    let chapterTitle = extractDetect.chapter.chapterTitle || activeChapterTitle
+    let sectionTitle = extractDetect.chapter.sectionTitle || activeSectionTitle
+    const switchSectionTitle = extractDetect.chapter.switchSectionTitle
+    let chapter = ensureTopChapter(payload, chapterTitle)
+    let section = ensureSectionChapter(payload, chapter.chapterId, sectionTitle)
+    activeChapterTitle = chapterTitle
+    activeSectionTitle = sectionTitle
+    activeSectionChapterId = section.chapterId
+
+    let switched = false
+    if (switchSectionTitle && normalizeTitle(switchSectionTitle) !== normalizeTitle(activeSectionTitle)) {
+      const switchedSection = ensureSectionChapter(payload, chapter.chapterId, switchSectionTitle)
+      activeSectionTitle = normalizeTitle(switchSectionTitle)
+      activeSectionChapterId = switchedSection.chapterId
+      switched = true
+    }
+
+    const rawQuestions = Array.isArray(extractDetect.question.questionsToUpsert)
+      ? extractDetect.question.questionsToUpsert
+      : []
+    let normalizedQuestions = rawQuestions
+      .map((item) =>
+        normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+          answerHandlingMode,
+        }),
+      )
+      .filter(Boolean) as QuestionItem[]
+    normalizedQuestions = rewriteQuestionTitlesByResolvedChapter(payload, normalizedQuestions)
+
+    const pendingReviewLogs = collectPendingReviewLogs(normalizedQuestions)
+    upsertQuestionsById(payload, normalizedQuestions)
+    await appendPendingReviewLogs(sessionId, pendingReviewLogs)
+
+    questionSession.currentChapterTitle = activeChapterTitle
+    questionSession.currentSectionTitle = activeSectionTitle
+    questionSession.currentSectionChapterId = activeSectionChapterId
+    questionSession.pendingPageDataUrls = []
+    questionSession.pendingPageLabels = []
+    questionSession.pendingContinueQuestionKey = null
+    questionSession.processingStartQuestionKey = null
+    questionSession.pendingReason = null
+    questionSession.pendingUpsertedCount = 0
+
+    passLogs.push({
+      pass: 1,
+      chapterTitle: activeChapterTitle,
+      sectionTitle,
+      switchSectionTitle: switchSectionTitle ?? null,
+      switched,
+      needReprocessSameImage: false,
+      reason: extractDetect.chapter.reason,
+      question: {
+        mode: 'single_page_no_answer_direct',
+        pending: false,
+        reason: extractDetect.question.reason,
+        processingStartQuestionKey: null,
+        nextStartQuestionKey: null,
+        continueQuestionKey: null,
+        upsertedCount: normalizedQuestions.length,
+        pendingReviewCount: pendingReviewLogs.length,
+        droppedPendingQuestionCount: 0,
+        pendingPageLabels: [],
+        boundaryHasExtractableQuestions: rawQuestions.length > 0,
+        boundaryNeedNextPage: false,
+        boundaryContinueQuestionKey: null,
+        boundaryLookaheadLabel: null,
+        boundaryLookaheadReason: '无答案教材跳过预读判断，直接按当前页提取所有习题。',
+        boundaryReason: '无答案教材跳过跨页边界判断，直接按当前页提取所有习题。',
+        extractReason: extractDetect.question.reason,
+        retryExtractReason: '',
+        integrityRetryReason: '',
+        rangeRetryReason: '',
+        extractReturnedCount: rawQuestions.length,
+        normalizedCount: normalizedQuestions.length,
+        sessionStoredProcessingStartQuestionKey,
+        sessionStoredPendingContinueQuestionKey,
+        effectiveProcessingStartQuestionKey: null,
+        effectiveExtractEndBeforeQuestionKey: null,
+        effectiveExtractMode: 'single_page_no_answer_direct',
+        integrityFixRetried: false,
+        pendingReviewFixRetried: false,
+        rangeFixRetried: false,
+        rangeMismatchBlocked: false,
+        rawText: extractDetect.question.rawText,
+        retried: false,
+      },
+    })
+
+    const activeTopChapter = ensureTopChapter(payload, activeChapterTitle)
+    const activeSection = ensureSectionChapter(payload, activeTopChapter.chapterId, activeSectionTitle)
+
+    await saveTextbookJson(session.jsonFilePath, payload)
+    session.currentChapterTitle = activeChapterTitle
+    session.currentSectionTitle = activeSectionTitle
+    session.updatedAt = new Date().toISOString()
+    chapterSessions.set(sessionId, session)
+    questionSession.updatedAt = new Date().toISOString()
+    questionSessions.set(sessionId, questionSession)
+
+    return {
+      message: 'success',
+      sessionId,
+      jsonFilePath: session.jsonFilePath,
+      currentChapterTitle: session.currentChapterTitle,
+      currentSectionTitle: session.currentSectionTitle,
+      currentSectionChapterId: activeSection.chapterId,
+      chaptersCount: payload.chapters.length,
+      questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+      passLogs,
+      question: {
+        pending: false,
+        reason: extractDetect.question.reason,
+        processingStartQuestionKey: null,
+        nextStartQuestionKey: null,
+        pendingPagesCount: 0,
+        pendingPageLabels: [],
+        upsertedCount: normalizedQuestions.length,
+        pendingReviewCount: pendingReviewLogs.length,
+        droppedPendingQuestionCount: 0,
+        boundaryHasExtractableQuestions: rawQuestions.length > 0,
+        boundaryNeedNextPage: false,
+        boundaryContinueQuestionKey: null,
+        boundaryLookaheadLabel: null,
+        boundaryLookaheadReason: '无答案教材跳过预读判断，直接按当前页提取所有习题。',
+        boundaryReason: '无答案教材跳过跨页边界判断，直接按当前页提取所有习题。',
+        extractReason: extractDetect.question.reason,
+        retryExtractReason: '',
+        integrityRetryReason: '',
+        rangeRetryReason: '',
+        extractReturnedCount: rawQuestions.length,
+        normalizedCount: normalizedQuestions.length,
+        sessionStoredProcessingStartQuestionKey,
+        sessionStoredPendingContinueQuestionKey,
+        effectiveProcessingStartQuestionKey: null,
+        effectiveExtractEndBeforeQuestionKey: null,
+        effectiveExtractMode: 'single_page_no_answer_direct',
+        integrityFixRetried: false,
+        pendingReviewFixRetried: false,
+        rangeFixRetried: false,
+        rangeMismatchBlocked: false,
+        questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+        rawText: extractDetect.question.rawText,
+        retried: false,
+      },
+    }
+  }
 
   let pendingPageDataUrls = Array.isArray(questionSession.pendingPageDataUrls)
     ? questionSession.pendingPageDataUrls.filter((item) => typeof item === 'string' && item.trim())
@@ -1966,8 +2517,6 @@ async function processChapterSessionImage(params: {
     pendingPageDataUrls = pendingPageDataUrls.slice(-(MAX_PENDING_QUEUE_PAGES - 1))
     pendingPageLabels = pendingPageLabels.slice(-(MAX_PENDING_QUEUE_PAGES - 1))
   }
-  const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
-  const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
   let pendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
   const processingStartQuestionKey =
     questionSession.processingStartQuestionKey || questionSession.pendingContinueQuestionKey
@@ -2068,6 +2617,7 @@ async function processChapterSessionImage(params: {
       mode,
       processingStartQuestionKey,
       extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+      answerHandlingMode,
     })
     finalQuestionDetect = {
       ...extractDetect.question,
@@ -2090,6 +2640,7 @@ async function processChapterSessionImage(params: {
         mode,
         processingStartQuestionKey,
         extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+        answerHandlingMode,
         retryHint:
           '边界判断已确认当前队列存在可完整入库的题目。请严格按起点开始提取，只输出可入库范围内的完整题，禁止输出跨页题。',
       })
@@ -2111,7 +2662,11 @@ async function processChapterSessionImage(params: {
     }
 
     const normalizedQuestionsAll = questionsRaw
-      .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+      .map((item) =>
+        normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+          answerHandlingMode,
+        }),
+      )
       .filter(Boolean) as QuestionItem[]
     pendingFiltered = {
       filtered: normalizedQuestionsAll,
@@ -2139,12 +2694,17 @@ async function processChapterSessionImage(params: {
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `${rangeMismatch.reason} 结构化范围约束：endBeforeQuestionKey=${effectiveBoundaryContinueKey || 'null'}。如果 endBeforeQuestionKey 为 null，严禁把 startQuestionKey 当作截止题号，必须继续提取起点之后所有完整顶层大题。`,
         })
         rangeRetryReason = rangeRetryDetect.question.reason || ''
         const rangeRetryRaw = rangeRetryDetect.question.questionsToUpsert
         const rangeRetryNormalized = rangeRetryRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const rangeRetryMismatch = detectExtractorRangeMismatch({
           boundaryReason: boundaryDetect.question.reason,
@@ -2203,11 +2763,16 @@ async function processChapterSessionImage(params: {
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `上一轮提取结果含有 ${pendingReviewLogs.length} 处【待校对】。请重新看图并仅修复这些位置，严格保持提取范围不变。`,
         })
         const fixRaw = fixDetect.question.questionsToUpsert
         const fixAll = fixRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const fixNormalized = fixAll
         const fixPendingLogs = collectPendingReviewLogs(fixNormalized)
@@ -2239,11 +2804,16 @@ async function processChapterSessionImage(params: {
           mode,
           processingStartQuestionKey,
           extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+          answerHandlingMode,
           retryHint: `上一轮提取结果不完整：${integrityIssue.reason}。请重新看图，完整输出这道题所有可见小问和答案；若仍未完整结束则不要输出这道题。`,
         })
         const integrityRetryRaw = integrityRetryDetect.question.questionsToUpsert
         const integrityRetryNormalized = integrityRetryRaw
-          .map((item) => normalizeQuestionItem(item, section.chapterId, sectionTitle))
+          .map((item) =>
+            normalizeQuestionItem(item, section.chapterId, sectionTitle, {
+              answerHandlingMode,
+            }),
+          )
           .filter(Boolean) as QuestionItem[]
         const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized)
         integrityRetryReason = integrityRetryDetect.question.reason || ''
@@ -2513,6 +3083,8 @@ ensureDir(READ_RESULTS_DIR)
 
 export {
   appendAutoProcessFailureLog,
+  appendChapterSegmentFromImages,
+  appendPendingReviewLogs,
   batchId,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
@@ -2527,27 +3099,35 @@ export {
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
+  getPayloadAnswerHandlingMode,
+  getPayloadDocumentType,
+  getPayloadSourceMeta,
   isSupportedImageFileName,
   isValidTextbookPayload,
   loadTextbookJson,
+  QUESTION_TYPE_OPTIONS,
   normalizeJsonFileName,
   normalizeJsonPath,
   normalizeQuestionItem,
+  normalizeQuestionType,
   normalizeTitle,
   parsePageIndex,
   parseModelJsonObject,
+  payloadExpectsAnswer,
   processChapterSessionImage,
   questionSessions,
   readByDoubao,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   requestArkRawWithRetry,
+  rewriteQuestionTitlesByResolvedChapter,
   sanitizeFileName,
   sanitizeFolderName,
   saveTextbookJson,
   sortImageFileNames,
   toImageDataUrl,
   toImageDataUrlFromFile,
+  upsertQuestionsById,
   writeNdjson,
 }
 

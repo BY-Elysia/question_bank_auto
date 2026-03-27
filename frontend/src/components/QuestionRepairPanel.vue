@@ -2,7 +2,11 @@
   <GlassPanel
     eyebrow="Repair"
     title="题目定点修复"
-    description="直接指定第几章、第几小节、第几题，上传一张或多张连续图片，只修这一题并写回当前 JSON。"
+    :description="
+      state.workingJsonDocumentType === 'exam'
+        ? '试卷模式下直接填写 questionId，上传一张或多张连续图片，只修这一题并写回当前 JSON。'
+        : '直接指定第几章、第几小节、第几题，上传一张或多张连续图片，只修这一题并写回当前 JSON。'
+    "
     tone="clear"
     prominent
   >
@@ -18,7 +22,18 @@
       </div>
     </div>
 
-    <div class="field-grid compact-grid">
+    <div v-if="state.workingJsonDocumentType === 'exam'" class="field-grid compact-grid">
+      <label class="field field-span-2">
+        <span>questionId</span>
+        <input v-model.trim="state.repairForm.questionId" class="glass-input" type="text" placeholder="q_1_0_7" />
+      </label>
+      <label class="file-shell">
+        <span>上传修复图片</span>
+        <input type="file" multiple accept="image/png,image/jpeg,image/webp" @change="actions.onRepairImageChange" />
+      </label>
+    </div>
+
+    <div v-else class="field-grid compact-grid">
       <label class="field">
         <span>第几章</span>
         <input v-model.trim="state.repairForm.chapterNo" class="glass-input" type="text" placeholder="8" />
@@ -111,6 +126,16 @@
       </div>
 
       <div class="field-grid compact-grid">
+        <label v-if="state.workingJsonDocumentType === 'exam'" class="field field-span-2">
+          <span>questionId</span>
+          <input
+            v-model.trim="state.mathFormatRepairForm.questionId"
+            class="glass-input"
+            type="text"
+            placeholder="q_1_0_7"
+          />
+        </label>
+
         <label class="field">
           <span>修复字段</span>
           <select v-model="state.mathFormatRepairForm.targetType" class="glass-input">
@@ -126,8 +151,16 @@
           v-if="state.mathFormatRepairForm.targetType === 'childPrompt' || state.mathFormatRepairForm.targetType === 'childStandardAnswer'"
           class="field"
         >
-          <span>第几小题</span>
+          <span>{{ state.workingJsonDocumentType === 'exam' ? 'childQuestionId（可选）' : '第几小题' }}</span>
           <input
+            v-if="state.workingJsonDocumentType === 'exam'"
+            v-model.trim="state.mathFormatRepairForm.childQuestionId"
+            class="glass-input"
+            type="text"
+            placeholder="q_1_0_7_1"
+          />
+          <input
+            v-else
             v-model.trim="state.mathFormatRepairForm.childNo"
             class="glass-input"
             type="text"

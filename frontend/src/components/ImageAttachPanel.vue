@@ -2,7 +2,11 @@
   <GlassPanel
     eyebrow="Images"
     title="图片补充"
-    description="把漏掉的题目图片补回 JSON。填写章、小节、题号，小题可选；不填小题时默认补到大题题干区域。"
+    :description="
+      state.workingJsonDocumentType === 'exam'
+        ? '把漏掉的试卷题目图片补回 JSON。默认按 questionId 直达定位，小题可选填 childQuestionId。'
+        : '把漏掉的题目图片补回 JSON。填写章、小节、题号，小题可选；不填小题时默认补到大题题干区域。'
+    "
     tone="sun"
     prominent
   >
@@ -18,7 +22,27 @@
       </div>
     </div>
 
-    <div class="field-grid compact-grid">
+    <div v-if="state.workingJsonDocumentType === 'exam'" class="field-grid compact-grid">
+      <label class="field field-span-2">
+        <span>questionId</span>
+        <input v-model.trim="state.imageAttachForm.questionId" class="glass-input" type="text" placeholder="q_1_0_7" />
+      </label>
+      <label class="field field-span-2">
+        <span>childQuestionId（可选）</span>
+        <input
+          v-model.trim="state.imageAttachForm.childQuestionId"
+          class="glass-input"
+          type="text"
+          placeholder="留空表示大题"
+        />
+      </label>
+      <label class="file-shell field-span-2">
+        <span>上传补充图片</span>
+        <input type="file" multiple accept="image/png,image/jpeg,image/webp" @change="actions.onImageAttachFilesChange" />
+      </label>
+    </div>
+
+    <div v-else class="field-grid compact-grid">
       <label class="field">
         <span>第几章</span>
         <input v-model.trim="state.imageAttachForm.chapterNo" class="glass-input" type="text" placeholder="8" />

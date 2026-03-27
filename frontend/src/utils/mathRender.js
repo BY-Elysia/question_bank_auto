@@ -75,6 +75,31 @@ function unwrapMathDelimiters(token) {
   return { value: token, displayMode: false }
 }
 
+function renderDisplayMathLine(line) {
+  const trimmed = String(line || '').trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  const match = trimmed.match(/^(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\])\s*([（(]\d+(?:\.\d+)*[)）])?\s*$/)
+  if (!match?.[1]) {
+    return ''
+  }
+
+  const { value, displayMode } = unwrapMathDelimiters(match[1])
+  if (!displayMode) {
+    return ''
+  }
+
+  const numberText = String(match[2] || '').trim()
+  return [
+    '<div class="equation-row">',
+    `<div class="equation-row__math">${renderMathExpression(value, true)}</div>`,
+    `<span class="equation-row__number">${escapeHtml(numberText)}</span>`,
+    '</div>',
+  ].join('')
+}
+
 export function renderLatexHtml(text) {
   const source = String(text || '')
   if (!source.trim()) {
@@ -113,6 +138,7 @@ export function renderRichTextHtml(text) {
   const blocks = []
   let paragraphLines = []
   let listLines = []
+  let orderedListLines = []
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return
@@ -131,12 +157,24 @@ export function renderRichTextHtml(text) {
     listLines = []
   }
 
+  const flushOrderedList = () => {
+    if (!orderedListLines.length) return
+    blocks.push(
+      `<ol>${orderedListLines
+        .map((line) => line.replace(/^\s*\d+\.\s+/, ''))
+        .map((line) => `<li>${renderRichInlineHtml(line, { preserveLineBreaks: false })}</li>`)
+        .join('')}</ol>`,
+    )
+    orderedListLines = []
+  }
+
   for (const rawLine of source.split('\n')) {
     const line = rawLine.trim()
 
     if (!line) {
       flushParagraph()
       flushList()
+      flushOrderedList()
       continue
     }
 
@@ -144,23 +182,43 @@ export function renderRichTextHtml(text) {
     if (headingMatch) {
       flushParagraph()
       flushList()
-      const level = Math.min(6, headingMatch[1].length + 1)
+      flushOrderedList()
+      const level = Math.min(6, headingMatch[1].length)
       blocks.push(`<h${level}>${renderRichInlineHtml(headingMatch[2], { preserveLineBreaks: false })}</h${level}>`)
+      continue
+    }
+
+    const displayMathLineHtml = renderDisplayMathLine(rawLine)
+    if (displayMathLineHtml) {
+      flushParagraph()
+      flushList()
+      flushOrderedList()
+      blocks.push(displayMathLineHtml)
       continue
     }
 
     if (/^\s*[-*]\s+/.test(rawLine)) {
       flushParagraph()
+      flushOrderedList()
       listLines.push(rawLine)
       continue
     }
 
+    if (/^\s*\d+\.\s+/.test(rawLine)) {
+      flushParagraph()
+      flushList()
+      orderedListLines.push(rawLine)
+      continue
+    }
+
     flushList()
+    flushOrderedList()
     paragraphLines.push(rawLine)
   }
 
   flushParagraph()
   flushList()
+  flushOrderedList()
 
   return blocks.join('')
 }

@@ -1,5 +1,10 @@
 import { Router, type Request, type Response } from 'express'
-import { getQuestionBankDatabaseSummary, importQuestionBankJsonUploads } from '../question-bank-db-service'
+import {
+  getQuestionBankDatabaseSummary,
+  getQuestionBankQuestionTypeOptions,
+  importQuestionBankJsonUploads,
+  searchQuestionBankQuestions,
+} from '../question-bank-db-service'
 import { upload } from '../upload'
 
 const router = Router()
@@ -48,6 +53,38 @@ router.get('/api/question-bank-db/summary', async (_req: Request, res: Response)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(resolveErrorStatus(error)).json({ message: `Read question bank db summary failed: ${msg}` })
+  }
+})
+
+router.get('/api/question-bank-db/question-types', async (_req: Request, res: Response) => {
+  try {
+    return res.json({
+      message: 'success',
+      items: getQuestionBankQuestionTypeOptions(),
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(resolveErrorStatus(error)).json({ message: `Read question bank question types failed: ${msg}` })
+  }
+})
+
+router.post('/api/question-bank-db/questions/search', async (req: Request, res: Response) => {
+  try {
+    const items = await searchQuestionBankQuestions({
+      query: req.body?.query,
+      courseId: req.body?.courseId,
+      textbookId: req.body?.textbookId,
+      documentType: req.body?.documentType,
+      questionType: req.body?.questionType,
+      limit: req.body?.limit,
+    })
+    return res.json({
+      message: 'success',
+      items,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(resolveErrorStatus(error)).json({ message: `Search question bank questions failed: ${msg}` })
   }
 })
 

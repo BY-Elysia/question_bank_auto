@@ -134,7 +134,10 @@ function normalizeQuestion(question) {
 }
 
 export function buildTextbookVisualizerModel(payload) {
+  const documentType =
+    String(payload?.documentType || '').trim().toLowerCase() === 'exam' || payload?.exam ? 'exam' : 'textbook'
   const textbook = payload?.textbook && typeof payload.textbook === 'object' ? payload.textbook : {}
+  const exam = payload?.exam && typeof payload.exam === 'object' ? payload.exam : {}
   const chapterRows = Array.isArray(payload?.chapters) ? payload.chapters : []
   const questionRows = Array.isArray(payload?.questions) ? payload.questions : []
   const questionBuckets = new Map()
@@ -224,11 +227,29 @@ export function buildTextbookVisualizerModel(payload) {
   return {
     version: String(payload?.version || ''),
     courseId: String(payload?.courseId || ''),
+    documentType,
+    source: {
+      externalId:
+        documentType === 'exam' ? String(exam.examId || '') : String(textbook.textbookId || ''),
+      title: documentType === 'exam' ? String(exam.title || '') : String(textbook.title || ''),
+      subject: documentType === 'exam' ? String(exam.subject || '') : String(textbook.subject || ''),
+      publisher: documentType === 'exam' ? '' : String(textbook.publisher || ''),
+      examType: documentType === 'exam' ? String(exam.examType || '') : '',
+      hasAnswer: documentType === 'exam' ? exam.hasAnswer !== false : textbook.hasAnswer !== false,
+    },
     textbook: {
       textbookId: String(textbook.textbookId || ''),
       title: String(textbook.title || ''),
       publisher: String(textbook.publisher || ''),
       subject: String(textbook.subject || ''),
+      hasAnswer: textbook.hasAnswer !== false,
+    },
+    exam: {
+      examId: String(exam.examId || ''),
+      title: String(exam.title || ''),
+      subject: String(exam.subject || ''),
+      examType: String(exam.examType || ''),
+      hasAnswer: exam.hasAnswer !== false,
     },
     roots,
     flatChapters,

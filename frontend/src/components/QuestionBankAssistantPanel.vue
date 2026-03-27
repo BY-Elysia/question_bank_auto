@@ -24,7 +24,7 @@
             v-model="state.assistantInput"
             class="glass-input assistant-input"
             rows="5"
-            placeholder="例如：帮我查一下高二数学里包含不定积分的题有哪些，按教材和章节整理。"
+            placeholder="例如：帮我查一下当前数据库里有哪些期末试卷，或者列出不定积分相关题目。"
             @keydown.enter.exact.prevent="actions.sendQuestionBankAssistantMessage"
           />
         </label>
@@ -41,7 +41,7 @@
         <button class="secondary-button" :disabled="state.assistantProcessing" @click="actions.fillAssistantPrompt('帮我概览一下当前数据库里有哪些教材，并给出每本教材的题目数量。')">
           示例 1
         </button>
-        <button class="secondary-button" :disabled="state.assistantProcessing" @click="actions.fillAssistantPrompt('查一下第八章不定积分相关的题目，按章节列出题号和题目标题。')">
+        <button class="secondary-button" :disabled="state.assistantProcessing" @click="actions.fillAssistantPrompt('查一下当前数据库里有哪些试卷，按小测、半期、期末分别列出来。')">
           示例 2
         </button>
         <button class="ghost-button" :disabled="state.assistantProcessing" @click="actions.clearQuestionBankAssistantChat">
@@ -77,7 +77,7 @@
           </p>
         </article>
       </div>
-      <p v-else class="panel-status">还没有开始对话，可以直接问教材、章节、题型和题目检索问题。</p>
+      <p v-else class="panel-status">还没有开始对话，可以直接问教材、试卷、结构节点、题型和题目检索问题。</p>
 
       <div v-if="state.assistantToolTraces.length" class="assistant-trace-list">
         <article v-for="trace in state.assistantToolTraces" :key="`${trace.step}_${trace.tool}`" class="assistant-trace-item">

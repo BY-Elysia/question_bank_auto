@@ -19,7 +19,7 @@
 
         <div class="workspace-content">
           <section v-if="currentPage === 'overview'" class="overview-empty-stage" aria-hidden="true">
-            <img class="overview-brand-mark" src="/home-overview-logo.png" alt="" />
+            <!-- <img class="overview-brand-mark" src="/home-overview-logo.png" alt="" /> -->
           </section>
 
           <section v-else-if="currentPage === 'pipeline'" class="stack-column">
@@ -40,7 +40,8 @@
             />
             <TextbookJsonPanel v-else-if="pipelineStep === 'json'" :state="state" :actions="actions" />
             <ChapterSessionPanel v-else-if="pipelineStep === 'session'" :state="state" :actions="actions" />
-            <ExamWorkspacePlaceholder v-else @back-to-kind="pipelineStep = 'kind'" />
+            <ExamJsonPanel v-else-if="pipelineStep === 'examJson'" :state="state" :actions="actions" />
+            <ExamSessionPanel v-else-if="pipelineStep === 'examSession'" :state="state" :actions="actions" />
           </section>
 
           <section v-else-if="currentPage === 'pdf'" class="stack-column">
@@ -80,7 +81,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import ChapterSessionPanel from './components/ChapterSessionPanel.vue'
-import ExamWorkspacePlaceholder from './components/ExamWorkspacePlaceholder.vue'
+import ExamJsonPanel from './components/ExamJsonPanel.vue'
+import ExamSessionPanel from './components/ExamSessionPanel.vue'
 import ImageAttachPanel from './components/ImageAttachPanel.vue'
 import JsonMergePanel from './components/JsonMergePanel.vue'
 import JsonVisualizerPanel from './components/JsonVisualizerPanel.vue'
@@ -162,13 +164,22 @@ const pipelineSteps = computed(() => {
   ]
 
   if (pipelineKind.value === 'exam') {
-    items.push({
-      id: 'exam',
-      index: '02',
-      title: '试卷生成',
-      description: '试卷专属流程入口已预留',
-      disabled: false,
-    })
+    items.push(
+      {
+        id: 'examJson',
+        index: '02',
+        title: '基础试卷 JSON',
+        description: '生成试卷元数据与空结构骨架',
+        disabled: false,
+      },
+      {
+        id: 'examSession',
+        index: '03',
+        title: '试卷会话与跑批',
+        description: '按结构节点自动识别并写入题目',
+        disabled: false,
+      },
+    )
     return items
   }
 
@@ -193,18 +204,23 @@ const pipelineSteps = computed(() => {
 })
 
 const canGoPipelineBack = computed(() => pipelineStep.value !== 'kind')
-const canGoPipelineNext = computed(() => pipelineStep.value === 'kind' || pipelineStep.value === 'json')
+const canGoPipelineNext = computed(
+  () =>
+    pipelineStep.value === 'kind' ||
+    pipelineStep.value === 'json' ||
+    pipelineStep.value === 'examJson',
+)
 
 function selectPipelineKind(kind) {
   pipelineKind.value = kind
-  pipelineStep.value = kind === 'exam' ? 'exam' : 'json'
+  pipelineStep.value = kind === 'exam' ? 'examJson' : 'json'
 }
 
 function goPipelineStep(step) {
   if (step === 'json' || step === 'session') {
     pipelineKind.value = 'textbook'
   }
-  if (step === 'exam') {
+  if (step === 'examJson' || step === 'examSession') {
     pipelineKind.value = 'exam'
   }
   pipelineStep.value = step
@@ -215,18 +231,25 @@ function goPipelineBack() {
     pipelineStep.value = 'json'
     return
   }
-  if (pipelineStep.value === 'json' || pipelineStep.value === 'exam') {
+  if (pipelineStep.value === 'examSession') {
+    pipelineStep.value = 'examJson'
+    return
+  }
+  if (pipelineStep.value === 'json' || pipelineStep.value === 'examJson') {
     pipelineStep.value = 'kind'
   }
 }
 
 function goPipelineNext() {
   if (pipelineStep.value === 'kind') {
-    pipelineStep.value = pipelineKind.value === 'exam' ? 'exam' : 'json'
+    pipelineStep.value = pipelineKind.value === 'exam' ? 'examJson' : 'json'
     return
   }
   if (pipelineStep.value === 'json') {
     pipelineStep.value = 'session'
+  }
+  if (pipelineStep.value === 'examJson') {
+    pipelineStep.value = 'examSession'
   }
 }
 
@@ -239,8 +262,18 @@ watch(
   },
 )
 
+watch(
+  () => state.examSessionServerJsonPath,
+  (value, previous) => {
+    if (pipelineKind.value === 'exam' && value && value !== previous) {
+      pipelineStep.value = 'examSession'
+    }
+  },
+)
+
 onMounted(() => {
   actions.loadQuestionBankDbSummary().catch(() => {})
+  actions.loadExamQuestionTypeOptions().catch(() => {})
 })
 
 const overviewItems = computed(() => [
@@ -251,7 +284,11 @@ const overviewItems = computed(() => [
     description: '先选择教材生成或试卷生成，再进入对应的结构化工作流。',
     value:
       pipelineKind.value === 'exam'
-        ? '当前预览试卷分支'
+        ? state.examSessionId
+          ? '试卷会话已激活'
+          : state.examSessionJsonLabel
+            ? '试卷 JSON 已就绪'
+            : '等待初始化'
         : state.chapterRunMode === 'multi'
           ? chapterBatchConfiguredCount.value
             ? '多章模式已配置'
@@ -261,7 +298,7 @@ const overviewItems = computed(() => [
             : '等待初始化',
     hint:
       pipelineKind.value === 'exam'
-        ? '试卷分支入口已建立，后续接入专属逻辑'
+        ? state.examSessionCurrentMinor || state.examSessionCurrentMajor || state.examSessionStatus || '尚未开始'
         : state.chapterRunMode === 'multi'
           ? pipelineStatusText.value
           : state.chapterSessionCurrentSection || '尚未开始',
@@ -322,8 +359,9 @@ const overviewItems = computed(() => [
     id: 'database',
     eyebrow: 'Database',
     title: '数据库导入',
-    description: '终端执行迁移后，把题库 JSON 直接上传到 PostgreSQL 新 schema，并在页面里看导入结果。',
-    value: state.dbSummary?.counts?.textbookCount ?? '0',
+    description: '终端执行迁移后，把来源 JSON 直接上传到 PostgreSQL 新 schema，并在页面里看导入结果。',
+    value:
+      (state.dbSummary?.counts?.textbookCount ?? 0) + (state.dbSummary?.counts?.examCount ?? 0),
     hint: state.dbSummary?.schema || state.dbSummaryStatus || '等待数据库摘要',
     tone: 'ice',
     buttonLabel: '数据库导入',
@@ -332,7 +370,7 @@ const overviewItems = computed(() => [
     id: 'assistant',
     eyebrow: 'Assistant',
     title: 'AI 助手',
-    description: '采用 MCP 查询题库数据库，支持自然语言问答、教材筛选、章节定位和题目检索。',
+    description: '采用 MCP 查询题库数据库，支持自然语言问答、来源筛选、结构定位和题目检索。',
     value: state.assistantMessages.length ? `${state.assistantMessages.length} 条消息` : '等待提问',
     hint: state.assistantStatus || '可直接询问某章某节有哪些题',
     tone: 'berry',

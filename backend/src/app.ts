@@ -3,6 +3,7 @@ import express, { type Request, type Response } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
 import { FRONTEND_DIST_DIR, OUTPUT_DIR, READ_RESULTS_DIR, UPLOAD_DIR } from './config'
+import { registerExamSessionRoutes } from './routes/exam-session-routes'
 import { registerQuestionBankAssistantRoutes } from './routes/question-bank-assistant-routes'
 import { registerQuestionBankDbRoutes } from './routes/question-bank-db-routes'
 import { registerChapterSessionRoutes } from './routes/chapter-session-routes'
@@ -21,6 +22,7 @@ export function createApp() {
   registerPdfRoutes(app)
   registerTextbookJsonRoutes(app)
   registerChapterSessionRoutes(app)
+  registerExamSessionRoutes(app)
   registerQuestionBankDbRoutes(app)
   registerQuestionBankAssistantRoutes(app)
 

@@ -1,18 +1,15 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { QUESTION_MEDIA_DIR, REPAIR_JSON_DIR } from './config'
+import {
+  buildLegacyQuestionId,
+  isObject,
+  resolveQuestionTarget,
+} from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import { loadTextbookJson, normalizeJsonFileName, saveTextbookJson, sanitizeFileName } from './question-bank-service'
 
 type JsonNode = Record<string, unknown>
-
-function isObject(value: unknown): value is JsonNode {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function findChapterById(payload: TextbookJsonPayload, chapterId: string) {
-  return payload.chapters.find((item) => item.chapterId === chapterId) || null
-}
 
 function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
   const preferred = String(sourceFileName || '').trim()
@@ -42,106 +39,60 @@ function getOrCreateTextBlock(host: JsonNode, key: string) {
   return block
 }
 
-function findQuestionNode(payload: TextbookJsonPayload, questionId: string) {
-  const questions = Array.isArray(payload.questions) ? payload.questions : []
-  return (
-    questions.find((item) => isObject(item) && typeof item.questionId === 'string' && item.questionId.trim() === questionId) ||
-    null
-  ) as JsonNode | null
-}
-
-function findChildNode(questionNode: JsonNode, childNo: number) {
-  const children = Array.isArray(questionNode.children) ? questionNode.children.filter(isObject) : []
-  if (!children.length) {
-    return null
-  }
-
-  const byOrder = children.find((child) => Number(child.orderNo) === childNo)
-  if (byOrder) {
-    return byOrder
-  }
-
-  const suffix = `_${childNo}`
-  const byId = children.find(
-    (child) => typeof child.questionId === 'string' && child.questionId.trim().endsWith(suffix),
-  )
-  if (byId) {
-    return byId
-  }
-
-  return children[childNo - 1] || null
-}
-
 function resolveImageTarget(params: {
   payload: TextbookJsonPayload
-  chapterNo: number
-  sectionNo: number
-  questionNo: number
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
+  childQuestionId?: string
   childNo?: number | null
 }) {
-  const { payload, chapterNo, sectionNo, questionNo, childNo = null } = params
-  const topChapterId = `ch_${chapterNo}`
-  const sectionChapterId = `ch_${chapterNo}_${sectionNo}`
-  const questionId = `q_${chapterNo}_${sectionNo}_${questionNo}`
+  const {
+    payload,
+    chapterNo,
+    sectionNo,
+    questionNo,
+    questionId = '',
+    childQuestionId = '',
+    childNo = null,
+  } = params
+  const resolvedQuestionId = String(questionId || '').trim()
+    || (
+      Number.isInteger(chapterNo) &&
+      Number.isInteger(sectionNo) &&
+      Number.isInteger(questionNo)
+        ? buildLegacyQuestionId(Number(chapterNo), Number(sectionNo), Number(questionNo))
+        : ''
+    )
 
-  const topChapter = findChapterById(payload, topChapterId)
-  if (!topChapter) {
-    throw new Error(`chapterId ${topChapterId} not found in JSON`)
-  }
-  const section = findChapterById(payload, sectionChapterId)
-  if (!section) {
-    throw new Error(`chapterId ${sectionChapterId} not found in JSON`)
-  }
-  const questionNode = findQuestionNode(payload, questionId)
-  if (!questionNode) {
-    throw new Error(`questionId ${questionId} not found in JSON`)
-  }
+  const target = resolveQuestionTarget({
+    payload,
+    questionId: resolvedQuestionId,
+    childQuestionId,
+    childNo,
+  })
 
-  const questionTitle =
-    typeof questionNode.title === 'string' && questionNode.title.trim() ? questionNode.title.trim() : questionId
-
-  if (Number.isInteger(childNo) && Number(childNo) > 0) {
-    const childNode = findChildNode(questionNode, Number(childNo))
-    if (!childNode) {
-      throw new Error(`childNo ${childNo} not found under questionId ${questionId}`)
-    }
+  if (target.childNode) {
     return {
-      topChapter,
-      section,
-      questionNode,
-      childNode,
-      textBlock: getOrCreateTextBlock(childNode, 'prompt'),
-      questionId,
-      childQuestionId: typeof childNode.questionId === 'string' ? childNode.questionId : '',
-      questionTitle,
-      targetLabel: `小题 ${childNo} prompt.media`,
+      ...target,
+      textBlock: getOrCreateTextBlock(target.childNode, 'prompt'),
+      targetLabel: '小题 prompt.media',
     }
   }
 
-  const nodeType = String(questionNode.nodeType || '').toUpperCase()
+  const nodeType = String(target.questionNode.nodeType || '').toUpperCase()
   if (nodeType === 'GROUP') {
     return {
-      topChapter,
-      section,
-      questionNode,
-      childNode: null,
-      textBlock: getOrCreateTextBlock(questionNode, 'stem'),
-      questionId,
-      childQuestionId: '',
-      questionTitle,
+      ...target,
+      textBlock: getOrCreateTextBlock(target.questionNode, 'stem'),
       targetLabel: '题目 stem.media',
     }
   }
 
   return {
-    topChapter,
-    section,
-    questionNode,
-    childNode: null,
-    textBlock: getOrCreateTextBlock(questionNode, 'prompt'),
-    questionId,
-    childQuestionId: '',
-    questionTitle,
+    ...target,
+    textBlock: getOrCreateTextBlock(target.questionNode, 'prompt'),
     targetLabel: '题目 prompt.media',
   }
 }
@@ -155,9 +106,11 @@ function buildTargetFolderName(sourceFileName: string, jsonFilePath: string, tar
 export async function attachImagesToQuestionInTextbookJson(params: {
   jsonFilePath: string
   sourceFileName?: string
-  chapterNo: number
-  sectionNo: number
-  questionNo: number
+  chapterNo?: number
+  sectionNo?: number
+  questionNo?: number
+  questionId?: string
+  childQuestionId?: string
   childNo?: number | null
   files: Array<{
     originalname: string
@@ -170,18 +123,21 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     chapterNo,
     sectionNo,
     questionNo,
+    questionId = '',
+    childQuestionId = '',
     childNo = null,
     files,
   } = params
+  const hasLegacyQuestionRef =
+    Number.isInteger(chapterNo) &&
+    Number(chapterNo) > 0 &&
+    Number.isInteger(sectionNo) &&
+    Number(sectionNo) > 0 &&
+    Number.isInteger(questionNo) &&
+    Number(questionNo) > 0
 
-  if (!Number.isInteger(chapterNo) || chapterNo <= 0) {
-    throw new Error('chapterNo must be a positive integer')
-  }
-  if (!Number.isInteger(sectionNo) || sectionNo <= 0) {
-    throw new Error('sectionNo must be a positive integer')
-  }
-  if (!Number.isInteger(questionNo) || questionNo <= 0) {
-    throw new Error('questionNo must be a positive integer')
+  if (!String(questionId || '').trim() && !hasLegacyQuestionRef) {
+    throw new Error('questionId is required, or chapterNo/sectionNo/questionNo must all be positive integers')
   }
   if (!Array.isArray(files) || !files.length) {
     throw new Error('at least one image file is required')
@@ -193,6 +149,8 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     chapterNo,
     sectionNo,
     questionNo,
+    questionId,
+    childQuestionId,
     childNo,
   })
 
@@ -211,7 +169,7 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     mediaItems.push({
       type: 'image',
       url: `/uploads/question_media/${path.basename(path.dirname(targetDir))}/${path.basename(targetDir)}/${storedFileName}`,
-      caption: file.originalname || '',
+      caption: '',
       orderNo: index + 1,
     })
   }
@@ -229,8 +187,8 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     jsonFilePath,
     repairJsonFileName,
     repairJsonPath,
-    chapterTitle: target.topChapter.title,
-    sectionTitle: target.section.title,
+    chapterTitle: target.chapterTitle,
+    sectionTitle: target.sectionTitle,
     questionId: target.questionId,
     childQuestionId: target.childQuestionId,
     questionTitle: target.questionTitle,

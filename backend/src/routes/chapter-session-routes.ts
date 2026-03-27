@@ -3,9 +3,13 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { READ_RESULTS_DIR } from '../config'
 import { runWithArkApiKey } from '../ark-request-context'
-import { processChapterSessionImageWithResponsesPrefixCache } from '../question-bank-responses-experiment'
+import {
+  appendChapterSegmentFromImagesWithResponsesPrefixCache,
+  processChapterSessionImageWithResponsesPrefixCache,
+} from '../question-bank-responses-experiment'
 import {
   appendAutoProcessFailureLog,
+  appendChapterSegmentFromImages,
   batchId,
   chapterSessions,
   ensureSectionChapter,
@@ -163,6 +167,74 @@ router.post('/api/chapters/session/process-image-responses', upload.fields([
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Process chapter image with responses prefix cache failed: ${msg}` })
+  }
+})
+
+router.post('/api/chapters/segments/append-from-images', upload.array('images', 40), async (req: Request, res: Response) => {
+  try {
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const chapterTitle = String(req.body?.chapterTitle || '').trim()
+    const sectionTitle = String(req.body?.sectionTitle || '').trim()
+    if (!jsonFilePathRaw) {
+      return res.status(400).json({ message: 'jsonFilePath is required' })
+    }
+    if (!chapterTitle || !sectionTitle) {
+      return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
+    }
+
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => file?.buffer?.length)
+    if (!files.length) {
+      return res.status(400).json({ message: 'images are required' })
+    }
+
+    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      appendChapterSegmentFromImages({
+        jsonFilePath,
+        chapterTitle,
+        sectionTitle,
+        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageLabels: files.map((file) => file.originalname || ''),
+      }),
+    )
+    return res.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Append chapter segment from images failed: ${msg}` })
+  }
+})
+
+router.post('/api/chapters/segments/append-from-images-responses', upload.array('images', 40), async (req: Request, res: Response) => {
+  try {
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const chapterTitle = String(req.body?.chapterTitle || '').trim()
+    const sectionTitle = String(req.body?.sectionTitle || '').trim()
+    if (!jsonFilePathRaw) {
+      return res.status(400).json({ message: 'jsonFilePath is required' })
+    }
+    if (!chapterTitle || !sectionTitle) {
+      return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
+    }
+
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => file?.buffer?.length)
+    if (!files.length) {
+      return res.status(400).json({ message: 'images are required' })
+    }
+
+    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      appendChapterSegmentFromImagesWithResponsesPrefixCache({
+        jsonFilePath,
+        chapterTitle,
+        sectionTitle,
+        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageLabels: files.map((file) => file.originalname || ''),
+      }),
+    )
+    return res.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Append chapter segment from images with responses prefix cache failed: ${msg}` })
   }
 })
 

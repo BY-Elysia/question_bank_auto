@@ -38,6 +38,14 @@ function normalizeOptionalText(value: string | undefined) {
   return text || null
 }
 
+function normalizeDocumentType(value: string | undefined) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'textbook' || normalized === 'exam') {
+    return normalized
+  }
+  return null
+}
+
 function normalizeOptionalNumber(value: string | number | undefined, fallback: number, min: number, max: number) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) {
@@ -504,6 +512,7 @@ function buildQuestionSearchConditions(params: {
   query?: string
   extraQueries?: string[]
   textbookId?: string
+  documentType?: string
   courseId?: string
   chapterId?: string
   questionCode?: string
@@ -534,6 +543,12 @@ function buildQuestionSearchConditions(params: {
   if (textbookId) {
     values.push(textbookId)
     conditions.push(`t.external_id = $${values.length}`)
+  }
+
+  const documentType = normalizeDocumentType(params.documentType)
+  if (documentType) {
+    values.push(documentType)
+    conditions.push(`t.document_type = $${values.length}`)
   }
 
   const courseId = normalizeOptionalText(params.courseId)
@@ -586,6 +601,9 @@ type QuestionCandidateRow = {
   chapterTitle: string | null
   textbookId: string
   textbookTitle: string
+  documentType: string
+  examType: string | null
+  hasAnswer: boolean | null
   courseId: string
   defaultScore: string
   relevanceScore: number | null
@@ -608,6 +626,7 @@ async function loadQuestionCandidates(params: {
   query?: string
   extraQueries?: string[]
   textbookId?: string
+  documentType?: string
   courseId?: string
   chapterId?: string
   questionCode?: string
@@ -652,6 +671,9 @@ async function loadQuestionCandidates(params: {
         c.title AS "chapterTitle",
         t.external_id AS "textbookId",
         t.title AS "textbookTitle",
+        t.document_type AS "documentType",
+        t.exam_type AS "examType",
+        t.has_answer AS "hasAnswer",
         q.course_id AS "courseId",
         q.default_score::text AS "defaultScore",
         q.stem,
@@ -680,6 +702,9 @@ function serializeCandidateForModel(candidate: QuestionCandidateRow) {
     questionType: candidate.questionType,
     textbookId: candidate.textbookId,
     textbookTitle: candidate.textbookTitle,
+    documentType: candidate.documentType,
+    examType: candidate.examType,
+    hasAnswer: candidate.hasAnswer,
     chapterId: candidate.chapterId,
     chapterTitle: candidate.chapterTitle,
     defaultScore: toNumber(candidate.defaultScore),
@@ -768,6 +793,9 @@ async function judgeQuestionCandidates(params: {
         questionType: candidate.questionType,
         textbookId: candidate.textbookId,
         textbookTitle: candidate.textbookTitle,
+        documentType: candidate.documentType,
+        examType: candidate.examType,
+        hasAnswer: candidate.hasAnswer,
         chapterId: candidate.chapterId,
         chapterTitle: candidate.chapterTitle,
         title: candidate.title,
@@ -790,7 +818,7 @@ export function createQuestionBankMcpServer() {
   server.registerTool(
     'get_schema_overview',
     {
-      description: '读取题库 schema 的五张核心表说明，以及教材、章节、题目总量。',
+      description: '读取题库 schema 的五张核心表说明，以及来源文档、结构节点、题目总量。',
       annotations: {
         title: '题库总览',
         readOnlyHint: true,
@@ -803,7 +831,19 @@ export function createQuestionBankMcpServer() {
         database: summary.database,
         counts: summary.counts,
         tables: {
-          textbooks: ['id', 'course_id', 'external_id', 'title', 'subject', 'publisher', 'version', 'created_by'],
+          textbooks: [
+            'id',
+            'course_id',
+            'document_type',
+            'external_id',
+            'title',
+            'subject',
+            'publisher',
+            'version',
+            'exam_type',
+            'has_answer',
+            'created_by',
+          ],
           chapters: ['id', 'textbook_id', 'external_id', 'parent_id', 'title', 'order_no'],
           question_bank_textbook_schools: ['textbook_id', 'school_id', 'created_at'],
           assignment_questions: [
@@ -838,18 +878,19 @@ export function createQuestionBankMcpServer() {
   server.registerTool(
     'list_textbooks',
     {
-      description: '列出教材，支持按课程或关键词过滤，并返回章节数和题目数。',
+      description: '列出来源文档，兼容教材与试卷，支持按课程、来源类型或关键词过滤，并返回结构节点数和题目数。',
       annotations: {
-        title: '教材列表',
+        title: '来源列表',
         readOnlyHint: true,
       },
       inputSchema: {
         courseId: z.string().optional().describe('可选，按 course_id 过滤'),
-        keyword: z.string().optional().describe('可选，按教材标题、学科、出版社模糊匹配'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型过滤'),
+        keyword: z.string().optional().describe('可选，按来源标题、学科、出版社模糊匹配'),
         limit: z.coerce.number().int().min(1).max(50).default(20),
       },
     },
-    async ({ courseId, keyword, limit }) => {
+    async ({ courseId, documentType, keyword, limit }) => {
       const conditions: string[] = []
       const values: string[] = []
 
@@ -857,6 +898,12 @@ export function createQuestionBankMcpServer() {
       if (normalizedCourseId) {
         values.push(normalizedCourseId)
         conditions.push(`t.course_id = $${values.length}`)
+      }
+
+      const normalizedDocumentType = normalizeDocumentType(documentType)
+      if (normalizedDocumentType) {
+        values.push(normalizedDocumentType)
+        conditions.push(`t.document_type = $${values.length}`)
       }
 
       const normalizedKeyword = normalizeKeyword(keyword)
@@ -871,10 +918,13 @@ export function createQuestionBankMcpServer() {
       const result = await getQuestionBankPoolInstance().query<{
         textbookId: string
         courseId: string
+        documentType: string
         title: string
         subject: string
         publisher: string | null
         version: string
+        examType: string | null
+        hasAnswer: boolean | null
         createdBy: string | null
         sourceFileName: string
         updatedAt: string
@@ -885,10 +935,13 @@ export function createQuestionBankMcpServer() {
           SELECT
             t.external_id AS "textbookId",
             t.course_id AS "courseId",
+            t.document_type AS "documentType",
             t.title,
             t.subject,
             t.publisher,
             t.version,
+            t.exam_type AS "examType",
+            t.has_answer AS "hasAnswer",
             t.created_by AS "createdBy",
             t.source_file_name AS "sourceFileName",
             t.updated_at AS "updatedAt",
@@ -905,7 +958,7 @@ export function createQuestionBankMcpServer() {
         values,
       )
 
-      return buildToolResult('教材列表', {
+      return buildToolResult('来源文档列表', {
         schema: getQuestionBankDbSchemaName(),
         items: result.rows.map((row) => ({
           ...row,
@@ -919,32 +972,45 @@ export function createQuestionBankMcpServer() {
   server.registerTool(
     'get_textbook_detail',
     {
-      description: '读取单本教材的详细信息，包括学校可见范围、章节统计和题目统计。',
+      description: '读取单个来源文档的详细信息，包括学校可见范围、结构节点统计和题目统计。',
       annotations: {
-        title: '教材详情',
+        title: '来源详情',
         readOnlyHint: true,
       },
       inputSchema: {
-        textbookId: z.string().describe('教材 external_id'),
+        textbookId: z.string().describe('来源 external_id。为兼容旧调用仍命名为 textbookId'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型限定'),
         courseId: z.string().optional().describe('可选，辅助限定 course_id'),
       },
     },
-    async ({ textbookId, courseId }) => {
+    async ({ textbookId, documentType, courseId }) => {
       const values = [textbookId.trim()]
+      const conditions: string[] = []
+
+      const normalizedDocumentType = normalizeDocumentType(documentType)
+      if (normalizedDocumentType) {
+        values.push(normalizedDocumentType)
+        conditions.push(`t.document_type = $${values.length}`)
+      }
+
       const courseCondition = normalizeOptionalText(courseId)
-      const courseSql = courseCondition ? ` AND t.course_id = $2` : ''
       if (courseCondition) {
         values.push(courseCondition)
+        conditions.push(`t.course_id = $${values.length}`)
       }
+      const extraSql = conditions.length ? ` AND ${conditions.join(' AND ')}` : ''
 
       const textbookResult = await getQuestionBankPoolInstance().query<{
         id: string
         textbookId: string
         courseId: string
+        documentType: string
         title: string
         subject: string
         publisher: string | null
         version: string
+        examType: string | null
+        hasAnswer: boolean | null
         createdBy: string | null
         sourceFileName: string
         updatedAt: string
@@ -954,15 +1020,18 @@ export function createQuestionBankMcpServer() {
             t.id,
             t.external_id AS "textbookId",
             t.course_id AS "courseId",
+            t.document_type AS "documentType",
             t.title,
             t.subject,
             t.publisher,
             t.version,
+            t.exam_type AS "examType",
+            t.has_answer AS "hasAnswer",
             t.created_by AS "createdBy",
             t.source_file_name AS "sourceFileName",
             t.updated_at AS "updatedAt"
           FROM ${tableName('textbooks')} t
-          WHERE t.external_id = $1${courseSql}
+          WHERE t.external_id = $1${extraSql}
           LIMIT 1
         `,
         values,
@@ -970,7 +1039,7 @@ export function createQuestionBankMcpServer() {
 
       const textbook = textbookResult.rows[0]
       if (!textbook) {
-        throw new Error(`未找到教材: ${textbookId}`)
+        throw new Error(`未找到来源文档: ${textbookId}`)
       }
 
       const [schoolScopeResult, chapterCountResult, questionCountResult] = await Promise.all([
@@ -1010,7 +1079,7 @@ export function createQuestionBankMcpServer() {
         ),
       ])
 
-      return buildToolResult('教材详情', {
+      return buildToolResult('来源文档详情', {
         schema: getQuestionBankDbSchemaName(),
         textbook: {
           ...textbook,
@@ -1030,20 +1099,21 @@ export function createQuestionBankMcpServer() {
   server.registerTool(
     'list_chapters',
     {
-      description: '列出章节节点，适合定位某教材的章、小节结构。',
+      description: '列出结构节点，适合定位教材章节或试卷结构。',
       annotations: {
-        title: '章节列表',
+        title: '结构节点列表',
         readOnlyHint: true,
       },
       inputSchema: {
-        textbookId: z.string().optional().describe('可选，按教材 external_id 过滤'),
+        textbookId: z.string().optional().describe('可选，按来源 external_id 过滤'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型过滤'),
         courseId: z.string().optional().describe('可选，按 course_id 过滤'),
         parentChapterId: z.string().optional().describe('可选，只看某个父章节下的直接节点'),
         keyword: z.string().optional().describe('可选，按章节标题模糊匹配'),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       },
     },
-    async ({ textbookId, courseId, parentChapterId, keyword, limit }) => {
+    async ({ textbookId, documentType, courseId, parentChapterId, keyword, limit }) => {
       const conditions: string[] = []
       const values: string[] = []
 
@@ -1051,6 +1121,12 @@ export function createQuestionBankMcpServer() {
       if (normalizedTextbookId) {
         values.push(normalizedTextbookId)
         conditions.push(`t.external_id = $${values.length}`)
+      }
+
+      const normalizedDocumentType = normalizeDocumentType(documentType)
+      if (normalizedDocumentType) {
+        values.push(normalizedDocumentType)
+        conditions.push(`t.document_type = $${values.length}`)
       }
 
       const normalizedCourseId = normalizeOptionalText(courseId)
@@ -1079,6 +1155,9 @@ export function createQuestionBankMcpServer() {
         parentChapterId: string | null
         textbookId: string
         textbookTitle: string
+        documentType: string
+        examType: string | null
+        hasAnswer: boolean | null
         courseId: string
       }>(
         `
@@ -1089,6 +1168,9 @@ export function createQuestionBankMcpServer() {
             pc.external_id AS "parentChapterId",
             t.external_id AS "textbookId",
             t.title AS "textbookTitle",
+            t.document_type AS "documentType",
+            t.exam_type AS "examType",
+            t.has_answer AS "hasAnswer",
             t.course_id AS "courseId"
           FROM ${tableName('chapters')} c
           INNER JOIN ${tableName('textbooks')} t ON t.id = c.textbook_id
@@ -1100,7 +1182,7 @@ export function createQuestionBankMcpServer() {
         values,
       )
 
-      return buildToolResult('章节列表', {
+      return buildToolResult('结构节点列表', {
         schema: getQuestionBankDbSchemaName(),
         items: result.rows,
       })
@@ -1118,13 +1200,14 @@ export function createQuestionBankMcpServer() {
       },
       inputSchema: {
         reference: z.string().describe('用户提到的固定题目引用，例如“习题10.2的第二题”或“q_10_2_2”'),
-        textbookId: z.string().optional().describe('可选，按教材 external_id 限定解析范围'),
+        textbookId: z.string().optional().describe('可选，按来源 external_id 限定解析范围'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型限定解析范围'),
         courseId: z.string().optional().describe('可选，按 course_id 限定解析范围'),
         status: z.string().optional().describe('可选，默认只查 ACTIVE'),
         limit: z.coerce.number().int().min(1).max(10).default(5),
       },
     },
-    async ({ reference, textbookId, courseId, status, limit }) => {
+    async ({ reference, textbookId, documentType, courseId, status, limit }) => {
       const parsed = parseAssignmentQuestionReference(reference)
       const normalizedLimit = normalizeOptionalNumber(limit, 5, 1, 10)
 
@@ -1144,6 +1227,12 @@ export function createQuestionBankMcpServer() {
         if (normalizedTextbookId) {
           values.push(normalizedTextbookId)
           conditions.push(`t.external_id = $${values.length}`)
+        }
+
+        const normalizedDocumentType = normalizeDocumentType(documentType)
+        if (normalizedDocumentType) {
+          values.push(normalizedDocumentType)
+          conditions.push(`t.document_type = $${values.length}`)
         }
 
         const normalizedCourseId = normalizeOptionalText(courseId)
@@ -1175,6 +1264,9 @@ export function createQuestionBankMcpServer() {
             chapterTitle: string | null
             textbookId: string
             textbookTitle: string
+            documentType: string
+            examType: string | null
+            hasAnswer: boolean | null
             courseId: string
             parentQuestionCode: string | null
             childCount: string
@@ -1193,6 +1285,9 @@ export function createQuestionBankMcpServer() {
           chapterTitle: string | null
           textbookId: string
           textbookTitle: string
+          documentType: string
+          examType: string | null
+          hasAnswer: boolean | null
           courseId: string
           parentQuestionCode: string | null
           childCount: string
@@ -1208,6 +1303,9 @@ export function createQuestionBankMcpServer() {
               c.title AS "chapterTitle",
               t.external_id AS "textbookId",
               t.title AS "textbookTitle",
+              t.document_type AS "documentType",
+              t.exam_type AS "examType",
+              t.has_answer AS "hasAnswer",
               q.course_id AS "courseId",
               p.question_code AS "parentQuestionCode",
               (
@@ -1291,6 +1389,9 @@ export function createQuestionBankMcpServer() {
             chapterTitle: string | null
             textbookId: string
             textbookTitle: string
+            documentType: string
+            examType: string | null
+            hasAnswer: boolean | null
             courseId: string
             parentQuestionCode: string | null
             childCount: string
@@ -1320,7 +1421,8 @@ export function createQuestionBankMcpServer() {
       },
       inputSchema: {
         query: z.string().optional().describe('可选，按标题、描述、章节标题、题干、prompt、标准答案、question_code、原始 JSON 宽搜索'),
-        textbookId: z.string().optional().describe('可选，按教材 external_id 过滤'),
+        textbookId: z.string().optional().describe('可选，按来源 external_id 过滤'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型过滤'),
         courseId: z.string().optional().describe('可选，按 course_id 过滤'),
         chapterId: z.string().optional().describe('可选，按章节 external_id 过滤'),
         questionCode: z.string().optional().describe('可选，按题号精确过滤，如 q_2_1_1'),
@@ -1330,10 +1432,11 @@ export function createQuestionBankMcpServer() {
         limit: z.coerce.number().int().min(1).max(50).default(10),
       },
     },
-    async ({ query, textbookId, courseId, chapterId, questionCode, nodeType, questionType, status, limit }) => {
+    async ({ query, textbookId, documentType, courseId, chapterId, questionCode, nodeType, questionType, status, limit }) => {
       const resultRows = await loadQuestionCandidates({
         query,
         textbookId,
+        documentType,
         courseId,
         chapterId,
         questionCode,
@@ -1369,7 +1472,8 @@ export function createQuestionBankMcpServer() {
       inputSchema: {
         requirement: z.string().describe('用户的自然语言要求，例如“找一道中等难度的行列式计算题”'),
         query: z.string().optional().describe('可选，补充一个更短的检索关键词；如果不传，会从 requirement 自动提取'),
-        textbookId: z.string().optional().describe('可选，按教材 external_id 限定召回范围'),
+        textbookId: z.string().optional().describe('可选，按来源 external_id 限定召回范围'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型限定召回范围'),
         courseId: z.string().optional().describe('可选，按 course_id 限定召回范围'),
         chapterId: z.string().optional().describe('可选，按章节 external_id 限定召回范围'),
         questionTypeHint: z.string().optional().describe('可选，只作为模型判断提示，不做数据库硬过滤'),
@@ -1378,7 +1482,7 @@ export function createQuestionBankMcpServer() {
         matchLimit: z.coerce.number().int().min(1).max(10).default(5),
       },
     },
-    async ({ requirement, query, textbookId, courseId, chapterId, questionTypeHint, status, candidateLimit, matchLimit }) => {
+    async ({ requirement, query, textbookId, documentType, courseId, chapterId, questionTypeHint, status, candidateLimit, matchLimit }) => {
       const normalizedRequirement = normalizeOptionalText(requirement)
       if (!normalizedRequirement) {
         throw new Error('requirement 不能为空')
@@ -1389,6 +1493,7 @@ export function createQuestionBankMcpServer() {
         query: normalizeOptionalText(query) || recallKeywords[0] || normalizedRequirement,
         extraQueries: recallKeywords.slice(1),
         textbookId,
+        documentType,
         courseId,
         chapterId,
         status: status || 'ACTIVE',
@@ -1422,6 +1527,9 @@ export function createQuestionBankMcpServer() {
           title: compactText(candidate.title, 90),
           chapterTitle: candidate.chapterTitle,
           textbookId: candidate.textbookId,
+          documentType: candidate.documentType,
+          examType: candidate.examType,
+          hasAnswer: candidate.hasAnswer,
           questionType: candidate.questionType,
           relevanceScore: toNumber(candidate.relevanceScore),
           contentPreview: buildQuestionContentPreview(candidate, 180),
@@ -1441,14 +1549,16 @@ export function createQuestionBankMcpServer() {
       },
       inputSchema: {
         questionCode: z.string().describe('题号，如 q_2_1_1'),
-        textbookId: z.string().optional().describe('可选，按教材 external_id 限定'),
+        textbookId: z.string().optional().describe('可选，按来源 external_id 限定'),
+        documentType: z.enum(['textbook', 'exam']).optional().describe('可选，按来源类型限定'),
         courseId: z.string().optional().describe('可选，按 course_id 限定'),
       },
     },
-    async ({ questionCode, textbookId, courseId }) => {
+    async ({ questionCode, textbookId, documentType, courseId }) => {
       const { conditions, values } = buildQuestionSearchConditions({
         questionCode,
         textbookId,
+        documentType,
         courseId,
       })
       values.push('2')
@@ -1475,6 +1585,9 @@ export function createQuestionBankMcpServer() {
         parentQuestionCode: string | null
         textbookId: string
         textbookTitle: string
+        documentType: string
+        examType: string | null
+        hasAnswer: boolean | null
         courseId: string
       }>(
         `
@@ -1500,6 +1613,9 @@ export function createQuestionBankMcpServer() {
             p.question_code AS "parentQuestionCode",
             t.external_id AS "textbookId",
             t.title AS "textbookTitle",
+            t.document_type AS "documentType",
+            t.exam_type AS "examType",
+            t.has_answer AS "hasAnswer",
             q.course_id AS "courseId"
           FROM ${tableName('assignment_questions')} q
           INNER JOIN ${tableName('textbooks')} t ON t.id = q.textbook_id
@@ -1516,7 +1632,7 @@ export function createQuestionBankMcpServer() {
         throw new Error(`未找到题目: ${questionCode}`)
       }
       if (result.rows.length > 1) {
-        throw new Error(`题号 ${questionCode} 匹配到多条记录，请补充 textbookId 或 courseId`)
+        throw new Error(`题号 ${questionCode} 匹配到多条记录，请补充 textbookId、documentType 或 courseId`)
       }
 
       const question = result.rows[0]
@@ -1564,6 +1680,9 @@ export function createQuestionBankMcpServer() {
           parentQuestionCode: question.parentQuestionCode,
           textbookId: question.textbookId,
           textbookTitle: question.textbookTitle,
+          documentType: question.documentType,
+          examType: question.examType,
+          hasAnswer: question.hasAnswer,
           courseId: question.courseId,
           stem: toJsonObject(question.stem),
           prompt: toJsonObject(question.prompt),
