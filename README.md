@@ -1,62 +1,54 @@
 # question_bank_auto
 
-这是一个把教材 PDF 页图转成题库 JSON 的本地工具。它的核心不是“单纯 OCR”，而是把图片按页送给豆包模型，结合当前章/小节上下文、跨页状态和题号范围约束，逐步把题目写入标准化 JSON 文件。
+一个把教材/试卷 PDF 页图逐步结构化为题库 JSON 的工具系统。
 
-项目由两部分组成：
+当前项目已经从“纯本地文件工具”演进到“本地开发方便 + 云服务器可稳定部署”的形态，支持：
 
-- `frontend/`：Vue 3 + Vite 单页界面，负责上传 PDF、初始化章节会话、触发逐页处理和目录自动处理。
-- `backend/`：TypeScript + Express 服务，负责 PDF 转图、调用豆包模型、管理章节/题目会话、维护 JSON 文件。
+- `PDF -> 页图 -> 结构化提取 -> 题库 JSON`
+- 可视化浏览、修题、修公式、补图、改题型、生成答案
+- 工作区 `workspace` 管理
+- Redis 持久化 session
+- Docker 一体化部署
+- 工作区磁盘占用统计、清理和删除
 
-当前这版工作台除了主流程，还补上了题库维护能力：
+## 项目结构
 
-- `结构化处理`：基础教材 JSON、章节会话初始化、单页处理、目录流式自动处理。
-- `页图工作台`：上传 PDF、批量切页、预览页图、回看输出目录。
-- `题目修复`：按章节/小节/题号定点覆盖单题，输出到 `repair_json/`。
-- `图片补充`：给题目补挂图片资源，自动回写 `media`。
-- `题库可视化`：按章节树浏览题目与答案，并直接渲染公式。
-- `JSON 合并`：把多个章节 JSON 去重拼接，输出到 `merged_json/`。
+- `frontend/`
+  Vue 3 + Vite 前端
+- `backend/`
+  TypeScript + Express 后端
+- `Dockerfile`
+  应用镜像构建文件
+- `docker-compose.yml`
+  应用 + PostgreSQL + Redis 一键启动
+- `.env.example`
+  环境变量示例
 
-运行过程中会用到这些目录：
+## 当前运行模型
 
-- `uploads/`：上传的原始 PDF。
-- `uploads/question_media/`：补挂到题目上的图片资源。
-- `output_images/`：PDF 转出的页图，按文件夹保存。
-- `repair_json/`：单题修复、公式修复、图片补充后生成的新 JSON。
-- `merged_json/`：多文件去重合并后的结果。
-- `read_results/`：自动处理失败日志、待校对日志等运行记录。
-- 外部 `output_json/`：用户自己指定的 JSON 保存目录，后端只写入，不负责创建。
+系统现在以 `workspace` 为核心：
 
-## Git 说明
+- 每次上传 PDF、导入 JSON、结构化提取、修复题目，都会落到同一个工作区
+- 工作区里始终有一个“当前主 JSON”
+- 用户可以随时下载“当前最新 JSON”
+- 修复多道题时，会持续覆盖主工作副本，而不是修一道下一次
 
-- 当前默认分支是 `main`。
-- 如果你切换了远程仓库，先用 `git remote -v` 确认 `origin` 指向正确地址，再执行提交和推送。
-- 建议把本地密钥放到终端环境变量里，不要把真实密钥直接写进准备推送的源码。
+典型工作区目录大致如下：
 
-## 目标 JSON 结构
-
-系统围绕一个教材 JSON 文件持续增量写入，顶层结构固定为：
-
-```json
-{
-  "version": "v1.1",
-  "courseId": "c_001",
-  "textbook": {
-    "textbookId": "tb_001",
-    "title": "教材名",
-    "publisher": "出版社",
-    "subject": "学科"
-  },
-  "chapters": [],
-  "questions": []
-}
+```text
+data/
+  workspaces/
+    ws_xxx/
+      workspace.json
+      uploads/
+      output_images/
+      output_json/
+        main.json
+      repair_json/
+      read_results/
 ```
 
-其中：
-
-- `chapters` 是章节树。
-- `questions` 是题库数组，后端按 `questionId` 做增量更新，不是每次全量重写逻辑。
-
-## 运行入口
+## 本地开发
 
 ### 1. 启动后端
 
@@ -66,44 +58,11 @@ npm install
 npm run dev
 ```
 
-默认监听 `http://127.0.0.1:5001`。
+默认地址：
 
-### 题库数据库
-
-当前仓库已经补上 PostgreSQL 题库数据库导入能力。参考 `ai-homework-system` 的结构，数据库里会落三类核心数据：
-
-- `textbooks`：教材元数据
-- `chapters`：章节树
-- `question_bank_questions`：题目表，`GROUP` 大题和子题都按行存储，子题通过 `parent_id` 关联父题
-
-数据库不会写进默认 `public` schema，而是单独使用 `QUESTION_BANK_DB_SCHEMA`。默认 schema 名是 `question_bank_auto`。
-
-先配置数据库连接：
-
-```bash
-export QUESTION_BANK_DATABASE_URL="postgres://user:password@127.0.0.1:5432/your_db"
-export QUESTION_BANK_DB_SCHEMA="question_bank_auto"
+```text
+http://127.0.0.1:5001
 ```
-
-然后执行迁移：
-
-```bash
-cd backend
-npm run db:migrate
-```
-
-迁移会自动：
-
-- 创建独立 schema
-- 创建迁移记录表 `__migrations`
-- 创建 `textbooks`、`chapters`、`question_bank_questions`、`question_bank_import_runs`
-
-后端启动后，前端“数据库导入”工作台会直接调用这些接口：
-
-- `POST /api/question-bank-db/import-upload`
-- `GET /api/question-bank-db/summary`
-
-导入方式改成前端上传 JSON 文件，不再要求通过命令行传文件路径。
 
 ### 2. 启动前端
 
@@ -113,16 +72,13 @@ npm install
 npm run dev
 ```
 
-默认前端地址是 `http://127.0.0.1:5173`。
+默认地址：
 
-前端会通过代理访问后端的：
+```text
+http://127.0.0.1:5173
+```
 
-- `/api`
-- `/uploads`
-- `/output_images`
-- `/read_results`
-
-### 3. 生产模式
+### 3. 本地生产构建
 
 ```bash
 cd frontend
@@ -135,426 +91,342 @@ npm run build
 npm start
 ```
 
-后端会静态托管 `frontend/dist`。
+## 关键环境变量
 
-## 环境变量
+后端主要读取这些环境变量：
 
-后端支持这些关键环境变量：
+- `PORT`
+  应用端口，默认 `5001`
+- `DATA_ROOT`
+  工作区数据根目录，默认 `./data`
+- `ARK_API_KEY`
+  必填，火山 Ark API Key
+- `ARK_BASE_URL`
+  默认 `https://ark.cn-beijing.volces.com/api/v3`
+- `ARK_MODEL`
+  默认 `doubao-seed-2-0-pro-260215`
+- `QUESTION_BANK_DATABASE_URL`
+  PostgreSQL 连接串
+- `QUESTION_BANK_DB_SCHEMA`
+  默认 `question_bank_auto`
+- `REDIS_URL`
+  Redis 连接串
+- `SESSION_STORE_PREFIX`
+  Redis session key 前缀
+- `SESSION_TTL_SECONDS`
+  session TTL，默认 7 天
+- `PDF_RENDER_DPI`
+  PDF 转图 DPI，默认 `180`
+- `PDF_JPEG_QUALITY`
+  JPG 质量，默认 `90`
+- `MAX_PENDING_QUEUE_PAGES`
+  跨页待补队列上限，默认 `6`
+- `WORKSPACE_DERIVED_RETENTION_DAYS`
+  自动清理旧中间产物的保留天数，默认 `7`
+- `WORKSPACE_MAINTENANCE_INTERVAL_MS`
+  自动清理任务运行间隔，默认 `12h`
 
-- `PORT`：服务端口，默认 `5001`
-- `PDF_RENDER_DPI`：PDF 转图 DPI，默认 `180`
-- `PDF_JPEG_QUALITY`：JPG 质量，默认 `90`
-- `ARK_API_KEY`：豆包方舟 API Key，必填
-- `ARK_BASE_URL`：默认 `https://ark.cn-beijing.volces.com/api/v3`
-- `ARK_MODEL`：默认 `doubao-seed-2-0-pro-260215`
-- `ARK_TIMEOUT_MS`：模型请求超时，默认 `300000`
-- `ARK_RETRY_TIMES`：失败重试次数，默认 `3`
-- `ARK_RETRY_DELAY_MS`：重试间隔，默认 `1200`
-- `MAX_PENDING_QUEUE_PAGES`：跨页待补队列最大页数，默认 `6`
-- `QUESTION_BANK_DATABASE_URL`：题库 PostgreSQL 连接串
-- `QUESTION_BANK_DB_SCHEMA`：题库专用 schema，默认 `question_bank_auto`，不要设置成 `public`
+## PostgreSQL 迁移
 
-当前后端直接读取进程环境变量；如果没设置 `ARK_API_KEY`，调用模型时会报 `ARK_API_KEY is missing`。
-
-### 设置 ARK_API_KEY
-
-PowerShell 当前终端会话：
-
-```powershell
-$env:ARK_API_KEY="你的方舟APIKey"
-cd backend
-npm run dev
-```
-
-PowerShell 持久写入用户环境变量：
-
-```powershell
-setx ARK_API_KEY "你的方舟APIKey"
-```
-
-执行 `setx` 后需要重新打开一个新的终端窗口再启动项目。
-
-macOS / Linux Bash：
+如果你本地直接跑后端，需要先迁移数据库：
 
 ```bash
-export ARK_API_KEY="你的方舟APIKey"
 cd backend
-npm run dev
+npm run db:migrate
 ```
 
-## 页面操作流程
+Docker 部署默认会在容器启动时自动执行迁移。
 
-前端界面现在是多工作台结构，其中“结构化处理”仍然是主链路，其余工作台负责修复、浏览和合并已有题库。
+## Docker 部署
 
-工作台入口包括：
+当前仓库已经内置以下部署文件：
 
-- `结构化处理`：基础 JSON 生成、章节会话初始化、手动逐页处理、自动流式跑目录。
-- `页图工作台`：PDF 转图、页图预览和输出目录回看。
-- `题目修复`：定点补题或覆盖已有题目。
-- `图片补充`：给指定题目挂载图片资源。
-- `题库可视化`：按章节树筛选查看题目、答案和小题结构。
-- `JSON 合并`：把拆分的多个 JSON 文件合并成一个结果文件。
-- `数据库导入`：把题库 JSON 上传到 PostgreSQL 新 schema，并查看导入摘要。
+- `Dockerfile`
+- `docker-compose.yml`
+- `.env.example`
+- `docker-entrypoint.sh`
 
-### 1. 基础 JSON 生成
+### 打包内容
 
-用户先填写：
+会打进镜像的：
 
-- `version`
-- `courseId`
-- `textbookId`
-- `title`
-- `publisher`
-- `subject`
+- 后端编译产物 `backend/dist`
+- 前端编译产物 `frontend/dist`
+- Node 运行依赖
+- `poppler-utils`
 
-前端会生成一个 `chapters=[]`、`questions=[]` 的基础 JSON；如果点击保存，会调用 `POST /api/textbook-json/save`，直接把这个空壳写到指定目录。
+不会打进镜像、而是走 volume 持久化的：
 
-这一步只负责创建教材文件，不做识别。
+- `data`
+- `runtime_cache`
+- `uploads`
+- `output_images`
+- `output_json`
+- `repair_json`
+- `merged_json`
+- `read_results`
+- PostgreSQL 数据
+- Redis 数据
 
-### 2. PDF 转图
+也就是说：
 
-用户上传 PDF 和目标文件夹名后，前端调用 `POST /api/convert`。
+- 代码更新靠“重建镜像”
+- 业务数据靠“卷持久化”
 
-后端会做这些事：
+## Ubuntu 24.04 云服务器部署流程
 
-1. 校验文件必须是 PDF。
-2. 生成批次号，把原始 PDF 存到 `uploads/`。
-3. 在 `output_images/<folderName>/` 下清空旧内容。
-4. 用 `pdf-poppler` 把每一页转成 JPG。
-5. 把转出的图片重新命名为 `1.jpg`、`2.jpg`、`3.jpg`。
-6. 返回页数和每张图片的 URL，供前端后续勾选或自动处理。
+下面这套流程就是当前项目线上使用的推荐方式：
 
-这一步仍然不写题库，只是准备图片输入。
+- `Ubuntu 24.04`
+- `Docker Compose`
+- `PostgreSQL + Redis` 先跟应用一起用 Docker 跑
 
-### 3. 章节会话 + 题库自动处理
+### 1. 安装 Docker
 
-这是项目的核心链路。
+如果官方 Docker 源访问慢，先直接用 Ubuntu 自带包：
 
-用户先提供：
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+sudo docker --version
+sudo docker compose version
+```
 
-- 目标 JSON 文件路径
-- 当前章标题
-- 当前小节标题
+可选：让当前用户免 `sudo`
 
-前端调用 `POST /api/chapters/session/init` 后，后端会：
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
 
-1. 读取目标 JSON。
-2. 确保当前顶层章存在；不存在就创建。
-3. 确保当前章下的小节存在；不存在就创建。
-4. 创建 `chapterSessions` 和 `questionSessions` 两套内存会话。
+### 2. 拉代码
 
-这两套会话分别负责：
+```bash
+git clone https://github.com/BY-Elysia/question_bank_auto.git
+cd question_bank_auto
+```
 
-- `chapterSessions`：记录当前章、当前小节、JSON 路径。
-- `questionSessions`：记录跨页待补队列、起始题号、续题标记、上次待处理原因。
+### 3. 配置环境变量
 
-初始化完成后，可以走两种处理方式：
+```bash
+cp .env.example .env
+nano .env
+```
 
-- 单张手动上传：`POST /api/chapters/session/process-image`
-- 按目录自动流式处理：`POST /api/chapters/session/auto-run-stream`
+最关键的几项：
 
-## 题库 JSON 自动处理的真实逻辑
+```env
+APP_PORT=5001
+PORT=5001
+RUN_DB_MIGRATE=1
 
-下面是每处理一页时，后端真正执行的顺序。
+ARK_API_KEY=你的真实ARK密钥
 
-### 第一步：加载会话状态
+POSTGRES_DB=question_bank_auto
+POSTGRES_USER=question_bank
+POSTGRES_PASSWORD=改成强密码
 
-处理函数是 `processChapterSessionImage`。
+QUESTION_BANK_DATABASE_URL=postgresql://question_bank:你的强密码@postgres:5432/question_bank_auto
+QUESTION_BANK_DB_SCHEMA=question_bank_auto
 
-它会先读取：
+REDIS_URL=redis://redis:6379/0
+SESSION_STORE_PREFIX=question-bank-auto:sessions
+SESSION_TTL_SECONDS=604800
+```
 
-- 当前页图片
-- 当前 `sessionId`
-- 可选的下一页预读图 `lookaheadImageDataUrl`
-- 当前 JSON 文件
-- 当前章/小节上下文
-- 题目跨页待补队列
+注意：
 
-如果之前已经有跨页未完题，系统不会只看当前页，而是把“待补页 + 当前页”拼成一个输入队列。
+- `QUESTION_BANK_DATABASE_URL` 里的密码必须和 `POSTGRES_PASSWORD` 一致
+- 主机名 `postgres`、`redis` 不要改，因为这是 `docker-compose.yml` 里的服务名
 
-因此存在两种模式：
+### 4. 启动
 
-- `single_page`：当前没有跨页遗留，只看这一页。
-- `cross_page_merge`：把历史待补页和当前页合并后再判断。
+```bash
+sudo docker compose up -d --build
+```
 
-### 第二步：先做边界检测，不急着抽题
+### 5. 查看状态
 
-系统不会一上来就让模型输出完整题目 JSON，而是先调用 `detectChapterBoundaryAndPendingByDoubao` 做边界判断。
+```bash
+sudo docker compose ps
+sudo docker compose logs -f app
+```
 
-这一步只让模型回答 4 个问题：
+### 6. 开放安全组端口
 
-- `hasExtractableQuestions`：从当前处理起点开始，这一批图里是否已经有完整题可以入库。
-- `needNextPage`：当前处理起点题是否还需要下一页。
-- `continueQuestionKey`：当前输入队列里“最后出现的那道顶层大题”是谁，如果它还没结束则返回它。
-- `reason`：模型对判断的说明。
+如果暂时直接通过公网 IP 访问，需要开放：
 
-这里最关键的设计是：
+- `TCP:5001`
 
-- 起点题和最后一题不是一个概念。
-- `needNextPage` 是围绕“当前起点题”判断。
-- `continueQuestionKey` 是围绕“整批图最后出现的大题”判断。
+浏览器访问：
 
-这样做是为了避免小节切换或同页多题时，错误地把“当前页最后一题”和“待续题”混为一谈。
+```text
+http://你的公网IP:5001
+```
 
-### 第三步：可选做下一页预读，修正续题判断
+后续如果接域名和 HTTPS，建议只对外开放：
 
-如果自动处理模式下已经知道下一页图，后端会额外调用 `detectLastQuestionContinuationWithLookaheadByDoubao`。
+- `TCP:80`
+- `TCP:443`
 
-这一步只做一件事：
+## 服务器更新流程
 
-- 判断“当前队列最后一题”是否真的延续到了下一页预读图。
+以后你修改代码后，服务器更新只需要：
 
-它不会抽题，也不会判断当前起点题是否完整，只是修正 `continueQuestionKey`，让跨页判断更稳。
+```bash
+cd ~/workspaces/question_bank_auto
+git pull
+sudo docker compose up -d --build
+```
 
-### 第四步：只有确认有完整题，才进入结构化提取
+常用辅助命令：
 
-如果边界检测返回 `hasExtractableQuestions=true`，后端才会调用 `detectChapterAndQuestionsByDoubao`。
+查看状态：
 
-这一步会同时让模型输出两块结构：
+```bash
+sudo docker compose ps
+```
 
-- `chapter`：本轮最后一页是否切换到了新章/新小节
-- `question`：当前允许范围内可入库的题目数组
+查看日志：
 
-这里的提取不是“这一页看到什么提什么”，而是严格受两个边界参数控制：
+```bash
+sudo docker compose logs -f app
+```
 
-- `startQuestionKey`
-- `endBeforeQuestionKey`
+停止服务：
 
-含义是：
+```bash
+sudo docker compose down
+```
 
-- 从哪一题开始提。
-- 提到哪一题之前为止，截止题本身不能输出。
+## 当前用户流程
 
-如果 `endBeforeQuestionKey=null`，系统要求模型必须把起点之后所有完整大题都提出来，不能只提第一题。
+### 1. 上传 PDF
 
-### 第五步：模型输出不是直接入库，要先过清洗和修复
+- PDF 会上传到当前工作区
+- 原始 PDF 会保存
+- 转图后的页图会落到 `output_images/`
 
-模型返回的内容先走这些步骤：
+### 2. 生成或导入 JSON
 
-1. 从回复中抽出第一个 JSON 对象。
-2. 尝试普通 `JSON.parse`。
-3. 如果失败，做转义修复、尾逗号修复、控制字符修复。
-4. 如果还失败，触发一次“重新看图生成 JSON”。
-5. 还不行，再触发一次“只修复 JSON 结构”的兜底请求。
+- 导入后会进入当前工作区
+- 工作区里会有主 JSON 工作副本
 
-所以系统对模型 JSON 格式错误有三层兜底：
+### 3. 结构化提取
 
-- 本地修补
-- 重新生成
-- 专门修 JSON
+- 提取结果持续写回当前主 JSON
+- session 状态放在 Redis
 
-### 第六步：题目归一化
+### 4. 可视化修复
 
-模型产出的题目对象在入库前会统一归一化。
+- 修公式、补图、改题型、生成答案，都会持续覆盖当前主 JSON
+- 用户可以随时点击“下载当前最新 JSON”
 
-后端会补齐或重写这些字段：
+### 5. 导入本地 `uploads/`
 
-- `chapterId`
-- `questionId`
-- `nodeType`
-- `questionType`
-- `title`
-- `prompt`
-- `standardAnswer`
-- `rubric`
-- `media`
+如果 JSON 里的图片 URL 还指向本地 `/uploads/...`：
 
-核心规则包括：
+- 可视化页支持上传本地 `uploads` 文件夹
+- 后端会把图片导入服务器
+- 并把 JSON 里的图片地址改写成服务器可访问 URL
 
-- 题目统一分为 `LEAF` 和 `GROUP`。
-- `GROUP` 题必须有 `stem` 和 `children`。
-- 题号会转成统一格式，例如 `q_9_3_1`、`q_9_3_1_2`。
-- 章节编号统一转成 `ch_...` 格式。
-- 题目标题会被重写成“`习题8.1 第3题`”或“`习题8.1 第3题 第2小题`”。
-- `standardAnswer` 会清理掉“思路总结、归纳、拓展”这类不该进入标准答案的文本。
-- `rubric` 会被补齐并强制校正到总分 `10`。
-- 图片 `media.url` 会按 `questionId` 自动生成 URL 占位。
+## 文件上传策略
 
-### 第七步：做三类质量校验
+为了适应服务器环境，上传已经不再使用纯内存缓存。
 
-即使模型已经返回了结构化题目，系统也不会直接相信。
+当前策略是：
 
-后端会继续做三层检查。
+- 上传先落到磁盘临时目录
+- 后端按需读取文件
+- 请求结束后自动清理临时上传文件
 
-#### 1. 范围错提检查
+这样可以显著降低：
 
-通过 `detectExtractorRangeMismatch` 检查模型有没有犯这类错误：
+- 大 PDF 上传时的内存峰值
+- 批量图片修复时的内存压力
+- 公网用户同时操作时的崩溃风险
 
-- 边界判断明明说起点后还有完整题，但提取结果只返回了起点题。
-- 明明设置了截止题，却没有按范围提。
+## 工作区空间管理
 
-如果发现范围不对，会带着更强的提示词重提一次；再不行，就整批不入库，保留队列等下一页。
+现在系统已经支持工作区空间管理。
 
-#### 2. 待校对重提
+前端顶部导航会显示：
 
-如果提取结果里出现 `【待校对】`，系统会记录待校对位置，并尝试让模型只修这些位置。
+- 当前 `workspaceId`
+- 当前工作区占用大小
+- 文件数
+- 资产数
 
-如果修完后 `【待校对】` 数量减少或不增加，就采用修复结果；否则保留原结果。
+并支持：
 
-待校对日志会写入：
+- `刷新空间`
+- `清理中间产物`
+- `删除当前工作区`
 
-- `read_results/pending_review_questions.jsonl`
+### 清理规则
 
-#### 3. 完整性检查
+“清理中间产物”只会清：
 
-通过 `detectQuestionIntegrityIssue` 检查题目是否看起来没提完整，典型信号有：
+- `output_images`
+- `read_results`
+- 旧的 `repair_json` 快照
 
-- `GROUP` 小题序号明显断档。
-- 某些小问有题干但没有答案。
-- 答案末尾像被截断，例如只停在“所以”“因此”“=”“（”这种未闭合状态。
+不会清：
 
-如果发现问题，系统会先尝试重提一次；如果还不完整，就把问题题及其后面的题从本轮结果里截掉，把这道题标记为待续题，进入下一页继续拼接。
+- 当前主 `main.json`
+- 用户上传图片
+- 必要的工作结果
 
-### 第八步：处理章节/小节切换
+### 自动清理
 
-结构化提取除了返回题目，还会返回：
+后端启动后会定期清理“长时间未更新工作区”的中间产物。
 
-- `chapterTitle`
-- `sectionTitle`
-- `switchSectionTitle`
+默认规则：
 
-规则是：
+- 超过 `7` 天未更新的工作区
+- 自动清掉旧页图和读结果
+- repair 快照只保留少量最新版本
 
-- 默认继承当前章/小节。
-- 章或小节切换只看输入队列的最后一页。
-- 如果最后一页中途切到新小节，切换前题目仍归旧小节，切换后题目改归新小节。
+可通过环境变量调整：
 
-后端会根据这些信息：
+- `WORKSPACE_DERIVED_RETENTION_DAYS`
+- `WORKSPACE_MAINTENANCE_INTERVAL_MS`
 
-1. 保证新章存在。
-2. 保证新小节存在。
-3. 更新当前会话的章/小节。
-4. 用最终落定的 `chapterId` 重写题目标题。
+## 当前适合的部署定位
 
-### 第九步：按 `questionId` 增量写入 JSON
+这套系统目前最适合：
 
-真正写入时，后端不是简单 `push`，而是调用 `upsertQuestionsById`：
+- `1 台 Linux 云服务器`
+- `Docker Compose`
+- `1 个应用容器`
+- `1 个 PostgreSQL 容器`
+- `1 个 Redis 容器`
 
-- 如果 `questionId` 不存在，就新增。
-- 如果 `questionId` 已存在，就替换旧题。
+如果后续文件量继续增长，建议下一步演进为：
 
-这意味着同一道题在跨页补全后，后续结果会覆盖之前的半成品，而不是重复插入。
+- PostgreSQL 用托管版
+- Redis 用托管版
+- PDF、图片、归档 JSON 迁对象存储
+- 域名 + HTTPS + 反向代理
 
-### 第十步：更新跨页队列状态
+## 已知说明
 
-本轮处理结束后，系统会根据结果更新 `questionSessions`。
+- 公网直接通过 `IP:5001` 访问时，浏览器的 File System Access API 可能不可用，所以页面会退化为普通文件上传入口
+- 首次 Docker 构建通常最慢，因为要拉基础镜像、安装系统包和依赖
+- 前端构建目前有大 chunk 警告，但不影响运行
 
-存在三种结果：
+## 推荐的实际运维习惯
 
-#### 情况 A：当前还没有完整题可入库
+- 代码改动后：`git pull && docker compose up -d --build`
+- 定期查看：当前工作区空间占用
+- 大批量处理完成后：手动清理中间产物
+- 不再需要的任务：直接删除工作区
+- 发布前：备份 `.env`、数据库卷和 `data/`
 
-- 当前页会加入 `pendingPageDataUrls`
-- `processingStartQuestionKey` 保持不变
-- 等下一页继续拼队列
+## Git 说明
 
-#### 情况 B：已经有题入库，但最后一题还没结束
+- 默认分支：`main`
+- 推送前不要把真实密钥写入仓库
+- `.env` 不应提交到 Git
 
-- 已完成的题先入库
-- 当前页作为新的待补起点页
-- `pendingContinueQuestionKey` 设为最后那道未完题
-
-#### 情况 C：本轮所有题都完整结束
-
-- 清空待补队列
-- 清空待续题
-- 下次新页重新从头判断
-
-## 自动处理目录模式
-
-前端点击“自动逐页处理目录”后，会调用 `POST /api/chapters/session/auto-run-stream`。
-
-后端会：
-
-1. 扫描目录中的图片文件。
-2. 按自然顺序排序。
-3. 一页一页调用 `processChapterSessionImage`。
-4. 对每一页附带下一页预读图。
-5. 用 NDJSON 流把进度实时推给前端。
-
-流里的事件有四种：
-
-- `start`
-- `progress`
-- `result`
-- `done`
-
-前端会把这些事件转成日志文本，显示每页处理结果、当前小节、是否跨页、重试原因和题目入库数量。
-
-如果某页失败，后端会把错误写入：
-
-- `read_results/auto_process_failures.jsonl`
-
-## 其它接口
-
-除了题库自动处理主线，后端还提供若干辅助接口。
-
-### `POST /api/textbook-json/repair-question`
-
-按章节、小节和题号定点修复单题，支持多张连续页图片，结果输出到 `repair_json/`。
-
-### `POST /api/textbook-json/repair-math-format`
-
-只修已有题目里的公式文本，不重跑整题识别，结果输出到 `repair_json/`。
-
-### `POST /api/textbook-json/attach-images`
-
-给指定题目挂图片并回写 `media`，结果输出到 `repair_json/`。
-
-### `POST /api/textbook-json/merge`
-
-把多个章节 JSON 去重合并，自动整理章节树和题目顺序，结果输出到 `merged_json/`。
-
-## 设计上的几个关键点
-
-这个项目能稳定处理教材题库，关键不在单次提示词，而在后端对模型结果做了强约束。
-
-### 1. 先判边界，再抽结构
-
-把“是否已有完整题”“最后一题是谁”“是否要续页”先单独问一轮，比直接一把抽全量题目更稳。
-
-### 2. 章节切换和跨页题分开判断
-
-最后一页可能同时发生：
-
-- 老题没结束
-- 新小节开始
-- 新题出现
-
-后端通过独立的边界检测和预读确认，把这些状态拆开处理，避免题号和小节串位。
-
-### 3. 所有入库都受范围控制
-
-提取器不是自由发挥，它必须遵守 `startQuestionKey` 和 `endBeforeQuestionKey`。这对跨页题非常重要。
-
-### 4. 模型输出只是候选，不是结果
-
-范围检查、待校对重提、完整性检查，都是为了阻止“看起来像对、其实是错”的题直接入库。
-
-### 5. JSON 文件是持续演化的
-
-每次只改当前识别到的章节和题目，因此适合按页、按章节、按目录慢慢积累，不要求一次处理完整本书。
-
-## 当前局限
-
-目前系统有这些边界条件需要注意：
-
-- 章节会话和题目会话保存在内存里，服务重启后会丢失，需要重新初始化会话。
-- 依赖图片质量；如果 PDF 转图模糊，后续结构化提取会明显变差。
-- 前端中的部分默认路径是本机开发时写死的示例值，换机器后需要手工改成自己的路径。
-- `MAX_PENDING_QUEUE_PAGES` 默认只保留最多 6 页的跨页队列，特别长的跨页题需要根据实际情况调大。
-
-## 代码定位
-
-如果要继续改这套逻辑，主要看这里：
-
-- `backend/src/server.ts`
-  - `processChapterSessionImage`：整条自动处理主流程
-  - `detectChapterBoundaryAndPendingByDoubao`：跨页边界检测
-  - `detectChapterAndQuestionsByDoubao`：章节 + 题目联合提取
-  - `normalizeQuestionItem`：题目归一化
-  - `detectQuestionIntegrityIssue`：完整性检查
-  - `upsertQuestionsById`：按 `questionId` 增量写回
-- `frontend/src/App.vue`
-  - 页面操作入口
-  - 自动处理进度展示
-  - JSON 初始化和保存逻辑
