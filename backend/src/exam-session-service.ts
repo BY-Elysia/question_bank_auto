@@ -20,7 +20,12 @@ import {
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'
-import { examQuestionSessions, examSessions } from './state'
+import {
+  getExamQuestionSession,
+  getExamSession,
+  setExamQuestionSession,
+  setExamSession,
+} from './state'
 import type {
   ExamCombinedExtractResult,
   ExamQuestionSessionState,
@@ -561,13 +566,13 @@ export async function processExamSessionImage(params: {
     lookaheadImageDataUrl = '',
   } = params
 
-  const session = examSessions.get(sessionId)
+  const session = await getExamSession(sessionId)
   if (!session) {
     throw new Error('Exam session not found, please init first')
   }
 
   const questionSession =
-    examQuestionSessions.get(sessionId) ||
+    (await getExamQuestionSession(sessionId)) ||
     ({
       sessionId,
       jsonFilePath: session.jsonFilePath,
@@ -737,7 +742,7 @@ export async function processExamSessionImage(params: {
   session.currentMajorTitle = activeContext?.majorTitle || session.currentMajorTitle
   session.currentMinorTitle = activeContext?.minorTitle || ''
   session.updatedAt = new Date().toISOString()
-  examSessions.set(sessionId, session)
+  await setExamSession(sessionId, session)
 
   questionSession.currentMajorTitle = session.currentMajorTitle
   questionSession.currentMinorTitle = session.currentMinorTitle
@@ -749,7 +754,7 @@ export async function processExamSessionImage(params: {
   questionSession.pendingReason = pending ? pendingReason : null
   questionSession.pendingUpsertedCount = normalizedQuestions.length
   questionSession.updatedAt = new Date().toISOString()
-  examQuestionSessions.set(sessionId, questionSession)
+  await setExamQuestionSession(sessionId, questionSession)
 
   return {
     message: 'success',
@@ -805,8 +810,8 @@ export async function initExamSession(params: {
     updatedAt: new Date().toISOString(),
   }
 
-  examSessions.set(sessionId, session)
-  examQuestionSessions.set(sessionId, {
+  await setExamSession(sessionId, session)
+  await setExamQuestionSession(sessionId, {
     sessionId,
     jsonFilePath,
     examTitle: meta.title,

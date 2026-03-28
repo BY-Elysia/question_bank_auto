@@ -11,22 +11,26 @@ import {
   appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
   batchId,
-  chapterSessions,
   ensureSectionChapter,
   ensureTopChapter,
   isSupportedImageFileName,
   loadTextbookJson,
-  normalizeJsonPath,
   normalizeTitle,
   processChapterSessionImage,
-  questionSessions,
   saveTextbookJson,
   sortImageFileNames,
   toImageDataUrl,
   toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
+import {
+  getChapterSession,
+  getQuestionSession,
+  setChapterSession,
+  setQuestionSession,
+} from '../state'
 import { upload } from '../upload'
+import { resolveManagedJsonInput } from '../workspace-store'
 
 const router = Router()
 
@@ -37,39 +41,42 @@ function getArkApiKeyFromRequest(req: Request) {
 router.post('/api/chapters/session/init', async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const currentChapterTitleRaw = String(req.body?.currentChapterTitle || '').trim()
     const currentSectionTitleRaw = String(req.body?.currentSectionTitle || '').trim()
 
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!currentChapterTitleRaw || !currentSectionTitleRaw) {
       return res.status(400).json({ message: 'currentChapterTitle and currentSectionTitle are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
-    const fileStat = await fsp.stat(jsonFilePath).catch(() => null)
-    if (!fileStat || !fileStat.isFile()) {
-      return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
-    }
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
 
-    const payload = await loadTextbookJson(jsonFilePath)
+    const payload = await loadTextbookJson(resolved.jsonFilePath)
     const chapter = ensureTopChapter(payload, currentChapterTitleRaw)
     const section = ensureSectionChapter(payload, chapter.chapterId, currentSectionTitleRaw)
-    await saveTextbookJson(jsonFilePath, payload)
+    await saveTextbookJson(resolved.jsonFilePath, payload)
 
     const sessionId = batchId()
     const chapterSession = {
       sessionId,
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
       currentChapterTitle: normalizeTitle(currentChapterTitleRaw),
       currentSectionTitle: normalizeTitle(currentSectionTitleRaw),
       updatedAt: new Date().toISOString(),
     }
-    chapterSessions.set(sessionId, chapterSession)
-    questionSessions.set(sessionId, {
+    await setChapterSession(sessionId, chapterSession)
+    await setQuestionSession(sessionId, {
       sessionId,
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
       currentChapterTitle: chapterSession.currentChapterTitle,
       currentSectionTitle: chapterSession.currentSectionTitle,
       currentSectionChapterId: section.chapterId,
@@ -85,7 +92,9 @@ router.post('/api/chapters/session/init', async (req: Request, res: Response) =>
     return res.json({
       message: 'success',
       sessionId,
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
       currentChapterTitle: chapterSession.currentChapterTitle,
       currentSectionTitle: chapterSession.currentSectionTitle,
       currentSectionChapterId: section.chapterId,
@@ -107,7 +116,7 @@ router.post('/api/chapters/session/process-image', upload.fields([
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!chapterSessions.get(sessionId)) {
+    if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
     const files = (req.files as Record<string, Express.Multer.File[]> | undefined) || {}
@@ -143,7 +152,7 @@ router.post('/api/chapters/session/process-image-responses', upload.fields([
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!chapterSessions.get(sessionId)) {
+    if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
     const files = (req.files as Record<string, Express.Multer.File[]> | undefined) || {}
@@ -173,11 +182,10 @@ router.post('/api/chapters/session/process-image-responses', upload.fields([
 router.post('/api/chapters/segments/append-from-images', upload.array('images', 40), async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const chapterTitle = String(req.body?.chapterTitle || '').trim()
     const sectionTitle = String(req.body?.sectionTitle || '').trim()
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!chapterTitle || !sectionTitle) {
       return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
     }
@@ -187,17 +195,25 @@ router.post('/api/chapters/segments/append-from-images', upload.array('images', 
       return res.status(400).json({ message: 'images are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       appendChapterSegmentFromImages({
-        jsonFilePath,
+        jsonFilePath: resolved.jsonFilePath,
         chapterTitle,
         sectionTitle,
         imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
         imageLabels: files.map((file) => file.originalname || ''),
       }),
     )
-    return res.json(result)
+    return res.json({
+      ...result,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Append chapter segment from images failed: ${msg}` })
@@ -207,11 +223,10 @@ router.post('/api/chapters/segments/append-from-images', upload.array('images', 
 router.post('/api/chapters/segments/append-from-images-responses', upload.array('images', 40), async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const chapterTitle = String(req.body?.chapterTitle || '').trim()
     const sectionTitle = String(req.body?.sectionTitle || '').trim()
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!chapterTitle || !sectionTitle) {
       return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
     }
@@ -221,17 +236,25 @@ router.post('/api/chapters/segments/append-from-images-responses', upload.array(
       return res.status(400).json({ message: 'images are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       appendChapterSegmentFromImagesWithResponsesPrefixCache({
-        jsonFilePath,
+        jsonFilePath: resolved.jsonFilePath,
         chapterTitle,
         sectionTitle,
         imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
         imageLabels: files.map((file) => file.originalname || ''),
       }),
     )
-    return res.json(result)
+    return res.json({
+      ...result,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Append chapter segment from images with responses prefix cache failed: ${msg}` })
@@ -252,7 +275,7 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
     if (!imageDirRaw) {
       return res.status(400).json({ message: 'imageDir is required' })
     }
-    if (!chapterSessions.get(sessionId)) {
+    if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
@@ -318,8 +341,8 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
       }
     }
 
-    const latestSession = chapterSessions.get(sessionId)
-    const latestQuestionSession = questionSessions.get(sessionId)
+    const latestSession = await getChapterSession(sessionId)
+    const latestQuestionSession = await getQuestionSession(sessionId)
     return res.json({
       message: 'success',
       sessionId,
@@ -355,7 +378,7 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
     if (!imageDirRaw) {
       return res.status(400).json({ message: 'imageDir is required' })
     }
-    if (!chapterSessions.get(sessionId)) {
+    if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
@@ -378,13 +401,14 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
       res.flushHeaders()
     }
 
+    const streamStartSession = await getChapterSession(sessionId)
     writeNdjson(res, {
       type: 'start',
       sessionId,
       imageDir,
       totalCount: names.length,
-      currentChapterTitle: overrideChapterTitle || chapterSessions.get(sessionId)?.currentChapterTitle || '',
-      currentSectionTitle: overrideSectionTitle || chapterSessions.get(sessionId)?.currentSectionTitle || '',
+      currentChapterTitle: overrideChapterTitle || streamStartSession?.currentChapterTitle || '',
+      currentSectionTitle: overrideSectionTitle || streamStartSession?.currentSectionTitle || '',
       mode: 'responses-prefix-experiment',
     })
 
@@ -464,8 +488,8 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
       }
     }
 
-    const latestSession = chapterSessions.get(sessionId)
-    const latestQuestionSession = questionSessions.get(sessionId)
+    const latestSession = await getChapterSession(sessionId)
+    const latestQuestionSession = await getQuestionSession(sessionId)
     writeNdjson(res, {
       type: 'done',
       sessionId,
@@ -510,7 +534,7 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
     if (!imageDirRaw) {
       return res.status(400).json({ message: 'imageDir is required' })
     }
-    if (!chapterSessions.get(sessionId)) {
+    if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
@@ -533,13 +557,14 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
       res.flushHeaders()
     }
 
+    const streamStartSession = await getChapterSession(sessionId)
     writeNdjson(res, {
       type: 'start',
       sessionId,
       imageDir,
       totalCount: names.length,
-      currentChapterTitle: overrideChapterTitle || chapterSessions.get(sessionId)?.currentChapterTitle || '',
-      currentSectionTitle: overrideSectionTitle || chapterSessions.get(sessionId)?.currentSectionTitle || '',
+      currentChapterTitle: overrideChapterTitle || streamStartSession?.currentChapterTitle || '',
+      currentSectionTitle: overrideSectionTitle || streamStartSession?.currentSectionTitle || '',
     })
 
     const results = []
@@ -614,8 +639,8 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
       }
     }
 
-    const latestSession = chapterSessions.get(sessionId)
-    const latestQuestionSession = questionSessions.get(sessionId)
+    const latestSession = await getChapterSession(sessionId)
+    const latestQuestionSession = await getQuestionSession(sessionId)
     writeNdjson(res, {
       type: 'done',
       sessionId,

@@ -16,6 +16,7 @@
     "multer": "^2.0.2",
     "pdf-poppler": "^0.2.1",
     "pg": "^8.20.0",
+    "redis": "^5.11.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

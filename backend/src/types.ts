@@ -41,6 +41,8 @@ export type TextbookJsonPayload = {
 export type ChapterSessionState = {
   sessionId: string
   jsonFilePath: string
+  workspaceId?: string
+  jsonAssetId?: string
   currentChapterTitle: string
   currentSectionTitle: string
   updatedAt: string
@@ -49,6 +51,8 @@ export type ChapterSessionState = {
 export type ExamSessionState = {
   sessionId: string
   jsonFilePath: string
+  workspaceId?: string
+  jsonAssetId?: string
   examTitle: string
   examType: ExamType
   hasAnswer: boolean
@@ -122,6 +126,8 @@ export type QuestionItem = QuestionLeaf | QuestionGroup
 export type QuestionSessionState = {
   sessionId: string
   jsonFilePath: string
+  workspaceId?: string
+  jsonAssetId?: string
   currentChapterTitle: string
   currentSectionTitle: string
   currentSectionChapterId: string
@@ -137,6 +143,8 @@ export type QuestionSessionState = {
 export type ExamQuestionSessionState = {
   sessionId: string
   jsonFilePath: string
+  workspaceId?: string
+  jsonAssetId?: string
   examTitle: string
   examType: ExamType
   hasAnswer: boolean

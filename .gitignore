@@ -5,6 +5,8 @@ latex_repair_json/
 merged_json/
 read_results/
 uploads/
+data/
+runtime_cache/
 ML/机器学习周志华.pdf
 
 backend/node_modules/

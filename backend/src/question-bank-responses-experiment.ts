@@ -16,7 +16,6 @@ import {
   getPayloadAnswerHandlingMode,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  chapterSessions,
   detectQuestionIntegrityIssue,
   ensureSectionChapter,
   ensureTopChapter,
@@ -28,12 +27,17 @@ import {
   normalizeQuestionItem,
   normalizeTitle,
   parseModelJsonObject,
-  questionSessions,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
+import {
+  getChapterSession,
+  getQuestionSession,
+  setChapterSession,
+  setQuestionSession,
+} from './state'
 import type {
   ChapterDetectResult,
   CombinedExtractResult,
@@ -992,7 +996,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     overrideChapterTitle = '',
     overrideSectionTitle = '',
   } = params
-  const session = chapterSessions.get(sessionId)
+  const session = await getChapterSession(sessionId)
   if (!session) {
     throw new Error('session not found, please init first')
   }
@@ -1015,7 +1019,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   const initialTopChapter = ensureTopChapter(payload, activeChapterTitle)
   const initialSection = ensureSectionChapter(payload, initialTopChapter.chapterId, activeSectionTitle)
   let activeSectionChapterId = initialSection.chapterId
-  const questionSession = questionSessions.get(sessionId) || {
+  const questionSession = (await getQuestionSession(sessionId)) || {
     sessionId,
     jsonFilePath: session.jsonFilePath,
     currentChapterTitle: activeChapterTitle,
@@ -1146,9 +1150,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     session.currentChapterTitle = activeChapterTitle
     session.currentSectionTitle = activeSectionTitle
     session.updatedAt = new Date().toISOString()
-    chapterSessions.set(sessionId, session)
+    await setChapterSession(sessionId, session)
     questionSession.updatedAt = new Date().toISOString()
-    questionSessions.set(sessionId, questionSession)
+    await setQuestionSession(sessionId, questionSession)
 
     return {
       message: 'success',
@@ -1758,9 +1762,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   session.currentChapterTitle = activeChapterTitle
   session.currentSectionTitle = activeSectionTitle
   session.updatedAt = new Date().toISOString()
-  chapterSessions.set(sessionId, session)
+  await setChapterSession(sessionId, session)
   questionSession.updatedAt = new Date().toISOString()
-  questionSessions.set(sessionId, questionSession)
+  await setQuestionSession(sessionId, questionSession)
 
   return {
     message: 'success',

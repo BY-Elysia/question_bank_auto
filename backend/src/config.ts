@@ -1,6 +1,8 @@
 import path from 'node:path'
 
 export const APP_ROOT = path.resolve(__dirname, '..', '..')
+export const DATA_ROOT = path.resolve(String(process.env.DATA_ROOT || path.join(APP_ROOT, 'data')))
+export const WORKSPACES_DIR = path.join(DATA_ROOT, 'workspaces')
 export const FRONTEND_DIST_DIR = path.join(APP_ROOT, 'frontend', 'dist')
 export const UPLOAD_DIR = path.join(APP_ROOT, 'uploads')
 export const QUESTION_MEDIA_DIR = path.join(UPLOAD_DIR, 'question_media')
@@ -28,3 +30,8 @@ export const QUESTION_BANK_DATABASE_URL = String(
 export const QUESTION_BANK_DB_SCHEMA = String(
   process.env.QUESTION_BANK_DB_SCHEMA || 'question_bank_auto',
 ).trim()
+export const REDIS_URL = String(process.env.REDIS_URL || '').trim()
+export const SESSION_STORE_PREFIX = String(
+  process.env.SESSION_STORE_PREFIX || 'question-bank-auto:sessions',
+).trim()
+export const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS || 60 * 60 * 24 * 7)

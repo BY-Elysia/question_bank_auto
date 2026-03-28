@@ -18,7 +18,12 @@ import {
   UPLOAD_DIR,
 } from './config'
 import { getArkApiKeyOverride } from './ark-request-context'
-import { chapterSessions, questionSessions } from './state'
+import {
+  getChapterSession,
+  getQuestionSession,
+  setChapterSession,
+  setQuestionSession,
+} from './state'
 import type {
   AnswerHandlingMode,
   ChapterDetectResult,
@@ -2307,7 +2312,7 @@ async function processChapterSessionImage(params: {
     overrideChapterTitle = '',
     overrideSectionTitle = '',
   } = params
-  const session = chapterSessions.get(sessionId)
+  const session = await getChapterSession(sessionId)
   if (!session) {
     throw new Error('session not found, please init first')
   }
@@ -2330,7 +2335,7 @@ async function processChapterSessionImage(params: {
   const initialTopChapter = ensureTopChapter(payload, activeChapterTitle)
   const initialSection = ensureSectionChapter(payload, initialTopChapter.chapterId, activeSectionTitle)
   let activeSectionChapterId = initialSection.chapterId
-  const questionSession = questionSessions.get(sessionId) || {
+  const questionSession = (await getQuestionSession(sessionId)) || {
     sessionId,
     jsonFilePath: session.jsonFilePath,
     currentChapterTitle: activeChapterTitle,
@@ -2455,9 +2460,9 @@ async function processChapterSessionImage(params: {
     session.currentChapterTitle = activeChapterTitle
     session.currentSectionTitle = activeSectionTitle
     session.updatedAt = new Date().toISOString()
-    chapterSessions.set(sessionId, session)
+    await setChapterSession(sessionId, session)
     questionSession.updatedAt = new Date().toISOString()
-    questionSessions.set(sessionId, questionSession)
+    await setQuestionSession(sessionId, questionSession)
 
     return {
       message: 'success',
@@ -3057,9 +3062,9 @@ async function processChapterSessionImage(params: {
   session.currentChapterTitle = activeChapterTitle
   session.currentSectionTitle = activeSectionTitle
   session.updatedAt = new Date().toISOString()
-  chapterSessions.set(sessionId, session)
+  await setChapterSession(sessionId, session)
   questionSession.updatedAt = new Date().toISOString()
-  questionSessions.set(sessionId, questionSession)
+  await setQuestionSession(sessionId, questionSession)
 
   return {
     message: 'success',
@@ -3089,7 +3094,6 @@ export {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   buildCanonicalQuestionTitle,
-  chapterSessions,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
   ensureSectionChapter,
@@ -3115,7 +3119,6 @@ export {
   parseModelJsonObject,
   payloadExpectsAnswer,
   processChapterSessionImage,
-  questionSessions,
   readByDoubao,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,

@@ -1,0 +1,68 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: question-bank-auto:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      DATA_ROOT: ${DATA_ROOT:-/app/data}
+    ports:
+      - "${APP_PORT:-5001}:5001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+      - app_runtime_cache:/app/runtime_cache
+      - app_uploads:/app/uploads
+      - app_output_images:/app/output_images
+      - app_output_json:/app/output_json
+      - app_repair_json:/app/repair_json
+      - app_merged_json:/app/merged_json
+      - app_read_results:/app/read_results
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  app_data:
+  app_runtime_cache:
+  app_uploads:
+  app_output_images:
+  app_output_json:
+  app_repair_json:
+  app_merged_json:
+  app_read_results:
+  redis_data:
+  postgres_data:

@@ -8,16 +8,19 @@ import {
   previewExamSectionFromQuestionBank,
 } from '../exam-section-compose-service'
 import { initExamSession, processExamSessionImage } from '../exam-session-service'
-import { examQuestionSessions, examSessions } from '../state'
+import {
+  getExamQuestionSession,
+  getExamSession,
+} from '../state'
 import {
   isSupportedImageFileName,
-  normalizeJsonPath,
   sortImageFileNames,
   toImageDataUrl,
   toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
 import { upload } from '../upload'
+import { resolveManagedJsonInput } from '../workspace-store'
 
 const router = Router()
 
@@ -28,20 +31,22 @@ function getArkApiKeyFromRequest(req: Request) {
 router.post('/api/exams/session/init', async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
-
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
-    const fileStat = await fsp.stat(jsonFilePath).catch(() => null)
-    if (!fileStat || !fileStat.isFile()) {
-      return res.status(400).json({ message: 'jsonFilePath does not exist or is not a file' })
-    }
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
 
     const data = await initExamSession({
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
     })
-    return res.json(data)
+    return res.json({
+      ...data,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Init exam session failed: ${msg}` })
@@ -51,12 +56,11 @@ router.post('/api/exams/session/init', async (req: Request, res: Response) => {
 router.post('/api/exams/sections/extract-from-images', upload.array('images', 30), async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const majorTitle = String(req.body?.majorTitle || '').trim()
     const minorTitle = String(req.body?.minorTitle || '').trim()
     const questionType = String(req.body?.questionType || '').trim()
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!majorTitle) {
       return res.status(400).json({ message: 'majorTitle is required' })
     }
@@ -69,17 +73,25 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
       return res.status(400).json({ message: 'images are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       previewExamSectionFromImages({
-        jsonFilePath,
+        jsonFilePath: resolved.jsonFilePath,
         majorTitle,
         minorTitle,
         questionType,
         imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
       }),
     )
-    return res.json(result)
+    return res.json({
+      ...result,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Extract exam section from images failed: ${msg}` })
@@ -89,13 +101,12 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
 router.post('/api/exams/sections/append-from-library', async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const majorTitle = String(req.body?.majorTitle || '').trim()
     const minorTitle = String(req.body?.minorTitle || '').trim()
     const questionType = String(req.body?.questionType || '').trim()
     const recordIds = Array.isArray(req.body?.recordIds) ? req.body.recordIds : []
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!majorTitle) {
       return res.status(400).json({ message: 'majorTitle is required' })
     }
@@ -106,15 +117,23 @@ router.post('/api/exams/sections/append-from-library', async (req: Request, res:
       return res.status(400).json({ message: 'recordIds are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
     const result = await previewExamSectionFromQuestionBank({
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
       majorTitle,
       minorTitle,
       questionType,
       recordIds,
     })
-    return res.json(result)
+    return res.json({
+      ...result,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Append exam section from question bank failed: ${msg}` })
@@ -124,20 +143,27 @@ router.post('/api/exams/sections/append-from-library', async (req: Request, res:
 router.post('/api/exams/sections/finalize', async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const sections = Array.isArray(req.body?.sections) ? req.body.sections : []
-    if (!jsonFilePathRaw) {
-      return res.status(400).json({ message: 'jsonFilePath is required' })
-    }
     if (!sections.length) {
       return res.status(400).json({ message: 'sections are required' })
     }
 
-    const jsonFilePath = normalizeJsonPath(jsonFilePathRaw)
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
     const result = await finalizeExamSections({
-      jsonFilePath,
+      jsonFilePath: resolved.jsonFilePath,
       sections,
     })
-    return res.json(result)
+    return res.json({
+      ...result,
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Finalize exam sections failed: ${msg}` })
@@ -153,7 +179,7 @@ router.post('/api/exams/session/process-image', upload.fields([
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!examSessions.get(sessionId)) {
+    if (!(await getExamSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
@@ -190,7 +216,7 @@ router.post('/api/exams/session/auto-run-stream', async (req: Request, res: Resp
   if (!imageDirRaw) {
     return res.status(400).json({ message: 'imageDir is required' })
   }
-  if (!examSessions.get(sessionId)) {
+  if (!(await getExamSession(sessionId))) {
     return res.status(404).json({ message: 'session not found, please init first' })
   }
 
@@ -252,8 +278,8 @@ router.post('/api/exams/session/auto-run-stream', async (req: Request, res: Resp
       }
     }
 
-    const latestSession = examSessions.get(sessionId)
-    const latestQuestionSession = examQuestionSessions.get(sessionId)
+    const latestSession = await getExamSession(sessionId)
+    const latestQuestionSession = await getExamQuestionSession(sessionId)
     writeNdjson(res, {
       type: 'done',
       sessionId,

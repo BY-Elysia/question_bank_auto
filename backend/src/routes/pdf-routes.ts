@@ -2,9 +2,10 @@ import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import pdfPoppler from 'pdf-poppler'
-import { JPEG_QUALITY, OUTPUT_DIR, PDF_RENDER_DPI, UPLOAD_DIR } from '../config'
+import { JPEG_QUALITY, PDF_RENDER_DPI } from '../config'
 import { batchId, ensureDir, parsePageIndex, sanitizeFileName, sanitizeFolderName } from '../question-bank-service'
 import { upload } from '../upload'
+import { ensureWorkspace, registerWorkspaceAsset, writeWorkspaceBinaryAsset } from '../workspace-store'
 
 const router = Router()
 
@@ -51,12 +52,18 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
 
     const rawFolderName = String(req.body?.folderName ?? '').trim()
     const folderName = sanitizeFolderName(rawFolderName)
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
     if (!folderName) {
       return res.status(400).json({ message: 'folderName is required' })
     }
 
     const id = batchId()
-    const batchOutputDir = path.join(OUTPUT_DIR, folderName)
+    const workspace = await ensureWorkspace({
+      workspaceId: workspaceIdInput,
+      name: folderName,
+    })
+    const batchOutputRelativeDir = path.posix.join('output_images', folderName)
+    const batchOutputDir = path.join(workspace.workspaceDir, batchOutputRelativeDir)
     ensureDir(batchOutputDir)
     const existingItems = await fsp.readdir(batchOutputDir).catch(() => [])
     await Promise.all(
@@ -69,6 +76,7 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
       order: number
       originalName: string
       savedPdf: string
+      pdfAssetId: string
     }> = []
     const pages: Array<{
       page: number
@@ -91,16 +99,26 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
       const safeOriginal = sanitizeFileName(path.basename(originalName)) || `textbook_${index + 1}.pdf`
       const safeStem = sanitizeFileName(path.basename(originalName, ext)) || `textbook_${index + 1}`
       const savedPdfName = `${id}_${String(index + 1).padStart(2, '0')}_${safeOriginal}`
-      const savedPdfPath = path.join(UPLOAD_DIR, savedPdfName)
-      await fsp.writeFile(savedPdfPath, pdfFile.buffer)
+      const savedPdf = await writeWorkspaceBinaryAsset({
+        workspaceId: workspace.workspaceId,
+        fileName: savedPdfName,
+        buffer: pdfFile.buffer,
+        type: 'pdf',
+        relativeDir: 'uploads',
+        meta: {
+          originalName,
+          order: index + 1,
+        },
+      })
       savedPdfs.push({
         order: index + 1,
         originalName,
-        savedPdf: `/uploads/${savedPdfName}`,
+        savedPdf: savedPdf.publicUrl,
+        pdfAssetId: savedPdf.asset.assetId,
       })
 
       const outPrefix = `part_${String(index + 1).padStart(2, '0')}_${safeStem}`
-      await pdfPoppler.convert(savedPdfPath, {
+      await pdfPoppler.convert(savedPdf.filePath, {
         format: 'jpeg',
         out_dir: batchOutputDir,
         out_prefix: outPrefix,
@@ -129,7 +147,7 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
         pages.push({
           page: pageNo,
           filename: newFileName,
-          url: `/output_images/${folderName}/${newFileName}`,
+          url: `/workspace-assets/${workspace.workspaceId}/${batchOutputRelativeDir}/${newFileName}`,
           sourcePdfName: originalName,
           sourcePdfIndex: index + 1,
           sourcePage: pageIndex + 1,
@@ -137,10 +155,25 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
       }
     }
 
+    const imageBatch = await registerWorkspaceAsset({
+      workspaceId: workspace.workspaceId,
+      type: 'image_batch',
+      fileName: folderName,
+      relativePath: batchOutputRelativeDir,
+      assetId: `image_batch_${folderName}`,
+      meta: {
+        totalPages: pages.length,
+        pdfCount: pdfFiles.length,
+      },
+    })
+
     return res.json({
       message: 'success',
       batchId: id,
       folderName,
+      workspaceId: workspace.workspaceId,
+      imageBatchAssetId: imageBatch.asset.assetId,
+      outputFolder: batchOutputDir,
       savedPdf: savedPdfs[0]?.savedPdf || '',
       savedPdfs,
       pdfCount: pdfFiles.length,

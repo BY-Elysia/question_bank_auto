@@ -43,8 +43,10 @@ export function useQuestionBankWorkbench() {
     examJsonFormError: '',
     examJsonSaveStatus: '',
     examJsonSaveError: false,
+    currentWorkspaceId: '',
     chapterSessionJsonLabel: '',
     chapterSessionServerJsonPath: '',
+    chapterSessionJsonAssetId: '',
     chapterSessionJsonHandle: null,
     workingJsonDocumentType: '',
     workingJsonExamType: '',
@@ -62,6 +64,7 @@ export function useQuestionBankWorkbench() {
     chapterSessionError: false,
     examSessionJsonLabel: '',
     examSessionServerJsonPath: '',
+    examSessionJsonAssetId: '',
     examSessionJsonHandle: null,
     examSessionId: '',
     examSessionTitle: '',
@@ -118,6 +121,7 @@ export function useQuestionBankWorkbench() {
     visualizerFileName: '',
     visualizerFileHandle: null,
     visualizerServerJsonPath: '',
+    visualizerJsonAssetId: '',
     visualizerStatus: '',
     visualizerError: false,
     visualizerPayload: null,
@@ -242,6 +246,8 @@ export function useQuestionBankWorkbench() {
       id: `chapter_task_${Date.now()}_${chapterBatchTaskSequence}`,
       jsonLabel: '',
       serverJsonPath: '',
+      jsonAssetId: '',
+      workspaceId: '',
       jsonHandle: null,
       initChapter: '',
       initSection: '',
@@ -525,6 +531,37 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function normalizeManagedJsonRef(ref) {
+    return {
+      workspaceId: String(ref?.workspaceId || '').trim(),
+      jsonAssetId: String(ref?.jsonAssetId || '').trim(),
+      jsonFilePath: String(ref?.jsonFilePath || '').trim(),
+    }
+  }
+
+  function buildManagedJsonBody(ref, extra = {}) {
+    const normalized = normalizeManagedJsonRef(ref)
+    return {
+      ...extra,
+      workspaceId: normalized.workspaceId,
+      jsonAssetId: normalized.jsonAssetId,
+      jsonFilePath: normalized.jsonFilePath,
+    }
+  }
+
+  function appendManagedJsonFormData(formData, ref) {
+    const normalized = normalizeManagedJsonRef(ref)
+    if (normalized.workspaceId) {
+      formData.append('workspaceId', normalized.workspaceId)
+    }
+    if (normalized.jsonAssetId) {
+      formData.append('jsonAssetId', normalized.jsonAssetId)
+    }
+    if (normalized.jsonFilePath) {
+      formData.append('jsonFilePath', normalized.jsonFilePath)
+    }
+  }
+
   function getChapterProcessingProfile() {
     const isResponsesExperiment = state.chapterProcessingMode === 'responses'
     return {
@@ -732,11 +769,15 @@ export function useQuestionBankWorkbench() {
         throw new Error('当前文件不是支持的题库 JSON，缺少 chapters 或 questions 数组')
       }
 
-      const imported = await uploadJsonFileToWorkspace(file)
+      const imported = await uploadJsonFileToWorkspace(file, {
+        workspaceId: state.currentWorkspaceId,
+      })
       state.visualizerPayload = parsed
       state.visualizerFileName = file.name
       state.visualizerFileHandle = fileHandle
-      state.visualizerServerJsonPath = String(imported.filePath || '')
+      state.visualizerServerJsonPath = String(imported.workspaceFilePath || imported.filePath || '')
+      state.visualizerJsonAssetId = String(imported.jsonAssetId || '')
+      state.currentWorkspaceId = String(imported.workspaceId || state.currentWorkspaceId || '')
       state.visualizerStatus = `已加载 ${file.name}（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}），共 ${chapters.length} 个结构节点，${questions.length} 道题`
     } catch (error) {
       state.visualizerError = true
@@ -744,6 +785,7 @@ export function useQuestionBankWorkbench() {
       state.visualizerFileName = ''
       state.visualizerFileHandle = null
       state.visualizerServerJsonPath = ''
+      state.visualizerJsonAssetId = ''
       state.visualizerAnswerProcessing = false
       state.visualizerAnswerStatus = ''
       state.visualizerAnswerError = false
@@ -1043,14 +1085,17 @@ export function useQuestionBankWorkbench() {
           'Content-Type': 'application/json',
           ...buildVisualizerArkHeaders(),
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildManagedJsonBody({
+          workspaceId: state.currentWorkspaceId,
+          jsonAssetId: state.visualizerJsonAssetId,
           jsonFilePath: state.visualizerServerJsonPath,
+        }, {
           sourceFileName: state.visualizerFileName || '',
           questionId,
           targetType,
           childNo: effectiveChildNo,
           childQuestionId: childQuestionId || '',
-        }),
+        })),
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -1113,7 +1158,11 @@ export function useQuestionBankWorkbench() {
 
     try {
       const formData = new FormData()
-      formData.append('jsonFilePath', state.visualizerServerJsonPath)
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.visualizerJsonAssetId,
+        jsonFilePath: state.visualizerServerJsonPath,
+      })
       formData.append('sourceFileName', state.visualizerFileName || '')
       formData.append('questionId', questionId)
       if (childQuestionId) {
@@ -1192,14 +1241,17 @@ export function useQuestionBankWorkbench() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildManagedJsonBody({
+          workspaceId: state.currentWorkspaceId,
+          jsonAssetId: state.visualizerJsonAssetId,
           jsonFilePath: state.visualizerServerJsonPath,
+        }, {
           sourceFileName: state.visualizerFileName || '',
           questionId,
           questionType,
           childQuestionId,
           childNo,
-        }),
+        })),
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -1262,14 +1314,17 @@ export function useQuestionBankWorkbench() {
           'Content-Type': 'application/json',
           ...buildVisualizerArkHeaders(),
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildManagedJsonBody({
+          workspaceId: state.currentWorkspaceId,
+          jsonAssetId: state.visualizerJsonAssetId,
           jsonFilePath: state.visualizerServerJsonPath,
+        }, {
           sourceFileName: state.visualizerFileName || '',
           questionId,
           childQuestionId,
           childNo,
           answerPrompt: String(state.visualizerAnswerPrompt || '').trim(),
-        }),
+        })),
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -1322,7 +1377,11 @@ export function useQuestionBankWorkbench() {
 
     try {
       const formData = new FormData()
-      formData.append('jsonFilePath', state.visualizerServerJsonPath)
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.visualizerJsonAssetId,
+        jsonFilePath: state.visualizerServerJsonPath,
+      })
       formData.append('sourceFileName', state.visualizerFileName || '')
       formData.append('questionId', questionId)
       for (const file of state.visualizerRepairImageFiles) {
@@ -1608,9 +1667,12 @@ export function useQuestionBankWorkbench() {
     ].some((keyword) => normalized.includes(keyword))
   }
 
-  async function uploadJsonFileToWorkspace(file) {
+  async function uploadJsonFileToWorkspace(file, options = {}) {
     const formData = new FormData()
     formData.append('json', file, file.name)
+    if (options?.workspaceId) {
+      formData.append('workspaceId', String(options.workspaceId))
+    }
     const resp = await fetch('/api/textbook-json/import', {
       method: 'POST',
       body: formData,
@@ -1622,15 +1684,15 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
-  async function readWorkspaceJsonText(filePath) {
+  async function readWorkspaceJsonText(ref) {
     const resp = await fetch('/api/textbook-json/read', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        filePath,
-      }),
+      body: JSON.stringify(buildManagedJsonBody(ref, {
+        filePath: String(ref?.jsonFilePath || ref?.filePath || '').trim(),
+      })),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
@@ -1639,20 +1701,25 @@ export function useQuestionBankWorkbench() {
     return String(data.text || '')
   }
 
-  async function syncJsonHandleFromWorkspace(filePath, fileHandle) {
-    if (!filePath || !fileHandle) {
+  async function syncJsonHandleFromWorkspace(ref, fileHandle) {
+    const managedRef = normalizeManagedJsonRef(ref)
+    if ((!managedRef.jsonFilePath && !managedRef.jsonAssetId) || !fileHandle) {
       return
     }
 
-    const text = await readWorkspaceJsonText(filePath)
+    const text = await readWorkspaceJsonText(managedRef)
     const writable = await fileHandle.createWritable()
     await writable.write(text)
     await writable.close()
   }
 
-  async function importJsonFileToWorkspace(file, payload = null) {
-    const data = await uploadJsonFileToWorkspace(file)
-    state.chapterSessionServerJsonPath = String(data.filePath || '')
+  async function importJsonFileToWorkspace(file, payload = null, options = {}) {
+    const data = await uploadJsonFileToWorkspace(file, {
+      workspaceId: options?.workspaceId || state.currentWorkspaceId,
+    })
+    state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+    state.chapterSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
+    state.chapterSessionJsonAssetId = String(data.jsonAssetId || '')
     state.chapterSessionJsonLabel = file.name
     if (payload) {
       applyWorkingJsonMeta(payload)
@@ -1661,7 +1728,11 @@ export function useQuestionBankWorkbench() {
   }
 
   async function syncWorkingJsonToLocalFile() {
-    await syncJsonHandleFromWorkspace(state.chapterSessionServerJsonPath, state.chapterSessionJsonHandle)
+    await syncJsonHandleFromWorkspace({
+      workspaceId: state.currentWorkspaceId,
+      jsonAssetId: state.chapterSessionJsonAssetId,
+      jsonFilePath: state.chapterSessionServerJsonPath,
+    }, state.chapterSessionJsonHandle)
     return
     if (!state.chapterSessionServerJsonPath || !state.chapterSessionJsonHandle) {
       return
@@ -1685,11 +1756,19 @@ export function useQuestionBankWorkbench() {
   }
 
   async function syncVisualizerJsonToLocalFile() {
-    await syncJsonHandleFromWorkspace(state.visualizerServerJsonPath, state.visualizerFileHandle)
+    await syncJsonHandleFromWorkspace({
+      workspaceId: state.currentWorkspaceId,
+      jsonAssetId: state.visualizerJsonAssetId,
+      jsonFilePath: state.visualizerServerJsonPath,
+    }, state.visualizerFileHandle)
   }
 
   async function syncExamWorkingJsonToLocalFile() {
-    await syncJsonHandleFromWorkspace(state.examSessionServerJsonPath, state.examSessionJsonHandle)
+    await syncJsonHandleFromWorkspace({
+      workspaceId: state.currentWorkspaceId,
+      jsonAssetId: state.examSessionJsonAssetId,
+      jsonFilePath: state.examSessionServerJsonPath,
+    }, state.examSessionJsonHandle)
   }
 
   async function pickJsonFileFromPicker() {
@@ -1759,6 +1838,8 @@ export function useQuestionBankWorkbench() {
 
   async function requestChapterSessionInit(params) {
     const {
+      workspaceId = '',
+      jsonAssetId = '',
       jsonFilePath = '',
       currentChapterTitle = '',
       currentSectionTitle = '',
@@ -1767,11 +1848,14 @@ export function useQuestionBankWorkbench() {
     const resp = await fetch('/api/chapters/session/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildManagedJsonBody({
+        workspaceId,
+        jsonAssetId,
         jsonFilePath,
+      }, {
         currentChapterTitle,
         currentSectionTitle,
-      }),
+      })),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
@@ -1817,7 +1901,11 @@ export function useQuestionBankWorkbench() {
 
   async function requestChapterSegmentAppend(params) {
     const formData = new FormData()
-    formData.append('jsonFilePath', params?.jsonFilePath || '')
+    appendManagedJsonFormData(formData, {
+      workspaceId: params?.workspaceId || '',
+      jsonAssetId: params?.jsonAssetId || '',
+      jsonFilePath: params?.jsonFilePath || '',
+    })
     formData.append('chapterTitle', params?.chapterTitle || '')
     formData.append('sectionTitle', params?.sectionTitle || '')
     for (const file of Array.isArray(params?.imageFiles) ? params.imageFiles : []) {
@@ -1840,14 +1928,20 @@ export function useQuestionBankWorkbench() {
   }
 
   async function requestExamSessionInit(params) {
-    const { jsonFilePath = '' } = params || {}
+    const {
+      workspaceId = '',
+      jsonAssetId = '',
+      jsonFilePath = '',
+    } = params || {}
 
     const resp = await fetch('/api/exams/session/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildManagedJsonBody({
+        workspaceId,
+        jsonAssetId,
         jsonFilePath,
-      }),
+      })),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
@@ -1917,7 +2011,11 @@ export function useQuestionBankWorkbench() {
 
   async function requestExamSectionExtractFromImages(params) {
     const formData = new FormData()
-    formData.append('jsonFilePath', params?.jsonFilePath || '')
+    appendManagedJsonFormData(formData, {
+      workspaceId: params?.workspaceId || '',
+      jsonAssetId: params?.jsonAssetId || '',
+      jsonFilePath: params?.jsonFilePath || '',
+    })
     formData.append('majorTitle', params?.majorTitle || '')
     formData.append('minorTitle', params?.minorTitle || '')
     formData.append('questionType', params?.questionType || '')
@@ -1943,13 +2041,16 @@ export function useQuestionBankWorkbench() {
     const resp = await fetch('/api/exams/sections/append-from-library', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildManagedJsonBody({
+        workspaceId: params?.workspaceId || '',
+        jsonAssetId: params?.jsonAssetId || '',
         jsonFilePath: params?.jsonFilePath || '',
+      }, {
         majorTitle: params?.majorTitle || '',
         minorTitle: params?.minorTitle || '',
         questionType: params?.questionType || '',
         recordIds: Array.isArray(params?.recordIds) ? params.recordIds : [],
-      }),
+      })),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
@@ -1962,10 +2063,13 @@ export function useQuestionBankWorkbench() {
     const resp = await fetch('/api/exams/sections/finalize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(buildManagedJsonBody({
+        workspaceId: params?.workspaceId || '',
+        jsonAssetId: params?.jsonAssetId || '',
         jsonFilePath: params?.jsonFilePath || '',
+      }, {
         sections: Array.isArray(params?.sections) ? params.sections : [],
-      }),
+      })),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
@@ -1975,7 +2079,11 @@ export function useQuestionBankWorkbench() {
   }
 
   async function syncChapterBatchTaskToLocalFile(task) {
-    await syncJsonHandleFromWorkspace(task?.serverJsonPath, task?.jsonHandle)
+    await syncJsonHandleFromWorkspace({
+      workspaceId: task?.workspaceId || '',
+      jsonAssetId: task?.jsonAssetId || '',
+      jsonFilePath: task?.serverJsonPath || '',
+    }, task?.jsonHandle)
   }
 
   async function chooseJsonSessionFile() {
@@ -2004,7 +2112,9 @@ export function useQuestionBankWorkbench() {
       state.chapterSessionJsonHandle = handle
       state.examSessionJsonHandle = handle
       state.examSessionJsonLabel = file.name
-      state.examSessionServerJsonPath = String(data.filePath || '')
+      state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
+      state.examSessionJsonAssetId = String(data.jsonAssetId || '')
+      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
       state.examSessionError = false
       state.examSessionStatus = `已选择试卷 JSON：${file.name}`
     } catch (error) {
@@ -2305,6 +2415,8 @@ export function useQuestionBankWorkbench() {
     try {
       const sections = finalizeExamSectionPayload()
       const data = await requestFinalizeExamSections({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
         jsonFilePath: state.examSessionServerJsonPath,
         sections,
       })
@@ -2392,6 +2504,8 @@ export function useQuestionBankWorkbench() {
 
       const data = await requestExamSectionExtractFromImages({
         chapterArkHeaders: buildChapterArkHeaders(),
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
         jsonFilePath: state.examSessionServerJsonPath,
         majorTitle: String(task.majorTitle || '').trim(),
         minorTitle: String(task.minorTitle || '').trim(),
@@ -2433,6 +2547,8 @@ export function useQuestionBankWorkbench() {
       state.examSectionStatus = task.status
 
       const data = await requestExamSectionAppendFromLibrary({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
         jsonFilePath: state.examSessionServerJsonPath,
         majorTitle: String(task.majorTitle || '').trim(),
         minorTitle: String(task.minorTitle || '').trim(),
@@ -2653,6 +2769,8 @@ export function useQuestionBankWorkbench() {
           const data = await requestChapterSegmentAppend({
             processingProfile,
             chapterArkHeaders,
+            workspaceId: state.currentWorkspaceId,
+            jsonAssetId: state.chapterSessionJsonAssetId,
             jsonFilePath: state.chapterSessionServerJsonPath,
             chapterTitle: String(chapter.chapterTitle || '').trim(),
             sectionTitle: String(section.sectionTitle || '').trim(),
@@ -2888,7 +3006,9 @@ export function useQuestionBankWorkbench() {
         state.chapterSessionJsonHandle = handle
         state.examSessionJsonHandle = handle
         state.examSessionJsonLabel = handle.name || suggestedName
-        state.examSessionServerJsonPath = String(data.filePath || '')
+        state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
+        state.examSessionJsonAssetId = String(data.jsonAssetId || '')
+        state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
         state.generatedExamJson = text.trim()
         state.examJsonSaveStatus = `已保存并载入当前工作副本：${handle.name || suggestedName}`
       } else {
@@ -2896,7 +3016,9 @@ export function useQuestionBankWorkbench() {
         const localFile = new File([text], suggestedName, { type: 'application/json' })
         const data = await importJsonFileToWorkspace(localFile, payload)
         state.examSessionJsonLabel = suggestedName
-        state.examSessionServerJsonPath = String(data.filePath || '')
+        state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
+        state.examSessionJsonAssetId = String(data.jsonAssetId || '')
+        state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
         state.generatedExamJson = text.trim()
         state.examJsonSaveStatus = '当前浏览器不支持原生保存选择器，已下载 JSON 并载入后端工作副本'
       }
@@ -2929,11 +3051,15 @@ export function useQuestionBankWorkbench() {
 
     try {
       const data = await requestChapterSessionInit({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.chapterSessionJsonAssetId,
         jsonFilePath: state.chapterSessionServerJsonPath,
         currentChapterTitle: state.chapterSessionInitChapter,
         currentSectionTitle: state.chapterSessionInitSection,
       })
       state.chapterSessionId = String(data.sessionId || '')
+      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+      state.chapterSessionJsonAssetId = String(data.jsonAssetId || state.chapterSessionJsonAssetId || '')
       state.chapterSessionCurrentChapter = String(data.currentChapterTitle || '')
       state.chapterSessionCurrentSection = String(data.currentSectionTitle || '')
       state.chapterSessionStatus = `初始化成功，chapters: ${data.chaptersCount}，questions: ${data.questionsCount || 0}`
@@ -2964,9 +3090,13 @@ export function useQuestionBankWorkbench() {
 
     try {
       const data = await requestExamSessionInit({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
         jsonFilePath: state.examSessionServerJsonPath,
       })
       state.examSessionId = String(data.sessionId || '')
+      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+      state.examSessionJsonAssetId = String(data.jsonAssetId || state.examSessionJsonAssetId || '')
       state.examSessionTitle = String(data.examTitle || '')
       state.examSessionExamType = String(data.examType || '')
       state.examSessionHasAnswer = data.hasAnswer !== false
@@ -3553,7 +3683,11 @@ export function useQuestionBankWorkbench() {
 
     try {
       const formData = new FormData()
-      formData.append('jsonFilePath', state.chapterSessionServerJsonPath)
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.chapterSessionJsonAssetId,
+        jsonFilePath: state.chapterSessionServerJsonPath,
+      })
       formData.append('sourceFileName', state.chapterSessionJsonLabel || '')
       if (isExam) {
         formData.append('questionId', questionId)
@@ -3649,7 +3783,11 @@ export function useQuestionBankWorkbench() {
 
     try {
       const formData = new FormData()
-      formData.append('jsonFilePath', state.chapterSessionServerJsonPath)
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.chapterSessionJsonAssetId,
+        jsonFilePath: state.chapterSessionServerJsonPath,
+      })
       formData.append('sourceFileName', state.chapterSessionJsonLabel || '')
       if (isExam) {
         formData.append('questionId', questionId)
@@ -3758,8 +3896,11 @@ export function useQuestionBankWorkbench() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(buildManagedJsonBody({
+          workspaceId: state.currentWorkspaceId,
+          jsonAssetId: state.chapterSessionJsonAssetId,
           jsonFilePath: state.chapterSessionServerJsonPath,
+        }, {
           sourceFileName: state.chapterSessionJsonLabel || '',
           questionId: isExam ? questionId : '',
           chapterNo: isExam ? null : chapterNo,
@@ -3768,7 +3909,7 @@ export function useQuestionBankWorkbench() {
           targetType,
           childNo: requiresChildNo && !childQuestionId ? Number(childNo) : null,
           childQuestionId: requiresChildNo ? childQuestionId : '',
-        }),
+        })),
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -4297,8 +4438,13 @@ export function useQuestionBankWorkbench() {
 
     try {
       const { handle, file } = await pickJsonFileFromPicker()
-      const data = await uploadJsonFileToWorkspace(file)
-      task.serverJsonPath = String(data.filePath || '')
+      const data = await uploadJsonFileToWorkspace(file, {
+        workspaceId: task.workspaceId,
+      })
+      task.serverJsonPath = String(data.workspaceFilePath || data.filePath || '')
+      task.jsonAssetId = String(data.jsonAssetId || '')
+      task.workspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
       task.jsonLabel = file.name
       task.jsonHandle = handle
       task.error = false
@@ -4359,6 +4505,8 @@ export function useQuestionBankWorkbench() {
 
     try {
       const initData = await requestChapterSessionInit({
+        workspaceId: task.workspaceId,
+        jsonAssetId: task.jsonAssetId,
         jsonFilePath: task.serverJsonPath,
         currentChapterTitle: task.initChapter,
         currentSectionTitle: task.initSection,
@@ -4672,6 +4820,9 @@ export function useQuestionBankWorkbench() {
     try {
       const formData = new FormData()
       formData.append('folderName', state.folderName)
+      if (state.currentWorkspaceId) {
+        formData.append('workspaceId', state.currentWorkspaceId)
+      }
       state.selectedPdfFiles.forEach((item, index) => {
         formData.append(`pdf_${index}`, item.file, item.file.name)
       })
@@ -4687,6 +4838,7 @@ export function useQuestionBankWorkbench() {
       }
 
       state.batchId = data.batchId || ''
+      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
       state.outputFolder = data.folderName || state.folderName
       state.pages = Array.isArray(data.pages) ? data.pages : []
       state.statusText = `转换完成，按当前顺序合并了 ${data.pdfCount || state.selectedPdfFiles.length} 个 PDF，共 ${state.pages.length} 页`
