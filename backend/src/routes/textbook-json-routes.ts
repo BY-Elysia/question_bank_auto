@@ -15,6 +15,7 @@ import { mergeTextbookJsonFiles } from '../json-merge-service'
 import { repairMathFormatInTextbookJson } from '../math-format-repair-service'
 import { generateQuestionAnswerInTextbookJson } from '../question-answer-generate-service'
 import { attachImagesToQuestionInTextbookJson } from '../question-image-attach-service'
+import { importUploadsFolderIntoServer } from '../upload-folder-import-service'
 import { repairQuestionInTextbookJson } from '../question-repair-service'
 import { updateQuestionTypeInTextbookJson } from '../question-type-update-service'
 import { upload } from '../upload'
@@ -370,6 +371,59 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Attach images failed: ${msg}` })
+  }
+})
+
+router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), async (req: Request, res: Response) => {
+  try {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? []
+    if (!files.length) {
+      return res.status(400).json({ message: 'at least one upload file is required' })
+    }
+
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
+    const relativePathsRaw = Array.isArray(req.body?.relativePaths)
+      ? req.body.relativePaths
+      : req.body?.relativePaths
+        ? [req.body.relativePaths]
+        : []
+
+    const relativePaths = relativePathsRaw.map((item: unknown) => String(item || ''))
+    const resolved = jsonFilePathRaw || workspaceIdInput || jsonAssetIdInput
+      ? await resolveManagedJsonInput({
+          workspaceId: workspaceIdInput,
+          jsonAssetId: jsonAssetIdInput,
+          jsonFilePath: jsonFilePathRaw,
+        })
+      : {
+          jsonFilePath: '',
+          workspaceId: '',
+          jsonAssetId: '',
+        }
+
+    const result = await importUploadsFolderIntoServer({
+      jsonFilePath: resolved.jsonFilePath,
+      files: files.map((file, index) => ({
+        originalname: file.originalname,
+        buffer: file.buffer,
+        relativePath: relativePaths[index] || file.originalname,
+      })),
+    })
+
+    return res.json({
+      message: 'success',
+      workspaceId: resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+      importedCount: result.importedCount,
+      rewrittenCount: result.rewrittenCount,
+      matchedCount: result.matchedCount,
+      uploadedFiles: result.uploadedFiles,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Import uploads failed: ${msg}` })
   }
 })
 

@@ -34,6 +34,33 @@
       {{ state.visualizerStatus }}
     </p>
 
+    <section v-if="state.visualizerServerJsonPath" class="subpanel">
+      <div class="subpanel-head">
+        <h3>导入本地 uploads</h3>
+        <p>如果 JSON 里的题图还指向你本地的 <code>/uploads/...</code>，把本地 uploads 文件夹上传到服务器后，公网页面就能正常显示这些图片。</p>
+      </div>
+
+      <label class="file-shell field-span-2">
+        <span>上传 uploads 文件夹</span>
+        <input
+          type="file"
+          multiple
+          webkitdirectory
+          directory
+          accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+          @change="actions.onVisualizerUploadsFolderChange"
+        />
+      </label>
+    </section>
+
+    <p
+      v-if="state.visualizerUploadsStatus"
+      class="panel-status"
+      :class="{ 'is-error': state.visualizerUploadsError }"
+    >
+      {{ state.visualizerUploadsStatus }}
+    </p>
+
     <p
       v-if="state.visualizerRepairStatus"
       class="panel-status"

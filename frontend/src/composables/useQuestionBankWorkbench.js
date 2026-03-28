@@ -124,6 +124,9 @@ export function useQuestionBankWorkbench() {
     visualizerJsonAssetId: '',
     visualizerStatus: '',
     visualizerError: false,
+    visualizerUploadsProcessing: false,
+    visualizerUploadsStatus: '',
+    visualizerUploadsError: false,
     visualizerPayload: null,
     visualizerArkApiKey: '',
     visualizerAnswerPrompt: '',
@@ -752,6 +755,9 @@ export function useQuestionBankWorkbench() {
     state.visualizerAnswerProcessing = false
     state.visualizerAnswerStatus = ''
     state.visualizerAnswerError = false
+    state.visualizerUploadsProcessing = false
+    state.visualizerUploadsStatus = ''
+    state.visualizerUploadsError = false
     state.visualizerRepairError = false
     state.visualizerRepairStatus = ''
     state.visualizerQuestionTypeProcessing = false
@@ -789,6 +795,9 @@ export function useQuestionBankWorkbench() {
       state.visualizerAnswerProcessing = false
       state.visualizerAnswerStatus = ''
       state.visualizerAnswerError = false
+      state.visualizerUploadsProcessing = false
+      state.visualizerUploadsStatus = ''
+      state.visualizerUploadsError = false
       state.visualizerQuestionTypeProcessing = false
       state.visualizerRepairImageFiles = []
       state.visualizerRewriteResult = null
@@ -933,6 +942,69 @@ export function useQuestionBankWorkbench() {
     }
     child[childField] = { text: repairedText, media: [] }
     return true
+  }
+
+  function appendCacheBusterToVisualizerPayload(payload, cacheToken) {
+    if (!payload || typeof payload !== 'object') {
+      return payload
+    }
+
+    const shouldDecorate = (url) => /^\/(?:uploads|workspace-assets)\//i.test(String(url || '').trim())
+    const decorateUrl = (url) => {
+      const raw = String(url || '').trim()
+      if (!shouldDecorate(raw)) {
+        return raw
+      }
+      const [base, query = ''] = raw.split('?')
+      const params = new URLSearchParams(query)
+      params.set('v', String(cacheToken))
+      const nextQuery = params.toString()
+      return nextQuery ? `${base}?${nextQuery}` : base
+    }
+
+    const normalizedQuestions = Array.isArray(payload.questions) ? payload.questions : []
+    for (const question of normalizedQuestions) {
+      if (!question || typeof question !== 'object') {
+        continue
+      }
+      const blocks = []
+      if (question.nodeType === 'GROUP') {
+        blocks.push(question.stem)
+        for (const child of Array.isArray(question.children) ? question.children : []) {
+          blocks.push(child?.prompt, child?.standardAnswer)
+        }
+      } else {
+        blocks.push(question.prompt, question.standardAnswer)
+      }
+
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object' || !Array.isArray(block.media)) {
+          continue
+        }
+        for (const media of block.media) {
+          if (!media || typeof media !== 'object') {
+            continue
+          }
+          media.url = decorateUrl(media.url)
+        }
+      }
+    }
+
+    return payload
+  }
+
+  async function refreshVisualizerPayloadFromWorkspace(options = {}) {
+    const text = await readWorkspaceJsonText({
+      workspaceId: state.currentWorkspaceId,
+      jsonAssetId: state.visualizerJsonAssetId,
+      jsonFilePath: state.visualizerServerJsonPath,
+    })
+    const parsed = JSON.parse(text)
+    if (options?.cacheToken) {
+      appendCacheBusterToVisualizerPayload(parsed, options.cacheToken)
+    }
+    state.visualizerPayload = parsed
+    return parsed
   }
 
   function applyVisualizerImageAttachToPayload(params) {
@@ -1129,6 +1201,76 @@ export function useQuestionBankWorkbench() {
 
   function clearVisualizerRepairImages() {
     state.visualizerRepairImageFiles = []
+  }
+
+  async function importVisualizerUploadsFolder(files) {
+    if (!state.visualizerServerJsonPath) {
+      state.visualizerUploadsError = true
+      state.visualizerUploadsStatus = '请先加载一个 JSON，再上传本地 uploads 文件夹'
+      return
+    }
+    if (!Array.isArray(files) || !files.length) {
+      state.visualizerUploadsError = true
+      state.visualizerUploadsStatus = '请选择 uploads 文件夹中的图片文件'
+      return
+    }
+
+    state.visualizerUploadsProcessing = true
+    state.visualizerUploadsError = false
+    state.visualizerUploadsStatus = `正在上传 uploads 文件夹，共 ${files.length} 个文件...`
+
+    try {
+      const formData = new FormData()
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.visualizerJsonAssetId,
+        jsonFilePath: state.visualizerServerJsonPath,
+      })
+
+      for (const file of files) {
+        formData.append('files', file, file.name)
+        formData.append('relativePaths', String(file.webkitRelativePath || file.name || ''))
+      }
+
+      const resp = await fetch('/api/textbook-json/import-uploads', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '上传 uploads 文件夹失败')
+      }
+
+      let syncWarning = ''
+      try {
+        await refreshVisualizerPayloadFromWorkspace({
+          cacheToken: Date.now(),
+        })
+        await syncVisualizerJsonToLocalFile()
+      } catch (syncError) {
+        syncWarning = syncError instanceof Error ? syncError.message : '工作区 JSON 刷新失败'
+      }
+
+      const importedCount = Number(data.importedCount ?? files.length)
+      const rewrittenCount = Number(data.rewrittenCount ?? 0)
+      const matchedCount = Number(data.matchedCount ?? 0)
+      state.visualizerUploadsStatus = syncWarning
+        ? `已上传 ${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址，但本地同步失败：${syncWarning}`
+        : `已上传 ${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址`
+    } catch (error) {
+      state.visualizerUploadsError = true
+      state.visualizerUploadsStatus = error instanceof Error ? error.message : '上传 uploads 文件夹失败'
+    } finally {
+      state.visualizerUploadsProcessing = false
+    }
+  }
+
+  async function onVisualizerUploadsFolderChange(event) {
+    const files = Array.from(event?.target?.files ?? [])
+    if (event?.target) {
+      event.target.value = ''
+    }
+    await importVisualizerUploadsFolder(files)
   }
 
   async function attachImagesFromVisualizer(params) {
@@ -4883,6 +5025,7 @@ export function useQuestionBankWorkbench() {
     initExamSession,
     initChapterSession,
     onVisualizerJsonChange,
+    onVisualizerUploadsFolderChange,
     onVisualizerRepairImageChange,
     clearVisualizerRepairImages,
     attachImagesFromVisualizer,
