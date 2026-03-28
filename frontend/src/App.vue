@@ -5,7 +5,13 @@
     <span class="ambient-orb orb-c"></span>
 
     <main class="workspace-shell">
-      <WorkspaceNav :items="pages" :current-page="currentPage" @change="currentPage = $event" />
+      <WorkspaceNav
+        :items="pages"
+        :state="state"
+        :actions="actions"
+        :current-page="currentPage"
+        @change="currentPage = $event"
+      />
 
       <div class="workspace-stage">
         <aside class="workspace-dock workspace-dock--left">
@@ -260,6 +266,18 @@ watch(
       pipelineStep.value = 'session'
     }
   },
+)
+
+watch(
+  () => state.currentWorkspaceId,
+  (value) => {
+    if (value) {
+      void actions.refreshCurrentWorkspaceSummary({ workspaceId: value, silent: true })
+      return
+    }
+    actions.clearCurrentWorkspaceSummary()
+  },
+  { immediate: true },
 )
 
 watch(

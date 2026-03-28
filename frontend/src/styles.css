@@ -349,6 +349,50 @@ a {
   gap: 4px;
 }
 
+.workspace-nav__workspace {
+  display: grid;
+  gap: 10px;
+  min-width: min(420px, 100%);
+  padding: 14px 16px;
+  border: 1px solid rgba(177, 200, 227, 0.56);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.workspace-nav__workspace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workspace-nav__workspace-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workspace-nav__workspace-actions {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workspace-nav__workspace-status {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(20, 49, 77, 0.78);
+}
+
+.workspace-nav__workspace-status.is-error {
+  color: #c35555;
+}
+
+.workspace-nav__danger {
+  color: #a83c3c;
+}
+
 .workspace-nav__eyebrow {
   margin: 0;
   font-size: 11px;

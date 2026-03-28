@@ -36,3 +36,7 @@ export const SESSION_STORE_PREFIX = String(
   process.env.SESSION_STORE_PREFIX || 'question-bank-auto:sessions',
 ).trim()
 export const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS || 60 * 60 * 24 * 7)
+export const WORKSPACE_DERIVED_RETENTION_DAYS = Number(process.env.WORKSPACE_DERIVED_RETENTION_DAYS || 7)
+export const WORKSPACE_MAINTENANCE_INTERVAL_MS = Number(
+  process.env.WORKSPACE_MAINTENANCE_INTERVAL_MS || 1000 * 60 * 60 * 12,
+)

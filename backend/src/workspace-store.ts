@@ -26,6 +26,7 @@ type WorkspaceManifest = {
 const MANIFEST_FILE_NAME = 'workspace.json'
 const PRIMARY_JSON_ASSET_ID = 'json_main'
 const PRIMARY_JSON_RELATIVE_PATH = 'output_json/main.json'
+const SUMMARY_DIRS = ['output_json', 'repair_json', 'uploads', 'output_images', 'read_results'] as const
 
 function nowIso() {
   return new Date().toISOString()
@@ -51,6 +52,45 @@ function getWorkspaceRelativePath(relativePath: string) {
   return String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/g, '')
 }
 
+async function statSafe(targetPath: string) {
+  return await fsp.stat(targetPath).catch(() => null)
+}
+
+async function walkDirectoryUsage(targetPath: string): Promise<{ totalBytes: number, fileCount: number }> {
+  const stat = await statSafe(targetPath)
+  if (!stat) {
+    return { totalBytes: 0, fileCount: 0 }
+  }
+  if (stat.isFile()) {
+    return {
+      totalBytes: stat.size,
+      fileCount: 1,
+    }
+  }
+
+  let totalBytes = 0
+  let fileCount = 0
+  const entries = await fsp.readdir(targetPath, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    const entryPath = path.join(targetPath, entry.name)
+    if (entry.isDirectory()) {
+      const nested = await walkDirectoryUsage(entryPath)
+      totalBytes += nested.totalBytes
+      fileCount += nested.fileCount
+      continue
+    }
+    if (entry.isFile()) {
+      const nestedStat = await statSafe(entryPath)
+      totalBytes += nestedStat?.size || 0
+      fileCount += 1
+    }
+  }
+  return {
+    totalBytes,
+    fileCount,
+  }
+}
+
 async function ensureWorkspaceStructure(workspaceId: string) {
   const workspaceDir = getWorkspaceDir(workspaceId)
   await fsp.mkdir(path.join(workspaceDir, 'uploads'), { recursive: true })
@@ -71,6 +111,26 @@ async function saveWorkspaceManifest(manifest: WorkspaceManifest) {
   await ensureWorkspaceStructure(manifest.workspaceId)
   const manifestPath = getWorkspaceManifestPath(manifest.workspaceId)
   await fsp.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+}
+
+async function getExistingWorkspace(workspaceId: string) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim()
+  if (!normalizedWorkspaceId) {
+    throw new Error('workspaceId is required')
+  }
+
+  const manifestPath = getWorkspaceManifestPath(normalizedWorkspaceId)
+  const manifestStat = await statSafe(manifestPath)
+  if (!manifestStat?.isFile()) {
+    throw new Error(`workspace ${normalizedWorkspaceId} not found`)
+  }
+
+  await ensureWorkspaceStructure(normalizedWorkspaceId)
+  return {
+    workspaceId: normalizedWorkspaceId,
+    workspaceDir: getWorkspaceDir(normalizedWorkspaceId),
+    manifest: await loadWorkspaceManifest(normalizedWorkspaceId),
+  }
 }
 
 export async function ensureWorkspace(params?: { workspaceId?: string, name?: string }) {
@@ -100,6 +160,167 @@ export async function ensureWorkspace(params?: { workspaceId?: string, name?: st
     workspaceId,
     workspaceDir: getWorkspaceDir(workspaceId),
     manifest,
+  }
+}
+
+export async function getWorkspaceSummary(workspaceId: string) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim()
+  if (!normalizedWorkspaceId) {
+    throw new Error('workspaceId is required')
+  }
+
+  const { manifest, workspaceDir } = await getExistingWorkspace(normalizedWorkspaceId)
+  const topLevelStats = await Promise.all(
+    SUMMARY_DIRS.map(async (dirName) => {
+      const absolutePath = path.join(workspaceDir, dirName)
+      const usage = await walkDirectoryUsage(absolutePath)
+      return {
+        dirName,
+        ...usage,
+      }
+    }),
+  )
+
+  const totalBytes = topLevelStats.reduce((sum, item) => sum + item.totalBytes, 0)
+  const fileCount = topLevelStats.reduce((sum, item) => sum + item.fileCount, 0)
+
+  return {
+    workspaceId: manifest.workspaceId,
+    name: manifest.name,
+    createdAt: manifest.createdAt,
+    updatedAt: manifest.updatedAt,
+    assetCount: Array.isArray(manifest.assets) ? manifest.assets.length : 0,
+    fileCount,
+    totalBytes,
+    directories: Object.fromEntries(
+      topLevelStats.map((item) => [
+        item.dirName,
+        {
+          totalBytes: item.totalBytes,
+          fileCount: item.fileCount,
+        },
+      ]),
+    ),
+  }
+}
+
+async function clearDirectoryContents(targetDir: string) {
+  const entries = await fsp.readdir(targetDir, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    await fsp.rm(path.join(targetDir, entry.name), { recursive: true, force: true })
+  }
+}
+
+async function pruneRepairSnapshots(workspaceDir: string, keepLatestCount: number) {
+  const repairDir = path.join(workspaceDir, 'repair_json')
+  const entries = await fsp.readdir(repairDir, { withFileTypes: true }).catch(() => [])
+  const files = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const absolutePath = path.join(repairDir, entry.name)
+        const stat = await statSafe(absolutePath)
+        return {
+          absolutePath,
+          entryName: entry.name,
+          mtimeMs: stat?.mtimeMs || 0,
+        }
+      }),
+  )
+  const staleFiles = files
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(Math.max(keepLatestCount, 0))
+  await Promise.all(staleFiles.map((file) => fsp.rm(file.absolutePath, { force: true })))
+  return staleFiles.length
+}
+
+export async function cleanupWorkspaceDerivedFiles(params: {
+  workspaceId: string
+  keepRepairSnapshots?: number
+}) {
+  const workspaceId = String(params.workspaceId || '').trim()
+  if (!workspaceId) {
+    throw new Error('workspaceId is required')
+  }
+
+  const before = await getWorkspaceSummary(workspaceId)
+  const workspaceDir = getWorkspaceDir(workspaceId)
+  await clearDirectoryContents(path.join(workspaceDir, 'output_images'))
+  await clearDirectoryContents(path.join(workspaceDir, 'read_results'))
+  const removedRepairSnapshots = await pruneRepairSnapshots(workspaceDir, params.keepRepairSnapshots ?? 10)
+  const after = await getWorkspaceSummary(workspaceId)
+
+  return {
+    workspaceId,
+    removedRepairSnapshots,
+    freedBytes: Math.max(before.totalBytes - after.totalBytes, 0),
+    before,
+    after,
+  }
+}
+
+export async function deleteWorkspace(workspaceId: string) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim()
+  if (!normalizedWorkspaceId) {
+    throw new Error('workspaceId is required')
+  }
+
+  const summary = await getWorkspaceSummary(normalizedWorkspaceId)
+  await fsp.rm(getWorkspaceDir(normalizedWorkspaceId), { recursive: true, force: true })
+  return {
+    workspaceId: normalizedWorkspaceId,
+    removedBytes: summary.totalBytes,
+    summary,
+  }
+}
+
+export async function cleanupStaleWorkspaceDerivedAssets(params: {
+  retentionDays: number
+  keepRepairSnapshots?: number
+}) {
+  const retentionDays = Number(params.retentionDays)
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    return {
+      checkedCount: 0,
+      cleanedCount: 0,
+      freedBytes: 0,
+    }
+  }
+
+  const thresholdMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000
+  const entries = await fsp.readdir(WORKSPACES_DIR, { withFileTypes: true }).catch(() => [])
+  let checkedCount = 0
+  let cleanedCount = 0
+  let freedBytes = 0
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+    const workspaceId = entry.name
+    const manifestPath = getWorkspaceManifestPath(workspaceId)
+    const manifestStat = await statSafe(manifestPath)
+    if (!manifestStat?.isFile() || manifestStat.mtimeMs >= thresholdMs) {
+      continue
+    }
+    checkedCount += 1
+    const result = await cleanupWorkspaceDerivedFiles({
+      workspaceId,
+      keepRepairSnapshots: params.keepRepairSnapshots ?? 5,
+    }).catch(() => null)
+    if (!result) {
+      continue
+    }
+    if (result.freedBytes > 0 || result.removedRepairSnapshots > 0) {
+      cleanedCount += 1
+      freedBytes += result.freedBytes
+    }
+  }
+
+  return {
+    checkedCount,
+    cleanedCount,
+    freedBytes,
   }
 }
 

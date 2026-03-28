@@ -52,6 +52,12 @@ export function useQuestionBankWorkbench() {
     examJsonSaveStatus: '',
     examJsonSaveError: false,
     currentWorkspaceId: '',
+    workspaceSummaryLoading: false,
+    workspaceSummaryStatus: '',
+    workspaceSummaryError: false,
+    workspaceSummary: null,
+    workspaceCleanupRunning: false,
+    workspaceDeleteRunning: false,
     chapterSessionJsonLabel: '',
     chapterSessionServerJsonPath: '',
     chapterSessionJsonAssetId: '',
@@ -548,6 +554,51 @@ export function useQuestionBankWorkbench() {
       jsonAssetId: String(ref?.jsonAssetId || '').trim(),
       jsonFilePath: String(ref?.jsonFilePath || '').trim(),
     }
+  }
+
+  function clearCurrentWorkspaceSummary() {
+    state.workspaceSummaryLoading = false
+    state.workspaceSummaryError = false
+    state.workspaceSummaryStatus = ''
+    state.workspaceSummary = null
+  }
+
+  function resetCurrentWorkspaceBindings() {
+    state.currentWorkspaceId = ''
+    clearCurrentWorkspaceSummary()
+
+    state.outputFolder = ''
+    state.pages = []
+
+    state.chapterSessionJsonLabel = ''
+    state.chapterSessionServerJsonPath = ''
+    state.chapterSessionJsonAssetId = ''
+    state.chapterSessionJsonHandle = null
+    state.chapterSessionId = ''
+    state.chapterSessionCurrentChapter = ''
+    state.chapterSessionCurrentSection = ''
+
+    state.examSessionJsonLabel = ''
+    state.examSessionServerJsonPath = ''
+    state.examSessionJsonAssetId = ''
+    state.examSessionJsonHandle = null
+    state.examSessionId = ''
+    state.examSessionTitle = ''
+    state.examSessionCurrentMajor = ''
+    state.examSessionCurrentMinor = ''
+
+    state.visualizerFileName = ''
+    state.visualizerFileHandle = null
+    state.visualizerServerJsonPath = ''
+    state.visualizerJsonAssetId = ''
+    state.visualizerPayload = null
+    state.visualizerUploadsStatus = ''
+    state.visualizerUploadsError = false
+    state.visualizerRepairStatus = ''
+    state.visualizerRepairError = false
+    state.visualizerAnswerStatus = ''
+    state.visualizerAnswerError = false
+    state.visualizerRewriteResult = null
   }
 
   function buildManagedJsonBody(ref, extra = {}) {
@@ -1888,6 +1939,111 @@ export function useQuestionBankWorkbench() {
       }
     }
     triggerJsonDownload(parseDownloadFileName(resp, suggestedName), text)
+  }
+
+  async function refreshCurrentWorkspaceSummary(options = {}) {
+    const workspaceId = String(options?.workspaceId || state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      clearCurrentWorkspaceSummary()
+      return null
+    }
+
+    state.workspaceSummaryLoading = true
+    state.workspaceSummaryError = false
+    if (!options?.silent) {
+      state.workspaceSummaryStatus = '正在读取当前工作区空间占用...'
+    }
+
+    try {
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/summary`)
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取工作区空间统计失败')
+      }
+      state.workspaceSummary = data.summary || null
+      state.workspaceSummaryStatus = options?.silent ? state.workspaceSummaryStatus : '已刷新当前工作区空间统计'
+      return state.workspaceSummary
+    } catch (error) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = error instanceof Error ? error.message : '读取工作区空间统计失败'
+      return null
+    } finally {
+      state.workspaceSummaryLoading = false
+    }
+  }
+
+  async function cleanupCurrentWorkspaceDerivedFiles() {
+    const workspaceId = String(state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = '当前还没有可清理的工作区'
+      return
+    }
+
+    state.workspaceCleanupRunning = true
+    state.workspaceSummaryError = false
+    state.workspaceSummaryStatus = '正在清理当前工作区的中间产物...'
+
+    try {
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/cleanup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          keepRepairSnapshots: 10,
+        }),
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '清理当前工作区失败')
+      }
+      state.workspaceSummary = data.after || state.workspaceSummary
+      state.workspaceSummaryStatus = `清理完成，释放 ${Number(data.freedBytes || 0)} 字节`
+      await refreshCurrentWorkspaceSummary({ silent: true })
+    } catch (error) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = error instanceof Error ? error.message : '清理当前工作区失败'
+    } finally {
+      state.workspaceCleanupRunning = false
+    }
+  }
+
+  async function deleteCurrentWorkspace() {
+    const workspaceId = String(state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = '当前还没有可删除的工作区'
+      return
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`确认删除当前工作区 ${workspaceId} 吗？这会删除服务器上的 JSON、PDF、页图和中间产物。`)
+      if (!confirmed) {
+        return
+      }
+    }
+
+    state.workspaceDeleteRunning = true
+    state.workspaceSummaryError = false
+    state.workspaceSummaryStatus = '正在删除当前工作区...'
+
+    try {
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
+        method: 'DELETE',
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '删除当前工作区失败')
+      }
+      resetCurrentWorkspaceBindings()
+      state.workspaceSummaryStatus = `已删除工作区 ${workspaceId}`
+    } catch (error) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = error instanceof Error ? error.message : '删除当前工作区失败'
+    } finally {
+      state.workspaceDeleteRunning = false
+    }
   }
 
   async function syncJsonHandleFromWorkspace(ref, fileHandle) {
@@ -5116,8 +5272,11 @@ export function useQuestionBankWorkbench() {
     onDbImportFilesChange,
     removeDbImportFile,
     clearDbImportFiles,
+    clearCurrentWorkspaceSummary,
     loadQuestionBankDbSummary,
+    cleanupCurrentWorkspaceDerivedFiles,
     importQuestionBankDbJsonFiles,
+    deleteCurrentWorkspace,
     fillAssistantPrompt,
     clearQuestionBankAssistantChat,
     clearChapterManualSectionImages,
@@ -5126,6 +5285,7 @@ export function useQuestionBankWorkbench() {
     downloadCurrentExamJson,
     downloadCurrentVisualizerJson,
     downloadCurrentWorkingJson,
+    refreshCurrentWorkspaceSummary,
     sendQuestionBankAssistantMessage,
     finalizeExamSections,
     generateExamJson,
