@@ -1,13 +1,15 @@
 import { Router, type Request, type Response } from 'express'
+import { execFile } from 'node:child_process'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import pdfPoppler from 'pdf-poppler'
+import { promisify } from 'node:util'
 import { JPEG_QUALITY, PDF_RENDER_DPI } from '../config'
 import { batchId, ensureDir, parsePageIndex, sanitizeFileName, sanitizeFolderName } from '../question-bank-service'
 import { upload } from '../upload'
 import { ensureWorkspace, registerWorkspaceAsset, writeWorkspaceBinaryAsset } from '../workspace-store'
 
 const router = Router()
+const execFileAsync = promisify(execFile)
 
 function getOrderedPdfFiles(filesRaw: unknown) {
   if (!Array.isArray(filesRaw)) {
@@ -41,6 +43,23 @@ async function listConvertedFilesByPrefix(outputDir: string, prefix: string) {
   return (await fsp.readdir(outputDir))
     .filter((item) => item.startsWith(`${prefix}-`) && /\.(jpg|jpeg)$/i.test(item))
     .sort((a, b) => parsePageIndex(a) - parsePageIndex(b) || a.localeCompare(b))
+}
+
+async function convertPdfToImages(params: {
+  filePath: string
+  outputDir: string
+  outputPrefix: string
+}) {
+  const { filePath, outputDir, outputPrefix } = params
+  await execFileAsync('pdftocairo', [
+    '-jpeg',
+    '-jpegopt',
+    `quality=${JPEG_QUALITY}`,
+    '-r',
+    String(PDF_RENDER_DPI),
+    filePath,
+    path.join(outputDir, outputPrefix),
+  ])
 }
 
 router.post('/api/convert', upload.any(), async (req: Request, res: Response) => {
@@ -118,14 +137,10 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
       })
 
       const outPrefix = `part_${String(index + 1).padStart(2, '0')}_${safeStem}`
-      await pdfPoppler.convert(savedPdf.filePath, {
-        format: 'jpeg',
-        out_dir: batchOutputDir,
-        out_prefix: outPrefix,
-        page: null,
-        dpi: PDF_RENDER_DPI,
-        jpegFile: true,
-        jpegQuality: JPEG_QUALITY,
+      await convertPdfToImages({
+        filePath: savedPdf.filePath,
+        outputDir: batchOutputDir,
+        outputPrefix: outPrefix,
       })
 
       const convertedFiles = await listConvertedFilesByPrefix(batchOutputDir, outPrefix)
