@@ -5,7 +5,7 @@ import {
   importQuestionBankJsonUploads,
   searchQuestionBankQuestions,
 } from '../question-bank-db-service'
-import { upload } from '../upload'
+import { cleanupUploadedFiles, readUploadedFileText, upload } from '../upload'
 
 const router = Router()
 
@@ -27,10 +27,12 @@ router.post('/api/question-bank-db/import-upload', upload.array('jsonFiles', 50)
     )
 
     const result = await importQuestionBankJsonUploads(
-      files.map((file) => ({
-        fileName: file.originalname || 'question-bank.json',
-        text: file.buffer.toString('utf8'),
-      })),
+      await Promise.all(
+        files.map(async (file) => ({
+          fileName: file.originalname || 'question-bank.json',
+          text: await readUploadedFileText(file),
+        })),
+      ),
     )
 
     return res.json({
@@ -40,6 +42,8 @@ router.post('/api/question-bank-db/import-upload', upload.array('jsonFiles', 50)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(resolveErrorStatus(error)).json({ message: `Import question bank db failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 

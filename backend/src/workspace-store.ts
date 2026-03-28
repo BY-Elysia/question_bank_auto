@@ -24,6 +24,8 @@ type WorkspaceManifest = {
 }
 
 const MANIFEST_FILE_NAME = 'workspace.json'
+const PRIMARY_JSON_ASSET_ID = 'json_main'
+const PRIMARY_JSON_RELATIVE_PATH = 'output_json/main.json'
 
 function nowIso() {
   return new Date().toISOString()
@@ -194,15 +196,18 @@ export async function writeWorkspaceJsonAsset(params: {
   })
   const assetType = params.assetType || 'json'
   const fileName = normalizeJsonFileName(params.fileName || 'textbook.json')
+  const isPrimaryJson = assetType === 'json' && !params.relativeDir
   const relativeDir = getWorkspaceRelativePath(params.relativeDir || (assetType === 'repair_json' ? 'repair_json' : 'output_json'))
-  const relativePath = path.posix.join(relativeDir, fileName)
+  const relativePath = isPrimaryJson
+    ? PRIMARY_JSON_RELATIVE_PATH
+    : path.posix.join(relativeDir, fileName)
   const filePath = path.join(workspace.workspaceDir, relativePath)
   await fsp.mkdir(path.dirname(filePath), { recursive: true })
   await fsp.writeFile(filePath, params.text, 'utf8')
 
   return await registerWorkspaceAsset({
     workspaceId: workspace.workspaceId,
-    assetId: params.assetId,
+    assetId: params.assetId || (isPrimaryJson ? PRIMARY_JSON_ASSET_ID : undefined),
     type: assetType,
     fileName,
     relativePath,
@@ -212,7 +217,8 @@ export async function writeWorkspaceJsonAsset(params: {
 export async function writeWorkspaceBinaryAsset(params: {
   workspaceId?: string
   fileName: string
-  buffer: Buffer
+  buffer?: Buffer
+  sourceFilePath?: string
   assetId?: string
   workspaceName?: string
   type: Extract<WorkspaceAssetType, 'pdf'>
@@ -228,7 +234,13 @@ export async function writeWorkspaceBinaryAsset(params: {
   const relativePath = path.posix.join(relativeDir, fileName)
   const filePath = path.join(workspace.workspaceDir, relativePath)
   await fsp.mkdir(path.dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, params.buffer)
+  if (params.sourceFilePath) {
+    await fsp.copyFile(params.sourceFilePath, filePath)
+  } else if (params.buffer) {
+    await fsp.writeFile(filePath, params.buffer)
+  } else {
+    throw new Error('buffer or sourceFilePath is required')
+  }
 
   return await registerWorkspaceAsset({
     workspaceId: workspace.workspaceId,
@@ -260,6 +272,7 @@ export async function resolveManagedJsonInput(params: {
       jsonAssetId,
       jsonFilePath: resolved.filePath,
       publicUrl: resolved.publicUrl,
+      fileName: resolved.asset.fileName,
     }
   }
 
@@ -278,6 +291,7 @@ export async function resolveManagedJsonInput(params: {
     jsonAssetId: '',
     jsonFilePath: resolvedPath,
     publicUrl: '',
+    fileName: path.basename(resolvedPath),
   }
 }
 

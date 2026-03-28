@@ -124,6 +124,13 @@
             <span>目标 JSON 文件</span>
             <div class="action-row inline-row">
               <button class="secondary-button" @click="actions.chooseJsonSessionFile">选择 JSON 文件</button>
+              <button
+                class="ghost-button"
+                :disabled="!state.chapterSessionServerJsonPath"
+                @click="actions.downloadCurrentWorkingJson"
+              >
+                下载当前最新 JSON
+              </button>
               <span class="glass-pill" :class="{ 'is-active': Boolean(state.chapterSessionJsonLabel) }">
                 {{ state.chapterSessionJsonLabel || '尚未选择文件' }}
               </span>
@@ -278,6 +285,13 @@
               <span>目标 JSON 文件</span>
               <div class="action-row inline-row">
                 <button class="secondary-button" @click="actions.chooseJsonSessionFile">选择 JSON 文件</button>
+                <button
+                  class="ghost-button"
+                  :disabled="!state.chapterSessionServerJsonPath"
+                  @click="actions.downloadCurrentWorkingJson"
+                >
+                  下载当前最新 JSON
+                </button>
                 <span class="glass-pill" :class="{ 'is-active': Boolean(state.chapterSessionJsonLabel) }">
                   {{ state.chapterSessionJsonLabel || '尚未选择文件' }}
                 </span>

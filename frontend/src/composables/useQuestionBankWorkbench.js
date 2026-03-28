@@ -25,6 +25,14 @@ function triggerJsonDownload(fileName, text) {
   URL.revokeObjectURL(url)
 }
 
+function normalizeJsonDownloadName(fileName, fallback = 'main.json') {
+  const trimmed = String(fileName || '').trim()
+  if (!trimmed) {
+    return fallback
+  }
+  return trimmed.toLowerCase().endsWith('.json') ? trimmed : `${trimmed}.json`
+}
+
 export function useQuestionBankWorkbench() {
   const state = reactive({
     selectedPdfFiles: [],
@@ -1843,6 +1851,45 @@ export function useQuestionBankWorkbench() {
     return String(data.text || '')
   }
 
+  function parseDownloadFileName(resp, fallbackName = 'main.json') {
+    const disposition = String(resp.headers.get('content-disposition') || '').trim()
+    const encodedMatch = disposition.match(/filename="?([^"]+)"?/i)
+    if (!encodedMatch?.[1]) {
+      return normalizeJsonDownloadName(fallbackName)
+    }
+    try {
+      return normalizeJsonDownloadName(decodeURIComponent(encodedMatch[1]), fallbackName)
+    } catch (_error) {
+      return normalizeJsonDownloadName(encodedMatch[1], fallbackName)
+    }
+  }
+
+  async function downloadManagedJsonFile(ref, suggestedName = 'main.json') {
+    const resp = await fetch('/api/textbook-json/download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildManagedJsonBody(ref, {
+        filePath: String(ref?.jsonFilePath || ref?.filePath || '').trim(),
+      })),
+    })
+    const text = await resp.text()
+    if (!resp.ok) {
+      try {
+        const data = JSON.parse(text)
+        const message = String(data?.message || '').trim()
+        throw new Error(message || '下载当前 JSON 失败')
+      } catch (error) {
+        if (error instanceof Error && error.message) {
+          throw error
+        }
+        throw new Error(text || '下载当前 JSON 失败')
+      }
+    }
+    triggerJsonDownload(parseDownloadFileName(resp, suggestedName), text)
+  }
+
   async function syncJsonHandleFromWorkspace(ref, fileHandle) {
     const managedRef = normalizeManagedJsonRef(ref)
     if ((!managedRef.jsonFilePath && !managedRef.jsonAssetId) || !fileHandle) {
@@ -1911,6 +1958,66 @@ export function useQuestionBankWorkbench() {
       jsonAssetId: state.examSessionJsonAssetId,
       jsonFilePath: state.examSessionServerJsonPath,
     }, state.examSessionJsonHandle)
+  }
+
+  async function downloadCurrentWorkingJson() {
+    if (!state.chapterSessionServerJsonPath && !state.chapterSessionJsonAssetId) {
+      state.chapterSessionError = true
+      state.chapterSessionStatus = '请先选择或生成一份教材 JSON'
+      return
+    }
+    state.chapterSessionError = false
+    try {
+      await downloadManagedJsonFile({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.chapterSessionJsonAssetId,
+        jsonFilePath: state.chapterSessionServerJsonPath,
+      }, state.chapterSessionJsonLabel || 'textbook.json')
+      state.chapterSessionStatus = '已下载当前最新 JSON'
+    } catch (error) {
+      state.chapterSessionError = true
+      state.chapterSessionStatus = error instanceof Error ? error.message : '下载当前最新 JSON 失败'
+    }
+  }
+
+  async function downloadCurrentExamJson() {
+    if (!state.examSessionServerJsonPath && !state.examSessionJsonAssetId) {
+      state.examSessionError = true
+      state.examSessionStatus = '请先选择或生成一份试卷 JSON'
+      return
+    }
+    state.examSessionError = false
+    try {
+      await downloadManagedJsonFile({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
+        jsonFilePath: state.examSessionServerJsonPath,
+      }, state.examSessionJsonLabel || 'exam.json')
+      state.examSessionStatus = '已下载当前最新 JSON'
+    } catch (error) {
+      state.examSessionError = true
+      state.examSessionStatus = error instanceof Error ? error.message : '下载当前最新 JSON 失败'
+    }
+  }
+
+  async function downloadCurrentVisualizerJson() {
+    if (!state.visualizerServerJsonPath && !state.visualizerJsonAssetId) {
+      state.visualizerError = true
+      state.visualizerStatus = '请先加载一份题库 JSON'
+      return
+    }
+    state.visualizerError = false
+    try {
+      await downloadManagedJsonFile({
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.visualizerJsonAssetId,
+        jsonFilePath: state.visualizerServerJsonPath,
+      }, state.visualizerFileName || 'textbook.json')
+      state.visualizerStatus = '已下载当前最新 JSON'
+    } catch (error) {
+      state.visualizerError = true
+      state.visualizerStatus = error instanceof Error ? error.message : '下载当前最新 JSON 失败'
+    }
   }
 
   async function pickJsonFileFromPicker() {
@@ -5016,6 +5123,9 @@ export function useQuestionBankWorkbench() {
     clearChapterManualSectionImages,
     clearExamSectionImages,
     confirmExamSection,
+    downloadCurrentExamJson,
+    downloadCurrentVisualizerJson,
+    downloadCurrentWorkingJson,
     sendQuestionBankAssistantMessage,
     finalizeExamSections,
     generateExamJson,

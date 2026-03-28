@@ -27,6 +27,13 @@
           <span>目标试卷 JSON</span>
           <div class="action-row inline-row">
             <button class="secondary-button" @click="actions.chooseExamJsonSessionFile">选择试卷 JSON</button>
+            <button
+              class="ghost-button"
+              :disabled="!state.examSessionServerJsonPath"
+              @click="actions.downloadCurrentExamJson"
+            >
+              下载当前最新 JSON
+            </button>
             <span class="glass-pill" :class="{ 'is-active': Boolean(state.examSessionJsonLabel) }">
               {{ state.examSessionJsonLabel || '尚未选择文件' }}
             </span>

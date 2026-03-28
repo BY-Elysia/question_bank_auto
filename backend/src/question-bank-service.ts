@@ -24,6 +24,7 @@ import {
   setChapterSession,
   setQuestionSession,
 } from './state'
+import { readUploadedFileBuffer } from './upload'
 import type {
   AnswerHandlingMode,
   ChapterDetectResult,
@@ -1398,12 +1399,13 @@ async function toImageDataUrl(imagePath: string) {
   return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
-function toImageDataUrlFromFile(file: Express.Multer.File) {
+async function toImageDataUrlFromFile(file: Express.Multer.File) {
   const mime = getImageMimeByFile(file)
   if (!mime) {
     throw new Error(`Unsupported image file: ${file.originalname || 'unknown'}`)
   }
-  return `data:${mime};base64,${file.buffer.toString('base64')}`
+  const bytes = await readUploadedFileBuffer(file)
+  return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
 function extractArkText(payload: unknown) {

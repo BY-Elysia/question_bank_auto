@@ -19,7 +19,7 @@ import {
   toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
-import { upload } from '../upload'
+import { cleanupUploadedFiles, upload } from '../upload'
 import { resolveManagedJsonInput } from '../workspace-store'
 
 const router = Router()
@@ -68,7 +68,7 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
       return res.status(400).json({ message: 'questionType is required' })
     }
 
-    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => file?.buffer?.length)
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => Number(file?.size) > 0)
     if (!files.length) {
       return res.status(400).json({ message: 'images are required' })
     }
@@ -78,13 +78,14 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
       jsonAssetId: jsonAssetIdInput,
       jsonFilePath: jsonFilePathRaw,
     })
+    const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       previewExamSectionFromImages({
         jsonFilePath: resolved.jsonFilePath,
         majorTitle,
         minorTitle,
         questionType,
-        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageDataUrls,
       }),
     )
     return res.json({
@@ -95,6 +96,8 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Extract exam section from images failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -190,12 +193,14 @@ router.post('/api/exams/session/process-image', upload.fields([
       return res.status(400).json({ message: 'image file is required' })
     }
 
+    const imageDataUrl = await toImageDataUrlFromFile(imageFile)
+    const lookaheadImageDataUrl = lookaheadImageFile ? await toImageDataUrlFromFile(lookaheadImageFile) : ''
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       processExamSessionImage({
         sessionId,
-        imageDataUrl: toImageDataUrlFromFile(imageFile),
+        imageDataUrl,
         imageLabel: imageFile.originalname || '',
-        lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
+        lookaheadImageDataUrl,
         lookaheadImageLabel: lookaheadImageFile?.originalname || '',
       }),
     )
@@ -203,6 +208,8 @@ router.post('/api/exams/session/process-image', upload.fields([
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Process exam image failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 

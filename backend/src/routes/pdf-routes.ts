@@ -5,7 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { JPEG_QUALITY, PDF_RENDER_DPI } from '../config'
 import { batchId, ensureDir, parsePageIndex, sanitizeFileName, sanitizeFolderName } from '../question-bank-service'
-import { upload } from '../upload'
+import { cleanupUploadedFiles, upload } from '../upload'
 import { ensureWorkspace, registerWorkspaceAsset, writeWorkspaceBinaryAsset } from '../workspace-store'
 
 const router = Router()
@@ -121,7 +121,7 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
       const savedPdf = await writeWorkspaceBinaryAsset({
         workspaceId: workspace.workspaceId,
         fileName: savedPdfName,
-        buffer: pdfFile.buffer,
+        sourceFilePath: pdfFile.path,
         type: 'pdf',
         relativeDir: 'uploads',
         meta: {
@@ -198,6 +198,8 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `PDF conversion failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 

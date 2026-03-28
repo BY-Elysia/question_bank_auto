@@ -4,10 +4,12 @@ import { UPLOAD_DIR } from './config'
 import { isObject } from './question-json-target'
 import { loadTextbookJson, saveTextbookJson } from './question-bank-service'
 import type { QuestionItem, TextbookJsonPayload } from './types'
+import { readUploadedFileBuffer } from './upload'
 
 type UploadFolderFile = {
   originalname: string
-  buffer: Buffer
+  buffer?: Buffer
+  path?: string
   relativePath?: string
 }
 
@@ -149,7 +151,10 @@ export async function importUploadsFolderIntoServer(params: {
     }
 
     await fsp.mkdir(path.dirname(destination), { recursive: true })
-    await fsp.writeFile(destination, file.buffer)
+    const bytes = Buffer.isBuffer(file.buffer)
+      ? file.buffer
+      : await readUploadedFileBuffer(file as Express.Multer.File)
+    await fsp.writeFile(destination, bytes)
 
     const publicUrl = toPublicUploadUrl(relativePath)
     uploadedFiles.push({

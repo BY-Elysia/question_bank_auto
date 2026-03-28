@@ -8,6 +8,7 @@ import {
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import { loadTextbookJson, normalizeJsonFileName, saveTextbookJson, sanitizeFileName } from './question-bank-service'
+import { readUploadedFileBuffer } from './upload'
 
 type JsonNode = Record<string, unknown>
 
@@ -114,7 +115,8 @@ export async function attachImagesToQuestionInTextbookJson(params: {
   childNo?: number | null
   files: Array<{
     originalname: string
-    buffer: Buffer
+    buffer?: Buffer
+    path?: string
   }>
 }) {
   const {
@@ -165,7 +167,10 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     const ext = path.extname(file.originalname || '').toLowerCase() || '.png'
     const storedFileName = `${targetKey}_${String(index + 1).padStart(2, '0')}${ext}`
     const filePath = path.join(targetDir, storedFileName)
-    await fsp.writeFile(filePath, file.buffer)
+    const bytes = Buffer.isBuffer(file.buffer)
+      ? file.buffer
+      : await readUploadedFileBuffer(file as Express.Multer.File)
+    await fsp.writeFile(filePath, bytes)
     mediaItems.push({
       type: 'image',
       url: `/uploads/question_media/${path.basename(path.dirname(targetDir))}/${path.basename(targetDir)}/${storedFileName}`,

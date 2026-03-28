@@ -13,6 +13,13 @@
           <button class="secondary-button" @click="actions.chooseVisualizerJsonFile">选择 JSON 文件</button>
           <button
             class="ghost-button"
+            :disabled="!state.visualizerServerJsonPath"
+            @click="actions.downloadCurrentVisualizerJson"
+          >
+            下载当前最新 JSON
+          </button>
+          <button
+            class="ghost-button"
             :disabled="!state.visualizerFileHandle"
             @click="actions.reloadVisualizerJsonFile"
           >

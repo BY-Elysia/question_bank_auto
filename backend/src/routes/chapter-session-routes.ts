@@ -29,7 +29,7 @@ import {
   setChapterSession,
   setQuestionSession,
 } from '../state'
-import { upload } from '../upload'
+import { cleanupUploadedFiles, upload } from '../upload'
 import { resolveManagedJsonInput } from '../workspace-store'
 
 const router = Router()
@@ -125,12 +125,14 @@ router.post('/api/chapters/session/process-image', upload.fields([
     if (!imageFile) {
       return res.status(400).json({ message: 'image file is required' })
     }
+    const imageDataUrl = await toImageDataUrlFromFile(imageFile)
+    const lookaheadImageDataUrl = lookaheadImageFile ? await toImageDataUrlFromFile(lookaheadImageFile) : ''
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       processChapterSessionImage({
         sessionId,
-        imageDataUrl: toImageDataUrlFromFile(imageFile),
+        imageDataUrl,
         imageLabel: imageFile.originalname || '',
-        lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
+        lookaheadImageDataUrl,
         lookaheadImageLabel: lookaheadImageFile?.originalname || '',
         overrideChapterTitle: String(req.body?.currentChapterTitle || '').trim(),
         overrideSectionTitle: String(req.body?.currentSectionTitle || '').trim(),
@@ -140,6 +142,8 @@ router.post('/api/chapters/session/process-image', upload.fields([
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Process chapter image failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -161,12 +165,14 @@ router.post('/api/chapters/session/process-image-responses', upload.fields([
     if (!imageFile) {
       return res.status(400).json({ message: 'image file is required' })
     }
+    const imageDataUrl = await toImageDataUrlFromFile(imageFile)
+    const lookaheadImageDataUrl = lookaheadImageFile ? await toImageDataUrlFromFile(lookaheadImageFile) : ''
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       processChapterSessionImageWithResponsesPrefixCache({
         sessionId,
-        imageDataUrl: toImageDataUrlFromFile(imageFile),
+        imageDataUrl,
         imageLabel: imageFile.originalname || '',
-        lookaheadImageDataUrl: lookaheadImageFile ? toImageDataUrlFromFile(lookaheadImageFile) : '',
+        lookaheadImageDataUrl,
         lookaheadImageLabel: lookaheadImageFile?.originalname || '',
         overrideChapterTitle: String(req.body?.currentChapterTitle || '').trim(),
         overrideSectionTitle: String(req.body?.currentSectionTitle || '').trim(),
@@ -176,6 +182,8 @@ router.post('/api/chapters/session/process-image-responses', upload.fields([
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Process chapter image with responses prefix cache failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -190,7 +198,7 @@ router.post('/api/chapters/segments/append-from-images', upload.array('images', 
       return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
     }
 
-    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => file?.buffer?.length)
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => Number(file?.size) > 0)
     if (!files.length) {
       return res.status(400).json({ message: 'images are required' })
     }
@@ -200,12 +208,13 @@ router.post('/api/chapters/segments/append-from-images', upload.array('images', 
       jsonAssetId: jsonAssetIdInput,
       jsonFilePath: jsonFilePathRaw,
     })
+    const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       appendChapterSegmentFromImages({
         jsonFilePath: resolved.jsonFilePath,
         chapterTitle,
         sectionTitle,
-        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageDataUrls,
         imageLabels: files.map((file) => file.originalname || ''),
       }),
     )
@@ -217,6 +226,8 @@ router.post('/api/chapters/segments/append-from-images', upload.array('images', 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Append chapter segment from images failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -231,7 +242,7 @@ router.post('/api/chapters/segments/append-from-images-responses', upload.array(
       return res.status(400).json({ message: 'chapterTitle and sectionTitle are required' })
     }
 
-    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => file?.buffer?.length)
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => Number(file?.size) > 0)
     if (!files.length) {
       return res.status(400).json({ message: 'images are required' })
     }
@@ -241,12 +252,13 @@ router.post('/api/chapters/segments/append-from-images-responses', upload.array(
       jsonAssetId: jsonAssetIdInput,
       jsonFilePath: jsonFilePathRaw,
     })
+    const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       appendChapterSegmentFromImagesWithResponsesPrefixCache({
         jsonFilePath: resolved.jsonFilePath,
         chapterTitle,
         sectionTitle,
-        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageDataUrls,
         imageLabels: files.map((file) => file.originalname || ''),
       }),
     )
@@ -258,6 +270,8 @@ router.post('/api/chapters/segments/append-from-images-responses', upload.array(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Append chapter segment from images with responses prefix cache failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 

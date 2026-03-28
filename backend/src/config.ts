@@ -3,6 +3,7 @@ import path from 'node:path'
 export const APP_ROOT = path.resolve(__dirname, '..', '..')
 export const DATA_ROOT = path.resolve(String(process.env.DATA_ROOT || path.join(APP_ROOT, 'data')))
 export const WORKSPACES_DIR = path.join(DATA_ROOT, 'workspaces')
+export const TEMP_UPLOAD_DIR = path.join(DATA_ROOT, 'tmp_uploads')
 export const FRONTEND_DIST_DIR = path.join(APP_ROOT, 'frontend', 'dist')
 export const UPLOAD_DIR = path.join(APP_ROOT, 'uploads')
 export const QUESTION_MEDIA_DIR = path.join(UPLOAD_DIR, 'question_media')

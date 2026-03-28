@@ -18,7 +18,7 @@ import { attachImagesToQuestionInTextbookJson } from '../question-image-attach-s
 import { importUploadsFolderIntoServer } from '../upload-folder-import-service'
 import { repairQuestionInTextbookJson } from '../question-repair-service'
 import { updateQuestionTypeInTextbookJson } from '../question-type-update-service'
-import { upload } from '../upload'
+import { cleanupUploadedFiles, readUploadedFileText, upload } from '../upload'
 import {
   readWorkspaceJsonText,
   resolveManagedJsonInput,
@@ -117,7 +117,7 @@ router.post('/api/textbook-json/import', upload.single('json'), async (req: Requ
       return res.status(400).json({ message: 'Only .json files are supported' })
     }
 
-    const text = req.file.buffer.toString('utf8')
+    const text = await readUploadedFileText(req.file)
     const parsed = JSON.parse(text) as unknown
     if (!isValidTextbookPayload(parsed)) {
       return res.status(400).json({ message: 'Invalid textbook JSON structure' })
@@ -145,6 +145,8 @@ router.post('/api/textbook-json/import', upload.single('json'), async (req: Requ
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Import json failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -173,6 +175,28 @@ router.post('/api/textbook-json/read', async (req: Request, res: Response) => {
   }
 })
 
+router.post('/api/textbook-json/download', async (req: Request, res: Response) => {
+  try {
+    const filePathRaw = String(req.body?.filePath || '').trim()
+    const workspaceId = String(req.body?.workspaceId || '').trim()
+    const jsonAssetId = String(req.body?.jsonAssetId || '').trim()
+
+    const data = await readWorkspaceJsonText({
+      workspaceId,
+      jsonAssetId,
+      filePath: filePathRaw,
+    })
+
+    const downloadFileName = String(data.fileName || 'main.json').trim() || 'main.json'
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.attachment(downloadFileName)
+    return res.send(data.text)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Download json failed: ${msg}` })
+  }
+})
+
 router.post('/api/textbook-json/merge', upload.array('jsonFiles', 30), async (req: Request, res: Response) => {
   try {
     const files = (req.files as Express.Multer.File[] | undefined) ?? []
@@ -190,10 +214,12 @@ router.post('/api/textbook-json/merge', upload.array('jsonFiles', 30), async (re
     }
 
     const result = await mergeTextbookJsonFiles({
-      files: files.map((file) => ({
-        fileName: file.originalname || 'textbook.json',
-        text: file.buffer.toString('utf8'),
-      })),
+      files: await Promise.all(
+        files.map(async (file) => ({
+          fileName: file.originalname || 'textbook.json',
+          text: await readUploadedFileText(file),
+        })),
+      ),
       outputFileName,
     })
 
@@ -201,6 +227,8 @@ router.post('/api/textbook-json/merge', upload.array('jsonFiles', 30), async (re
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Merge json failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -227,6 +255,7 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
       jsonFilePath: jsonFilePathRaw,
     })
 
+    const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       repairQuestionInTextbookJson({
         jsonFilePath: resolved.jsonFilePath,
@@ -234,7 +263,7 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
         sectionNo,
         questionNo,
         questionId,
-        imageDataUrls: files.map((file) => toImageDataUrlFromFile(file)),
+        imageDataUrls,
         imageLabels: files.map((file) => file.originalname || ''),
         sourceFileName,
       }),
@@ -257,6 +286,8 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Repair question failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -371,6 +402,8 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Attach images failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -407,7 +440,7 @@ router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), as
       jsonFilePath: resolved.jsonFilePath,
       files: files.map((file, index) => ({
         originalname: file.originalname,
-        buffer: file.buffer,
+        path: file.path,
         relativePath: relativePaths[index] || file.originalname,
       })),
     })
@@ -424,6 +457,8 @@ router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), as
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Import uploads failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
