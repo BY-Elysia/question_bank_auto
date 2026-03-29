@@ -143,4 +143,13 @@ export const questionBankMigrations: QuestionBankMigration[] = [
         UNIQUE ("course_id", "document_type", "external_id");
     `,
   },
+  {
+    id: '202603280001',
+    description: 'rename programming question type to code',
+    up: (schemaName) => `
+      UPDATE "${schemaName}"."assignment_questions"
+      SET "question_type" = 'code'
+      WHERE "question_type" = 'PROGRAMMING';
+    `,
+  },
 ]

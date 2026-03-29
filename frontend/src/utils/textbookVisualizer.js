@@ -88,6 +88,18 @@ export function normalizeTextBlock(value) {
   }
 }
 
+function normalizeQuestionType(value) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+  const upper = raw.toUpperCase()
+  if (upper === 'PROGRAMMING' || upper === 'CODE') {
+    return 'code'
+  }
+  return upper
+}
+
 function normalizeQuestion(question) {
   const source = question && typeof question === 'object' ? question : {}
   const nodeType = String(source.nodeType || 'LEAF').toUpperCase()
@@ -97,7 +109,7 @@ function normalizeQuestion(question) {
       questionId: String(source.questionId || ''),
       chapterId: String(source.chapterId || ''),
       nodeType: 'GROUP',
-      questionType: String(source.questionType || ''),
+      questionType: normalizeQuestionType(source.questionType),
       title: String(source.title || ''),
       stem: normalizeTextBlock(source.stem),
       children: [...children]
@@ -106,7 +118,7 @@ function normalizeQuestion(question) {
           chapterId: String(child?.chapterId || source.chapterId || ''),
           title: String(child?.title || ''),
           orderNo: toFiniteNumber(child?.orderNo),
-          questionType: String(child?.questionType || ''),
+          questionType: normalizeQuestionType(child?.questionType),
           prompt: normalizeTextBlock(child?.prompt),
           standardAnswer: normalizeTextBlock(child?.standardAnswer),
           defaultScore: toFiniteNumber(child?.defaultScore),
@@ -125,7 +137,7 @@ function normalizeQuestion(question) {
     questionId: String(source.questionId || ''),
     chapterId: String(source.chapterId || ''),
     nodeType: 'LEAF',
-    questionType: String(source.questionType || ''),
+    questionType: normalizeQuestionType(source.questionType),
     title: String(source.title || ''),
     prompt: normalizeTextBlock(source.prompt),
     standardAnswer: normalizeTextBlock(source.standardAnswer),

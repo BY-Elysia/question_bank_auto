@@ -369,7 +369,7 @@ const QUESTION_TYPE_OPTIONS = [
     aliases: ['计算题', '解答题'],
   },
   {
-    value: 'PROGRAMMING',
+    value: 'code',
     label: '编程题',
     aliases: ['编程题', '程序题', '代码题'],
   },
@@ -392,7 +392,14 @@ const QUESTION_TYPE_OPTIONS = [
 
 function normalizeQuestionType(value: unknown) {
   const raw = String(value || '').trim()
-  return raw ? raw.toUpperCase() : 'SHORT_ANSWER'
+  if (!raw) {
+    return 'SHORT_ANSWER'
+  }
+  const upper = raw.toUpperCase()
+  if (upper === 'PROGRAMMING' || upper === 'CODE') {
+    return 'code'
+  }
+  return upper
 }
 
 function normalizeChapterId(value: unknown, fallbackChapterId: string) {
@@ -940,8 +947,8 @@ function buildSharedQuestionStructureInstructionLines(
   const mode = resolveAnswerHandlingMode(answerHandlingMode)
   const lines = [
     '题目对象必须是 LEAF 或 GROUP 两种之一。',
-    'questionType 只能取: PROOF, CALCULATION, PROGRAMMING, SHORT_ANSWER, SINGLE_CHOICE, MULTI_CHOICE, JUDGE。',
-    'questionType 映射规则: 含“证明”=>PROOF；含“编程/程序/代码”=>PROGRAMMING；含“求/解/计算”=>CALCULATION；明确单选=>SINGLE_CHOICE；明确多选=>MULTI_CHOICE；明确判断=>JUDGE；无法判断=>SHORT_ANSWER。',
+    'questionType 只能取: PROOF, CALCULATION, code, SHORT_ANSWER, SINGLE_CHOICE, MULTI_CHOICE, JUDGE。',
+    'questionType 映射规则: 含“编程/程序/代码”=>code；含“证明”=>PROOF；含“求/解/计算”=>CALCULATION；明确单选=>SINGLE_CHOICE；明确多选=>MULTI_CHOICE；明确判断=>JUDGE；无法判断=>SHORT_ANSWER。',
     'LEAF 必填字段:',
     '- questionId, chapterId, nodeType("LEAF"), questionType, title, prompt, standardAnswer, defaultScore, rubric',
     'GROUP 必填字段:',

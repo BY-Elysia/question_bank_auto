@@ -1,7 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { ARK_MODEL } from './config'
-import { extractArkText, extractFirstJsonObject, parseModelJsonObject, requestArkRawWithRetry } from './question-bank-service'
+import {
+  extractArkText,
+  extractFirstJsonObject,
+  normalizeQuestionType,
+  parseModelJsonObject,
+  requestArkRawWithRetry,
+} from './question-bank-service'
 import {
   getQuestionBankDatabaseSummary,
   getQuestionBankDbSchemaName,
@@ -44,6 +50,13 @@ function normalizeDocumentType(value: string | undefined) {
     return normalized
   }
   return null
+}
+
+function buildQuestionTypeFilterCondition(paramIndex: number, questionType: string) {
+  if (questionType === 'code') {
+    return `(q.question_type = $${paramIndex} OR q.question_type = 'PROGRAMMING')`
+  }
+  return `q.question_type = $${paramIndex}`
 }
 
 function normalizeOptionalNumber(value: string | number | undefined, fallback: number, min: number, max: number) {
@@ -574,10 +587,10 @@ function buildQuestionSearchConditions(params: {
     conditions.push(`q.node_type = $${values.length}`)
   }
 
-  const questionType = normalizeOptionalText(params.questionType)
+  const questionType = params.questionType ? normalizeQuestionType(params.questionType) : null
   if (questionType) {
     values.push(questionType)
-    conditions.push(`q.question_type = $${values.length}`)
+    conditions.push(buildQuestionTypeFilterCondition(values.length, questionType))
   }
 
   const status = normalizeOptionalText(params.status)
@@ -699,7 +712,7 @@ function serializeCandidateForModel(candidate: QuestionCandidateRow) {
   return {
     questionCode: candidate.questionCode,
     nodeType: candidate.nodeType,
-    questionType: candidate.questionType,
+    questionType: normalizeQuestionType(candidate.questionType),
     textbookId: candidate.textbookId,
     textbookTitle: candidate.textbookTitle,
     documentType: candidate.documentType,
@@ -790,7 +803,7 @@ async function judgeQuestionCandidates(params: {
         confidence: ['high', 'medium', 'low'].includes(String(record.confidence || '').trim())
           ? String(record.confidence).trim()
           : 'medium',
-        questionType: candidate.questionType,
+        questionType: normalizeQuestionType(candidate.questionType),
         textbookId: candidate.textbookId,
         textbookTitle: candidate.textbookTitle,
         documentType: candidate.documentType,
@@ -1530,7 +1543,7 @@ export function createQuestionBankMcpServer() {
           documentType: candidate.documentType,
           examType: candidate.examType,
           hasAnswer: candidate.hasAnswer,
-          questionType: candidate.questionType,
+          questionType: normalizeQuestionType(candidate.questionType),
           relevanceScore: toNumber(candidate.relevanceScore),
           contentPreview: buildQuestionContentPreview(candidate, 180),
         })),
@@ -1669,7 +1682,7 @@ export function createQuestionBankMcpServer() {
         question: {
           questionCode: question.questionCode,
           nodeType: question.nodeType,
-          questionType: question.questionType,
+          questionType: normalizeQuestionType(question.questionType),
           status: question.status,
           title: question.title,
           description: question.description,
@@ -1693,6 +1706,7 @@ export function createQuestionBankMcpServer() {
           rawPayloadJson: toJsonObject(question.rawPayloadJson),
           children: childrenResult.rows.map((row) => ({
             ...row,
+            questionType: normalizeQuestionType(row.questionType),
             defaultScore: toNumber(row.defaultScore),
             prompt: toJsonObject(row.prompt),
             standardAnswer: toJsonObject(row.standardAnswer),

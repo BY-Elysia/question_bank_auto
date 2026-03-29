@@ -6,6 +6,7 @@ import {
   extractArkText,
   loadTextbookJson,
   normalizeJsonFileName,
+  normalizeQuestionType,
   requestArkRawWithRetry,
   sanitizeFileName,
   saveTextbookJson,
@@ -119,7 +120,7 @@ function buildAnswerInstruction(params: {
     '允许使用 Markdown、LaTeX 和代码块。',
     '不要输出 JSON，不要输出多余前言，不要解释你正在做什么。',
     '如果信息仍不完整，请先用一句话说明缺失点，再给出基于可见信息的最合理答案。',
-    questionType === 'PROGRAMMING'
+    normalizeQuestionType(questionType) === 'code'
       ? '如果这是编程题，请优先给出简洁思路、核心代码和必要说明。'
       : '如果是非编程题，请优先给出清晰、可直接作为标准答案的解答。',
     `章节: ${chapterTitle || '未标注'}`,

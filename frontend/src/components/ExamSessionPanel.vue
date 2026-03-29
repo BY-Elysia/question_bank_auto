@@ -68,7 +68,7 @@
     <div class="subpanel">
       <div class="subpanel-head">
         <h3>数据库题型</h3>
-        <p>当前按题库数据库里的 7 种题型来编排试卷部分。填空题这边归到 `SHORT_ANSWER`，证明题归到 `PROOF`，编程题归到 `PROGRAMMING`。</p>
+        <p>当前按题库数据库里的 7 种题型来编排试卷部分。填空题这边归到 `SHORT_ANSWER`，证明题归到 `PROOF`，编程题归到 `code`。</p>
       </div>
       <div class="action-row wrap-top">
         <span
@@ -447,7 +447,7 @@ const questionTypeOptions = computed(() =>
         { value: 'SHORT_ANSWER', label: '填空/简答题' },
         { value: 'PROOF', label: '证明题' },
         { value: 'CALCULATION', label: '计算题' },
-        { value: 'PROGRAMMING', label: '编程题' },
+        { value: 'code', label: '编程题' },
         { value: 'SINGLE_CHOICE', label: '单选题' },
         { value: 'MULTI_CHOICE', label: '多选题' },
         { value: 'JUDGE', label: '判断题' },

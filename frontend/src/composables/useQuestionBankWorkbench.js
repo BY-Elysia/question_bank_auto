@@ -516,6 +516,18 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function normalizeQuestionTypeValue(value) {
+    const raw = String(value || '').trim()
+    if (!raw) {
+      return ''
+    }
+    const upper = raw.toUpperCase()
+    if (upper === 'PROGRAMMING' || upper === 'CODE') {
+      return 'code'
+    }
+    return upper
+  }
+
   function applyWorkingJsonMeta(payload) {
     const meta = getPayloadSourceMeta(payload || {})
     state.workingJsonDocumentType = meta.documentType
@@ -1125,7 +1137,7 @@ export function useQuestionBankWorkbench() {
       return false
     }
 
-    const normalizedQuestionType = String(questionType || '').trim()
+    const normalizedQuestionType = normalizeQuestionTypeValue(questionType)
     if (!normalizedQuestionType) {
       return false
     }
@@ -2546,9 +2558,12 @@ export function useQuestionBankWorkbench() {
     if (!state.examQuestionTypeOptions.length) {
       if (!String(task.questionType || '').trim()) {
         task.questionType = 'SHORT_ANSWER'
+      } else {
+        task.questionType = normalizeQuestionTypeValue(task.questionType)
       }
       return
     }
+    task.questionType = normalizeQuestionTypeValue(task.questionType) || task.questionType
     const exists = state.examQuestionTypeOptions.some((item) => item?.value === task.questionType)
     if (!exists) {
       task.questionType = getDefaultExamQuestionType()
@@ -2748,8 +2763,9 @@ export function useQuestionBankWorkbench() {
   }
 
   function questionTypeLabelByValue(value) {
-    const matched = state.examQuestionTypeOptions.find((item) => item?.value === value)
-    return matched?.label || String(value || '').trim() || '未分类'
+    const normalizedValue = normalizeQuestionTypeValue(value) || String(value || '').trim()
+    const matched = state.examQuestionTypeOptions.find((item) => item?.value === normalizedValue)
+    return matched?.label || normalizedValue || '未分类'
   }
 
   function confirmExamSection(taskId) {

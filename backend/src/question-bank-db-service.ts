@@ -221,6 +221,13 @@ function normalizeQuestionTypeFilter(value: unknown) {
   return ''
 }
 
+function buildQuestionTypeFilterCondition(paramIndex: number, questionType: string) {
+  if (questionType === 'code') {
+    return `(q.question_type = $${paramIndex} OR q.question_type = 'PROGRAMMING')`
+  }
+  return `q.question_type = $${paramIndex}`
+}
+
 function normalizeSearchLimit(value: unknown, fallback = 12) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) {
@@ -975,7 +982,7 @@ export async function searchQuestionBankQuestions(params: {
     const questionType = normalizeQuestionTypeFilter(params.questionType)
     if (questionType) {
       values.push(questionType)
-      conditions.push(`q.question_type = $${values.length}`)
+      conditions.push(buildQuestionTypeFilterCondition(values.length, questionType))
     }
 
     if (conditions.length <= 2) {
@@ -1033,7 +1040,7 @@ export async function searchQuestionBankQuestions(params: {
       recordId: row.recordId,
       questionCode: row.questionCode,
       nodeType: row.nodeType,
-      questionType: row.questionType,
+      questionType: normalizeQuestionType(row.questionType),
       title: row.title,
       description: row.description,
       chapterId: row.chapterId,
@@ -1119,7 +1126,7 @@ export async function loadQuestionBankTopLevelQuestionsByIds(recordIds: string[]
           recordId: row.recordId,
           questionCode: row.questionCode,
           nodeType: row.nodeType,
-          questionType: row.questionType,
+          questionType: normalizeQuestionType(row.questionType),
           title: row.title,
           description: row.description,
           chapterId: row.chapterId,

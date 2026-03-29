@@ -167,7 +167,7 @@ const FALLBACK_QUESTION_TYPE_OPTIONS = [
   { value: 'SHORT_ANSWER', label: '填空/简答题' },
   { value: 'PROOF', label: '证明题' },
   { value: 'CALCULATION', label: '计算题' },
-  { value: 'PROGRAMMING', label: '编程题' },
+  { value: 'code', label: '编程题' },
   { value: 'SINGLE_CHOICE', label: '单选题' },
   { value: 'MULTI_CHOICE', label: '多选题' },
   { value: 'JUDGE', label: '判断题' },
