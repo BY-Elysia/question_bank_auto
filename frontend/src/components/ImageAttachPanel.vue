@@ -37,7 +37,7 @@
         />
       </label>
       <label class="file-shell field-span-2">
-        <span>上传补充图片</span>
+        <span>上传补充图片（可追加）</span>
         <input type="file" multiple accept="image/png,image/jpeg,image/webp" @change="actions.onImageAttachFilesChange" />
       </label>
     </div>
@@ -60,7 +60,7 @@
         <input v-model.trim="state.imageAttachForm.childNo" class="glass-input" type="text" placeholder="留空表示大题" />
       </label>
       <label class="file-shell field-span-2">
-        <span>上传补充图片</span>
+        <span>上传补充图片（可追加）</span>
         <input type="file" multiple accept="image/png,image/jpeg,image/webp" @change="actions.onImageAttachFilesChange" />
       </label>
     </div>
@@ -87,13 +87,26 @@
       </button>
     </div>
 
+    <section v-if="state.imageAttachFiles.length" class="subpanel">
+      <div class="subpanel-head">
+        <h3>待补图片预览</h3>
+        <p>点击图片可查看大图。提交时会按当前顺序补图，你可以先删除不需要的图片，再最后确认。</p>
+      </div>
+
+      <PendingImageList
+        :files="state.imageAttachFiles"
+        :processing="state.imageAttachProcessing"
+        @remove="actions.removeImageAttachFile"
+      />
+    </section>
+
     <div class="action-row">
       <button
         class="primary-button"
         :disabled="state.imageAttachProcessing || !state.imageAttachFiles.length || !state.chapterSessionServerJsonPath"
         @click="actions.attachImagesToQuestionJson"
       >
-        {{ state.imageAttachProcessing ? '补充中...' : '执行图片补充' }}
+        {{ state.imageAttachProcessing ? '补充中...' : '确认并执行图片补充' }}
       </button>
     </div>
 
@@ -128,14 +141,6 @@
             <span>补充图片数</span>
             <strong>{{ state.imageAttachResult.mediaCount }}</strong>
           </div>
-          <div>
-            <span>修复输出文件</span>
-            <strong>{{ state.imageAttachResult.repairJsonFileName || '未生成' }}</strong>
-          </div>
-          <div>
-            <span>repair_json 路径</span>
-            <strong>{{ state.imageAttachResult.repairJsonPath || '未生成' }}</strong>
-          </div>
         </div>
 
         <div v-if="state.imageAttachResult.mediaItems?.length" class="question-block__media">
@@ -155,6 +160,7 @@
 
 <script setup>
 import GlassPanel from './GlassPanel.vue'
+import PendingImageList from './PendingImageList.vue'
 
 defineProps({
   state: {

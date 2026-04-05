@@ -3,12 +3,12 @@
     <header class="visual-question-card__header">
       <div class="visual-question-card__header-main">
         <h4>{{ question.title || question.questionId }}</h4>
-        <p>{{ question.questionId }} · {{ question.nodeType }}</p>
+        <p>{{ question.questionId }} / {{ question.nodeType }}</p>
       </div>
 
       <div class="visual-question-card__header-actions">
         <label class="field visual-question-card__editor">
-          <span>当前题型</span>
+          <span>{{ question.nodeType === 'GROUP' ? '大题题型' : '当前题型' }}</span>
           <select v-model="questionTypeDraft" class="glass-input" :disabled="questionTypeSaving">
             <option v-for="item in resolvedQuestionTypeOptions" :key="item.value" :value="item.value">
               {{ item.label }}
@@ -21,23 +21,14 @@
           :disabled="questionTypeSaving || !questionTypeChanged"
           @click="emitUpdateQuestionType()"
         >
-          {{ questionTypeSaving ? '保存中...' : '保存题型' }}
-        </button>
-
-        <button
-          v-if="answerEnabled && question.nodeType !== 'GROUP'"
-          class="secondary-button"
-          :disabled="answerProcessing"
-          @click="emitGenerateAnswer()"
-        >
-          {{ answerProcessing ? '生成中...' : '生成当前题答案' }}
+          {{ questionTypeSaving ? '保存中...' : question.nodeType === 'GROUP' ? '保存大题题型' : '保存题型' }}
         </button>
       </div>
     </header>
 
     <QuestionTextBlock
       v-if="question.nodeType === 'GROUP'"
-      label="题干"
+      label="公共题干"
       :value="question.stem"
       :repairable="repairEnabled"
       :repairing="repairingTarget === 'stem'"
@@ -47,18 +38,18 @@
     <template v-if="question.nodeType === 'GROUP'">
       <div v-if="currentChild" class="visual-subquestion-switcher">
         <span class="glass-pill is-active">
-          小题 {{ currentChild.orderNo || currentChildIndex + 1 }}/{{ question.children.length }}
+          当前定位：第{{ currentChild.orderNo || currentChildIndex + 1 }}小题
         </span>
 
         <label class="field visual-subquestion-switcher__select">
-          <span>切换小题</span>
-          <select v-model="selectedChildKey" class="glass-input">
+          <span>定位小题</span>
+          <select :value="selectedChildKey" class="glass-input" @change="handleChildSelect">
             <option
               v-for="(child, index) in question.children"
               :key="child.questionId || `${question.questionId}-${index}`"
               :value="child.questionId || `${question.questionId}-${index}`"
             >
-              {{ child.title || `小题 ${child.orderNo || index + 1}` }}
+              {{ child.title || `第${child.orderNo || index + 1}小题` }}
             </option>
           </select>
         </label>
@@ -69,7 +60,7 @@
 
         <button
           class="ghost-button"
-          :disabled="currentChildIndex < 0 || currentChildIndex >= question.children.length - 1"
+          :disabled="currentChildIndex < 0 || currentChildIndex >= childOptions.length - 1"
           @click="goNextChild"
         >
           下一小题
@@ -79,7 +70,7 @@
       <section v-if="currentChild" class="visual-subquestion">
         <div class="visual-subquestion__meta">
           <div class="visual-subquestion__meta-main">
-            <strong>{{ currentChild.title || `小题 ${currentChild.orderNo || currentChildIndex + 1}` }}</strong>
+            <strong>{{ currentChild.title || `第${currentChild.orderNo || currentChildIndex + 1}小题` }}</strong>
             <span>{{ currentChild.questionId }}</span>
           </div>
 
@@ -99,24 +90,6 @@
               @click="emitUpdateQuestionType(true)"
             >
               {{ questionTypeSaving ? '保存中...' : '保存小题题型' }}
-            </button>
-
-            <button
-              v-if="attachEnabled"
-              class="ghost-button"
-              :disabled="attachProcessing || !hasPendingImages"
-              @click="emitAttachToChild"
-            >
-              {{ attachProcessing ? '补图中...' : '补图到当前小题' }}
-            </button>
-
-            <button
-              v-if="answerEnabled"
-              class="secondary-button"
-              :disabled="answerProcessing"
-              @click="emitGenerateAnswer(true)"
-            >
-              {{ answerProcessing ? '生成中...' : '生成当前小题答案' }}
             </button>
           </div>
         </div>
@@ -167,13 +140,13 @@ const FALLBACK_QUESTION_TYPE_OPTIONS = [
   { value: 'SHORT_ANSWER', label: '填空/简答题' },
   { value: 'PROOF', label: '证明题' },
   { value: 'CALCULATION', label: '计算题' },
-  { value: 'code', label: '编程题' },
+  { value: 'CODE', label: '编程题' },
   { value: 'SINGLE_CHOICE', label: '单选题' },
   { value: 'MULTI_CHOICE', label: '多选题' },
   { value: 'JUDGE', label: '判断题' },
 ]
 
-const emit = defineEmits(['repair-math-format', 'update-question-type', 'attach-images', 'generate-answer'])
+const emit = defineEmits(['repair-math-format', 'update-question-type', 'select-child'])
 
 const props = defineProps({
   question: {
@@ -196,29 +169,12 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  attachEnabled: {
-    type: Boolean,
-    default: false,
-  },
-  attachProcessing: {
-    type: Boolean,
-    default: false,
-  },
-  hasPendingImages: {
-    type: Boolean,
-    default: false,
-  },
-  answerEnabled: {
-    type: Boolean,
-    default: false,
-  },
-  answerProcessing: {
-    type: Boolean,
-    default: false,
+  selectedChildKey: {
+    type: String,
+    default: '',
   },
 })
 
-const selectedChildKey = ref('')
 const questionTypeDraft = ref('')
 const childQuestionTypeDraft = ref('')
 
@@ -237,24 +193,10 @@ const childOptions = computed(() =>
     : [],
 )
 
-watch(
-  () => props.question.questionId,
-  () => {
-    selectedChildKey.value = childOptions.value[0]?.key || ''
-  },
-  { immediate: true },
-)
-
-watch(
-  childOptions,
-  (items) => {
-    const exists = items.some((item) => item.key === selectedChildKey.value)
-    if (!exists) {
-      selectedChildKey.value = items[0]?.key || ''
-    }
-  },
-  { immediate: true },
-)
+const effectiveSelectedChildKey = computed(() => {
+  const matched = childOptions.value.find((item) => item.key === props.selectedChildKey)
+  return matched?.key || childOptions.value[0]?.key || ''
+})
 
 watch(
   () => props.question.questionType,
@@ -264,8 +206,22 @@ watch(
   { immediate: true },
 )
 
+watch(
+  childOptions,
+  (items) => {
+    if (!items.length) {
+      return
+    }
+    const exists = items.some((item) => item.key === props.selectedChildKey)
+    if (!exists && items[0]?.key) {
+      emit('select-child', items[0].key)
+    }
+  },
+  { immediate: true },
+)
+
 const currentChildIndex = computed(() =>
-  childOptions.value.findIndex((item) => item.key === selectedChildKey.value),
+  childOptions.value.findIndex((item) => item.key === effectiveSelectedChildKey.value),
 )
 
 const currentChild = computed(() => {
@@ -292,21 +248,30 @@ const childQuestionTypeChanged = computed(
   () => String(childQuestionTypeDraft.value || '').trim() !== String(currentChild.value?.questionType || '').trim(),
 )
 
+function getCurrentChildNo() {
+  return Number(currentChild.value?.orderNo || currentChildIndex.value + 1 || 0)
+}
+
+function handleChildSelect(event) {
+  emit('select-child', String(event?.target?.value || '').trim())
+}
+
 function goPrevChild() {
   if (currentChildIndex.value <= 0) {
     return
   }
-  selectedChildKey.value = childOptions.value[currentChildIndex.value - 1].key
+  emit('select-child', childOptions.value[currentChildIndex.value - 1].key)
 }
 
 function goNextChild() {
   if (currentChildIndex.value < 0 || currentChildIndex.value >= childOptions.value.length - 1) {
     return
   }
-  selectedChildKey.value = childOptions.value[currentChildIndex.value + 1].key
+  emit('select-child', childOptions.value[currentChildIndex.value + 1].key)
 }
 
 function emitRepair(targetType) {
+  const currentChildNo = getCurrentChildNo()
   emit('repair-math-format', {
     questionId: props.question.questionId,
     childQuestionId:
@@ -316,18 +281,18 @@ function emitRepair(targetType) {
     targetType,
     childNo:
       targetType === 'childPrompt' || targetType === 'childStandardAnswer'
-        ? Number(currentChild.value?.orderNo || currentChildIndex.value + 1 || 0)
+        ? currentChildNo
         : null,
     blockLabel:
       targetType === 'stem'
-        ? '题干'
+        ? '公共题干'
         : targetType === 'prompt'
           ? '题目'
           : targetType === 'standardAnswer'
             ? '答案'
             : targetType === 'childPrompt'
-              ? `小题 ${currentChild.value?.orderNo || currentChildIndex.value + 1} 题目`
-              : `小题 ${currentChild.value?.orderNo || currentChildIndex.value + 1} 答案`,
+              ? `第${currentChildNo}小题题目`
+              : `第${currentChildNo}小题答案`,
   })
 }
 
@@ -336,13 +301,14 @@ function emitUpdateQuestionType(forChild = false) {
     if (!currentChild.value) {
       return
     }
+    const currentChildNo = getCurrentChildNo()
     emit('update-question-type', {
       questionId: props.question.questionId,
       questionTitle: currentChild.value.title || currentChild.value.questionId,
       questionType: childQuestionTypeDraft.value,
       childQuestionId: String(currentChild.value.questionId || ''),
-      childNo: Number(currentChild.value.orderNo || currentChildIndex.value + 1 || 0),
-      blockLabel: `小题 ${currentChild.value.orderNo || currentChildIndex.value + 1}`,
+      childNo: currentChildNo,
+      blockLabel: `第${currentChildNo}小题`,
     })
     return
   }
@@ -351,43 +317,6 @@ function emitUpdateQuestionType(forChild = false) {
     questionId: props.question.questionId,
     questionTitle: props.question.title || props.question.questionId,
     questionType: questionTypeDraft.value,
-    childQuestionId: '',
-    childNo: null,
-    blockLabel: props.question.nodeType === 'GROUP' ? '当前大题' : '当前题目',
-  })
-}
-
-function emitAttachToChild() {
-  if (!currentChild.value) {
-    return
-  }
-  emit('attach-images', {
-    questionId: props.question.questionId,
-    questionTitle: currentChild.value.title || currentChild.value.questionId,
-    childQuestionId: String(currentChild.value.questionId || ''),
-    childNo: Number(currentChild.value.orderNo || currentChildIndex.value + 1 || 0),
-    blockLabel: `小题 ${currentChild.value.orderNo || currentChildIndex.value + 1}`,
-  })
-}
-
-function emitGenerateAnswer(forChild = false) {
-  if (forChild) {
-    if (!currentChild.value) {
-      return
-    }
-    emit('generate-answer', {
-      questionId: props.question.questionId,
-      questionTitle: currentChild.value.title || currentChild.value.questionId,
-      childQuestionId: String(currentChild.value.questionId || ''),
-      childNo: Number(currentChild.value.orderNo || currentChildIndex.value + 1 || 0),
-      blockLabel: `小题 ${currentChild.value.orderNo || currentChildIndex.value + 1}`,
-    })
-    return
-  }
-
-  emit('generate-answer', {
-    questionId: props.question.questionId,
-    questionTitle: props.question.title || props.question.questionId,
     childQuestionId: '',
     childNo: null,
     blockLabel: '当前题目',

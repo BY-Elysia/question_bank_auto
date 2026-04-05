@@ -84,14 +84,6 @@
 
         <div class="process-key-grid">
           <div>
-            <span>修复输出文件</span>
-            <strong>{{ state.repairResult.repairJsonFileName || '未生成' }}</strong>
-          </div>
-          <div>
-            <span>repair_json 路径</span>
-            <strong>{{ state.repairResult.repairJsonPath || '未生成' }}</strong>
-          </div>
-          <div>
             <span>题目 ID</span>
             <strong>{{ state.repairResult.questionId }}</strong>
           </div>
@@ -116,13 +108,18 @@
           </div>
         </div>
 
+        <details v-if="state.repairResult.rawText" class="process-raw-details">
+          <summary>查看模型原始返回</summary>
+          <pre class="process-raw-output">{{ state.repairResult.rawText }}</pre>
+        </details>
+
       </article>
     </div>
 
     <section class="subpanel">
       <div class="subpanel-head">
         <h3>大模型公式修复</h3>
-        <p>不影响上面的图片定点补题，只修指定题目文本块里的公式格式，并输出新的 repair_json。</p>
+        <p>不影响上面的图片定点补题，只修指定题目文本块里的公式格式，并直接写入当前工作区 JSON。</p>
       </div>
 
       <div class="field-grid compact-grid">
@@ -210,14 +207,6 @@
               <span>题目标题</span>
               <strong>{{ state.mathFormatRepairResult.questionTitle }}</strong>
             </div>
-            <div>
-              <span>修复输出文件</span>
-              <strong>{{ state.mathFormatRepairResult.repairJsonFileName || '未生成' }}</strong>
-            </div>
-            <div>
-              <span>repair_json 路径</span>
-              <strong>{{ state.mathFormatRepairResult.repairJsonPath || '未生成' }}</strong>
-            </div>
           </div>
 
           <div v-if="state.mathFormatRepairResult.reason" class="process-reason-stack">
@@ -242,6 +231,33 @@
     </section>
   </GlassPanel>
 </template>
+
+<style scoped>
+.process-raw-details {
+  margin-top: 14px;
+}
+
+.process-raw-details summary {
+  cursor: pointer;
+  color: #17304f;
+  font-weight: 600;
+}
+
+.process-raw-output {
+  margin: 10px 0 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(126, 164, 214, 0.28);
+  color: #17304f;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+</style>
 
 <script setup>
 import GlassPanel from './GlassPanel.vue'

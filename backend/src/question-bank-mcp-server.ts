@@ -53,8 +53,8 @@ function normalizeDocumentType(value: string | undefined) {
 }
 
 function buildQuestionTypeFilterCondition(paramIndex: number, questionType: string) {
-  if (questionType === 'code') {
-    return `(q.question_type = $${paramIndex} OR q.question_type = 'PROGRAMMING')`
+  if (questionType === 'CODE') {
+    return `(q.question_type = $${paramIndex} OR q.question_type = 'code' OR q.question_type = 'PROGRAMMING')`
   }
   return `q.question_type = $${paramIndex}`
 }

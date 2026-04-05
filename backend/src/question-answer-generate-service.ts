@@ -1,28 +1,17 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { ARK_MODEL, REPAIR_JSON_DIR, UPLOAD_DIR } from './config'
+import { ARK_MODEL, UPLOAD_DIR, WORKSPACES_DIR } from './config'
 import { isObject, resolveQuestionTarget } from './question-json-target'
 import {
   extractArkText,
   loadTextbookJson,
-  normalizeJsonFileName,
   normalizeQuestionType,
   requestArkRawWithRetry,
-  sanitizeFileName,
   saveTextbookJson,
   toImageDataUrl,
 } from './question-bank-service'
 
 type JsonNode = Record<string, unknown>
-
-function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
-  const preferred = String(sourceFileName || '').trim()
-  if (preferred) {
-    const base = path.basename(preferred).replace(/[\\/:*?"<>|]/g, '_')
-    return base.toLowerCase().endsWith('.json') ? base : `${base}.json`
-  }
-  return normalizeJsonFileName(path.basename(jsonFilePath))
-}
 
 function normalizeTextBlock(value: unknown) {
   if (typeof value === 'string') {
@@ -70,13 +59,22 @@ function collectImageUrlsFromMedia(mediaItems: Array<Record<string, unknown>>) {
 
 function resolveUploadUrlToFilePath(url: string) {
   const raw = String(url || '').trim().split('?')[0]
-  if (!raw.startsWith('/uploads/')) {
+  if (raw.startsWith('/uploads/')) {
+    const relativePath = raw.replace(/^\/uploads\//, '')
+    const resolved = path.resolve(UPLOAD_DIR, relativePath)
+    const uploadRoot = path.resolve(UPLOAD_DIR)
+    return resolved.startsWith(uploadRoot) ? resolved : ''
+  }
+
+  const workspaceMatch = raw.match(/^\/workspace-assets\/([^/]+)\/(.+)$/)
+  if (!workspaceMatch?.[1] || !workspaceMatch?.[2]) {
     return ''
   }
-  const relativePath = raw.replace(/^\/uploads\//, '')
-  const resolved = path.resolve(UPLOAD_DIR, relativePath)
-  const uploadRoot = path.resolve(UPLOAD_DIR)
-  return resolved.startsWith(uploadRoot) ? resolved : ''
+  const workspaceId = workspaceMatch[1]
+  const relativePath = workspaceMatch[2]
+  const workspaceRoot = path.resolve(WORKSPACES_DIR, workspaceId)
+  const resolved = path.resolve(workspaceRoot, relativePath)
+  return resolved.startsWith(workspaceRoot) ? resolved : ''
 }
 
 async function collectImageDataUrls(imageUrls: string[]) {
@@ -120,7 +118,7 @@ function buildAnswerInstruction(params: {
     '允许使用 Markdown、LaTeX 和代码块。',
     '不要输出 JSON，不要输出多余前言，不要解释你正在做什么。',
     '如果信息仍不完整，请先用一句话说明缺失点，再给出基于可见信息的最合理答案。',
-    normalizeQuestionType(questionType) === 'code'
+    normalizeQuestionType(questionType) === 'CODE'
       ? '如果这是编程题，请优先给出简洁思路、核心代码和必要说明。'
       : '如果是非编程题，请优先给出清晰、可直接作为标准答案的解答。',
     `章节: ${chapterTitle || '未标注'}`,
@@ -142,6 +140,7 @@ export async function generateQuestionAnswerInTextbookJson(params: {
   childQuestionId?: string
   childNo?: number | null
   answerPrompt?: string
+  imageDataUrls?: string[]
 }) {
   const {
     jsonFilePath,
@@ -150,6 +149,7 @@ export async function generateQuestionAnswerInTextbookJson(params: {
     childQuestionId = '',
     childNo = null,
     answerPrompt = '',
+    imageDataUrls: extraImageDataUrls = [],
   } = params
 
   const normalizedQuestionId = String(questionId || '').trim()
@@ -184,7 +184,9 @@ export async function generateQuestionAnswerInTextbookJson(params: {
     ...collectImageUrlsFromMedia(stemBlock.media),
     ...collectImageUrlsFromMedia(promptBlock.media),
   ]
-  const imageDataUrls = await collectImageDataUrls(imageUrls)
+  const imageDataUrls = Array.isArray(extraImageDataUrls) && extraImageDataUrls.length
+    ? extraImageDataUrls
+    : await collectImageDataUrls(imageUrls)
 
   const questionType = childNode
     ? String(childNode.questionType || questionNode.questionType || '').trim()
@@ -240,16 +242,9 @@ export async function generateQuestionAnswerInTextbookJson(params: {
 
   await saveTextbookJson(jsonFilePath, payload)
 
-  await fsp.mkdir(REPAIR_JSON_DIR, { recursive: true })
-  const repairJsonFileName = buildRepairJsonFileName(sourceFileName, jsonFilePath)
-  const repairJsonPath = path.join(REPAIR_JSON_DIR, sanitizeFileName(repairJsonFileName))
-  await fsp.writeFile(repairJsonPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: 'utf8' })
-
   return {
     message: 'success',
     jsonFilePath,
-    repairJsonFileName,
-    repairJsonPath,
     chapterTitle: target.chapterTitle,
     sectionTitle: target.sectionTitle,
     questionId: target.questionId,

@@ -13,19 +13,249 @@ import {
   getExamSession,
 } from '../state'
 import {
+  batchId,
+  ensureDir,
   isSupportedImageFileName,
+  sanitizeFileName,
+  sanitizeFolderName,
   sortImageFileNames,
   toImageDataUrl,
   toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
+import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
 import { cleanupUploadedFiles, upload } from '../upload'
-import { resolveManagedJsonInput } from '../workspace-store'
+import { ensureWorkspace, resolveManagedJsonInput } from '../workspace-store'
 
 const router = Router()
 
 function getArkApiKeyFromRequest(req: Request) {
   return String(req.header('x-ark-api-key') || '').trim()
+}
+
+type ExamAutoSourceItem = {
+  fileName: string
+  imagePath?: string
+  uploadFile?: Express.Multer.File
+}
+
+function getOrderedUploadSourceFiles(filesRaw: unknown) {
+  if (!Array.isArray(filesRaw)) {
+    return []
+  }
+
+  const files = filesRaw as Express.Multer.File[]
+  const ordered = files
+    .map((file, arrivalIndex) => {
+      const match = String(file.fieldname || '').match(/^source_(\d+)$/i)
+      if (!match) {
+        return null
+      }
+      return {
+        order: Number(match[1]),
+        arrivalIndex,
+        file,
+      }
+    })
+    .filter((item): item is { order: number, arrivalIndex: number, file: Express.Multer.File } => Boolean(item))
+    .sort((a, b) => a.order - b.order || a.arrivalIndex - b.arrivalIndex)
+
+  if (ordered.length) {
+    return ordered.map((item) => item.file)
+  }
+
+  return files
+}
+
+function detectUploadedSourceKind(files: Express.Multer.File[]) {
+  let hasImage = false
+  let hasPdf = false
+
+  for (const file of files) {
+    const name = String(file?.originalname || '').trim()
+    if (/\.(png|jpe?g|webp)$/i.test(name)) {
+      hasImage = true
+      continue
+    }
+    if (/\.pdf$/i.test(name)) {
+      hasPdf = true
+      continue
+    }
+    return 'unsupported'
+  }
+
+  if (hasImage && hasPdf) return 'mixed'
+  if (hasPdf) return 'pdf'
+  if (hasImage) return 'image'
+  return ''
+}
+
+async function loadExamAutoSourceDataUrl(source: ExamAutoSourceItem) {
+  if (source.imagePath) {
+    return await toImageDataUrl(source.imagePath)
+  }
+  if (source.uploadFile) {
+    return await toImageDataUrlFromFile(source.uploadFile)
+  }
+  throw new Error(`No readable image source for ${source.fileName}`)
+}
+
+async function buildExamAutoSourcesFromDirectory(imageDir: string) {
+  const names = sortImageFileNames((await fsp.readdir(imageDir)).filter((name) => isSupportedImageFileName(name)))
+  return names.map((name) => ({
+    fileName: name,
+    imagePath: path.join(imageDir, name),
+  })) as ExamAutoSourceItem[]
+}
+
+async function buildExamAutoSourcesFromUploads(params: {
+  files: Express.Multer.File[]
+  workspaceId?: string
+  folderName?: string
+}) {
+  const files = Array.isArray(params.files) ? params.files.filter((file) => Number(file?.size) > 0) : []
+  if (!files.length) {
+    throw new Error('source files are required')
+  }
+
+  const sourceKind = detectUploadedSourceKind(files)
+  if (sourceKind === 'mixed') {
+    throw new Error('mixed image and PDF uploads are not supported in the same batch')
+  }
+  if (sourceKind === 'unsupported' || !sourceKind) {
+    throw new Error('only image and PDF files are supported')
+  }
+
+  if (sourceKind === 'image') {
+    return {
+      sourceKind,
+      workspaceId: String(params.workspaceId || '').trim(),
+      outputFolder: '',
+      sources: files.map((file, index) => ({
+        fileName: file.originalname || `image_${index + 1}`,
+        uploadFile: file,
+      })) as ExamAutoSourceItem[],
+    }
+  }
+
+  const folderToken = sanitizeFolderName(String(params.folderName || '').trim()) || `exam_auto_${batchId()}`
+  const workspace = await ensureWorkspace({
+    workspaceId: params.workspaceId,
+    name: folderToken,
+  })
+  const outputRelativeDir = path.posix.join('output_images', folderToken)
+  const outputDir = path.join(workspace.workspaceDir, outputRelativeDir)
+  ensureDir(outputDir)
+  const existingItems = await fsp.readdir(outputDir).catch(() => [])
+  await Promise.all(existingItems.map((item) => fsp.rm(path.join(outputDir, item), { recursive: true, force: true })))
+
+  const sources: ExamAutoSourceItem[] = []
+  let nextPageNo = 1
+
+  for (let index = 0; index < files.length; index += 1) {
+    const pdfFile = files[index]
+    const originalName = pdfFile.originalname || `exam_${index + 1}.pdf`
+    if (!/\.pdf$/i.test(originalName)) {
+      throw new Error(`only .pdf files are supported: ${originalName}`)
+    }
+
+    const safeStem = sanitizeFileName(path.basename(originalName, path.extname(originalName))) || `exam_${index + 1}`
+    const outputPrefix = `part_${String(index + 1).padStart(2, '0')}_${safeStem}`
+
+    await convertPdfToImages({
+      filePath: pdfFile.path,
+      outputDir,
+      outputPrefix,
+    })
+
+    const convertedFiles = await listConvertedFilesByPrefix(outputDir, outputPrefix)
+    if (!convertedFiles.length) {
+      throw new Error(`No pages were generated for ${originalName}`)
+    }
+
+    for (let pageIndex = 0; pageIndex < convertedFiles.length; pageIndex += 1) {
+      const fileName = convertedFiles[pageIndex]
+      const pageNo = nextPageNo
+      nextPageNo += 1
+      const normalizedFileName = `${pageNo}.jpg`
+      const fromPath = path.join(outputDir, fileName)
+      const toPath = path.join(outputDir, normalizedFileName)
+      if (fromPath !== toPath) {
+        await fsp.rm(toPath, { force: true })
+        await fsp.rename(fromPath, toPath)
+      }
+      sources.push({
+        fileName: normalizedFileName,
+        imagePath: toPath,
+      })
+    }
+  }
+
+  return {
+    sourceKind,
+    workspaceId: workspace.workspaceId,
+    outputFolder: outputDir,
+    sources,
+  }
+}
+
+async function streamExamAutoRun(params: {
+  req: Request
+  res: Response
+  sessionId: string
+  sources: ExamAutoSourceItem[]
+}) {
+  const { req, res, sessionId, sources } = params
+  writeNdjson(res, {
+    type: 'start',
+    totalCount: sources.length,
+  })
+
+  for (let index = 0; index < sources.length; index += 1) {
+    const current = sources[index]
+    const lookahead = sources[index + 1] || null
+
+    try {
+      const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), async () =>
+        processExamSessionImage({
+          sessionId,
+          imageDataUrl: await loadExamAutoSourceDataUrl(current),
+          imageLabel: current.fileName,
+          lookaheadImageDataUrl: lookahead ? await loadExamAutoSourceDataUrl(lookahead) : '',
+          lookaheadImageLabel: lookahead?.fileName || '',
+        }),
+      )
+      writeNdjson(res, {
+        type: 'result',
+        status: 'success',
+        currentIndex: index + 1,
+        totalCount: sources.length,
+        fileName: current.fileName,
+        result,
+      })
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      writeNdjson(res, {
+        type: 'result',
+        status: 'failed',
+        currentIndex: index + 1,
+        totalCount: sources.length,
+        fileName: current.fileName,
+        error: msg,
+      })
+    }
+  }
+
+  const latestSession = await getExamSession(sessionId)
+  const latestQuestionSession = await getExamQuestionSession(sessionId)
+  writeNdjson(res, {
+    type: 'done',
+    sessionId,
+    currentMajorTitle: latestSession?.currentMajorTitle || '',
+    currentMinorTitle: latestSession?.currentMinorTitle || '',
+    currentStructureChapterId: latestQuestionSession?.currentStructureChapterId || '',
+    pending: Boolean((latestQuestionSession?.pendingPageDataUrls || []).length),
+  })
 }
 
 router.post('/api/exams/session/init', async (req: Request, res: Response) => {
@@ -233,8 +463,8 @@ router.post('/api/exams/session/auto-run-stream', async (req: Request, res: Resp
     return res.status(400).json({ message: 'imageDir does not exist or is not a directory' })
   }
 
-  const names = sortImageFileNames((await fsp.readdir(imageDir)).filter((name) => isSupportedImageFileName(name)))
-  if (!names.length) {
+  const sources = await buildExamAutoSourcesFromDirectory(imageDir)
+  if (!sources.length) {
     return res.status(400).json({ message: 'no image files found in imageDir' })
   }
 
@@ -243,57 +473,11 @@ router.post('/api/exams/session/auto-run-stream', async (req: Request, res: Resp
   res.flushHeaders?.()
 
   try {
-    writeNdjson(res, {
-      type: 'start',
-      totalCount: names.length,
-    })
-
-    for (let index = 0; index < names.length; index += 1) {
-      const name = names[index]
-      const imagePath = path.join(imageDir, name)
-      const lookaheadName = index + 1 < names.length ? names[index + 1] : ''
-      const lookaheadPath = lookaheadName ? path.join(imageDir, lookaheadName) : ''
-
-      try {
-        const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), async () =>
-          processExamSessionImage({
-            sessionId,
-            imageDataUrl: await toImageDataUrl(imagePath),
-            imageLabel: name,
-            lookaheadImageDataUrl: lookaheadPath ? await toImageDataUrl(lookaheadPath) : '',
-            lookaheadImageLabel: lookaheadName,
-          }),
-        )
-        writeNdjson(res, {
-          type: 'result',
-          status: 'success',
-          currentIndex: index + 1,
-          totalCount: names.length,
-          fileName: name,
-          result,
-        })
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        writeNdjson(res, {
-          type: 'result',
-          status: 'failed',
-          currentIndex: index + 1,
-          totalCount: names.length,
-          fileName: name,
-          error: msg,
-        })
-      }
-    }
-
-    const latestSession = await getExamSession(sessionId)
-    const latestQuestionSession = await getExamQuestionSession(sessionId)
-    writeNdjson(res, {
-      type: 'done',
+    await streamExamAutoRun({
+      req,
+      res,
       sessionId,
-      currentMajorTitle: latestSession?.currentMajorTitle || '',
-      currentMinorTitle: latestSession?.currentMinorTitle || '',
-      currentStructureChapterId: latestQuestionSession?.currentStructureChapterId || '',
-      pending: Boolean((latestQuestionSession?.pendingPageDataUrls || []).length),
+      sources,
     })
     res.end()
   } catch (error) {
@@ -303,6 +487,61 @@ router.post('/api/exams/session/auto-run-stream', async (req: Request, res: Resp
       error: msg,
     })
     res.end()
+  }
+})
+
+router.post('/api/exams/session/auto-run-upload-stream', upload.any(), async (req: Request, res: Response) => {
+  const sessionId = String(req.body?.sessionId || '').trim()
+  const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+  const folderNameInput = String(req.body?.folderName || '').trim()
+
+  if (!sessionId) {
+    return res.status(400).json({ message: 'sessionId is required' })
+  }
+  if (!(await getExamSession(sessionId))) {
+    return res.status(404).json({ message: 'session not found, please init first' })
+  }
+
+  const files = getOrderedUploadSourceFiles(req.files).filter((file) => Number(file?.size) > 0)
+  if (!files.length) {
+    return res.status(400).json({ message: 'source files are required' })
+  }
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.flushHeaders?.()
+
+  try {
+    const prepared = await buildExamAutoSourcesFromUploads({
+      files,
+      workspaceId: workspaceIdInput,
+      folderName: folderNameInput,
+    })
+
+    writeNdjson(res, {
+      type: 'source-ready',
+      sourceKind: prepared.sourceKind,
+      totalCount: prepared.sources.length,
+      workspaceId: prepared.workspaceId,
+      outputFolder: prepared.outputFolder,
+    })
+
+    await streamExamAutoRun({
+      req,
+      res,
+      sessionId,
+      sources: prepared.sources,
+    })
+    res.end()
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    writeNdjson(res, {
+      type: 'fatal',
+      error: msg,
+    })
+    res.end()
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 

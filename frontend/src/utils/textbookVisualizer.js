@@ -95,7 +95,7 @@ function normalizeQuestionType(value) {
   }
   const upper = raw.toUpperCase()
   if (upper === 'PROGRAMMING' || upper === 'CODE') {
-    return 'code'
+    return 'CODE'
   }
   return upper
 }

@@ -1,15 +1,12 @@
 import { Router, type Request, type Response } from 'express'
-import { execFile } from 'node:child_process'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { promisify } from 'node:util'
-import { JPEG_QUALITY, PDF_RENDER_DPI } from '../config'
-import { batchId, ensureDir, parsePageIndex, sanitizeFileName, sanitizeFolderName } from '../question-bank-service'
-import { cleanupUploadedFiles, upload } from '../upload'
+import { batchId, ensureDir, sanitizeFolderName } from '../question-bank-service'
+import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
+import { cleanupUploadedFiles, normalizeUploadedOriginalName, upload } from '../upload'
 import { ensureWorkspace, registerWorkspaceAsset, writeWorkspaceBinaryAsset } from '../workspace-store'
 
 const router = Router()
-const execFileAsync = promisify(execFile)
 
 function getOrderedPdfFiles(filesRaw: unknown) {
   if (!Array.isArray(filesRaw)) {
@@ -39,30 +36,8 @@ function getOrderedPdfFiles(filesRaw: unknown) {
   return files.filter((file) => /^(pdf|pdfs)$/i.test(file.fieldname))
 }
 
-async function listConvertedFilesByPrefix(outputDir: string, prefix: string) {
-  return (await fsp.readdir(outputDir))
-    .filter((item) => item.startsWith(`${prefix}-`) && /\.(jpg|jpeg)$/i.test(item))
-    .sort((a, b) => parsePageIndex(a) - parsePageIndex(b) || a.localeCompare(b))
-}
-
-async function convertPdfToImages(params: {
-  filePath: string
-  outputDir: string
-  outputPrefix: string
-}) {
-  const { filePath, outputDir, outputPrefix } = params
-  await execFileAsync('pdftocairo', [
-    '-jpeg',
-    '-jpegopt',
-    `quality=${JPEG_QUALITY}`,
-    '-r',
-    String(PDF_RENDER_DPI),
-    filePath,
-    path.join(outputDir, outputPrefix),
-  ])
-}
-
 router.post('/api/convert', upload.any(), async (req: Request, res: Response) => {
+  let conversionTempDir = ''
   try {
     const pdfFiles = getOrderedPdfFiles(req.files)
     if (!pdfFiles.length) {
@@ -75,6 +50,9 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
     if (!folderName) {
       return res.status(400).json({ message: 'folderName is required' })
     }
+    if (!workspaceIdInput) {
+      return res.status(400).json({ message: 'workspaceId is required; please create and select a workspace first' })
+    }
 
     const id = batchId()
     const workspace = await ensureWorkspace({
@@ -83,7 +61,9 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
     })
     const batchOutputRelativeDir = path.posix.join('output_images', folderName)
     const batchOutputDir = path.join(workspace.workspaceDir, batchOutputRelativeDir)
+    conversionTempDir = path.join(workspace.workspaceDir, 'output_images', `_pdf_convert_${id}`)
     ensureDir(batchOutputDir)
+    ensureDir(conversionTempDir)
     const existingItems = await fsp.readdir(batchOutputDir).catch(() => [])
     await Promise.all(
       existingItems.map((item) =>
@@ -109,15 +89,13 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
 
     for (let index = 0; index < pdfFiles.length; index += 1) {
       const pdfFile = pdfFiles[index]
-      const originalName = pdfFile.originalname || `textbook_${index + 1}.pdf`
+      const originalName = normalizeUploadedOriginalName(pdfFile.originalname || '') || `textbook_${index + 1}.pdf`
       const ext = path.extname(originalName).toLowerCase()
       if (ext !== '.pdf') {
         return res.status(400).json({ message: `Only .pdf files are supported: ${originalName}` })
       }
 
-      const safeOriginal = sanitizeFileName(path.basename(originalName)) || `textbook_${index + 1}.pdf`
-      const safeStem = sanitizeFileName(path.basename(originalName, ext)) || `textbook_${index + 1}`
-      const savedPdfName = `${id}_${String(index + 1).padStart(2, '0')}_${safeOriginal}`
+      const savedPdfName = `${id}_${String(index + 1).padStart(2, '0')}.pdf`
       const savedPdf = await writeWorkspaceBinaryAsset({
         workspaceId: workspace.workspaceId,
         fileName: savedPdfName,
@@ -136,14 +114,14 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
         pdfAssetId: savedPdf.asset.assetId,
       })
 
-      const outPrefix = `part_${String(index + 1).padStart(2, '0')}_${safeStem}`
+      const outPrefix = `part_${String(index + 1).padStart(2, '0')}`
       await convertPdfToImages({
         filePath: savedPdf.filePath,
-        outputDir: batchOutputDir,
+        outputDir: conversionTempDir,
         outputPrefix: outPrefix,
       })
 
-      const convertedFiles = await listConvertedFilesByPrefix(batchOutputDir, outPrefix)
+      const convertedFiles = await listConvertedFilesByPrefix(conversionTempDir, outPrefix)
       if (!convertedFiles.length) {
         throw new Error(`No pages were generated for ${originalName}`)
       }
@@ -153,7 +131,7 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
         const pageNo = nextPageNo
         nextPageNo += 1
         const newFileName = `${pageNo}.jpg`
-        const fromPath = path.join(batchOutputDir, fileName)
+        const fromPath = path.join(conversionTempDir, fileName)
         const toPath = path.join(batchOutputDir, newFileName)
         if (fromPath !== toPath) {
           await fsp.rm(toPath, { force: true })
@@ -199,6 +177,9 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `PDF conversion failed: ${msg}` })
   } finally {
+    if (conversionTempDir) {
+      await fsp.rm(conversionTempDir, { recursive: true, force: true }).catch(() => undefined)
+    }
     await cleanupUploadedFiles(req)
   }
 })

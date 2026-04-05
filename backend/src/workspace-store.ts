@@ -3,7 +3,7 @@ import path from 'node:path'
 import { WORKSPACES_DIR } from './config'
 import { batchId, normalizeJsonFileName, sanitizeFileName } from './question-bank-service'
 
-export type WorkspaceAssetType = 'json' | 'pdf' | 'image_batch' | 'repair_json'
+export type WorkspaceAssetType = 'json' | 'pdf' | 'image_batch'
 
 type WorkspaceAssetRecord = {
   assetId: string
@@ -23,10 +23,45 @@ type WorkspaceManifest = {
   assets: WorkspaceAssetRecord[]
 }
 
+export type WorkspaceListItem = {
+  workspaceId: string
+  name: string
+  createdAt: string
+  updatedAt: string
+  assetCount: number
+  fileCount: number
+  totalBytes: number
+}
+
+export type WorkspaceBrowserEntry = {
+  name: string
+  relativePath: string
+  type: 'directory' | 'file'
+  size: number
+  modifiedAt: string
+  extension: string
+  childCount: number | null
+}
+
+export type MultiChapterSlotSummary = {
+  slotName: string
+  slotRelativePath: string
+  slotAbsolutePath: string
+  jsonFileName: string
+  jsonRelativePath: string
+  jsonFilePath: string
+  imagesRelativePath: string
+  imagesDirPath: string
+  imageCount: number
+  createdAt: string
+  updatedAt: string
+}
+
 const MANIFEST_FILE_NAME = 'workspace.json'
 const PRIMARY_JSON_ASSET_ID = 'json_main'
 const PRIMARY_JSON_RELATIVE_PATH = 'output_json/main.json'
-const SUMMARY_DIRS = ['output_json', 'repair_json', 'uploads', 'output_images', 'read_results'] as const
+const MULTI_CHAPTER_ROOT_DIR = 'multi_chapter'
+const SUMMARY_DIRS = ['output_json', 'uploads', 'output_images', 'read_results', MULTI_CHAPTER_ROOT_DIR] as const
 
 function nowIso() {
   return new Date().toISOString()
@@ -50,6 +85,57 @@ function getWorkspaceManifestPath(workspaceId: string) {
 
 function getWorkspaceRelativePath(relativePath: string) {
   return String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/g, '')
+}
+
+function normalizeMultiChapterSlotName(value: string | number) {
+  const raw = String(value || '').trim()
+  if (!/^\d+$/.test(raw)) {
+    throw new Error('multi chapter slot name must be a positive integer')
+  }
+  const numeric = Number(raw)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new Error('multi chapter slot name must be a positive integer')
+  }
+  return String(Math.trunc(numeric))
+}
+
+export function getMultiChapterRootRelativePath() {
+  return MULTI_CHAPTER_ROOT_DIR
+}
+
+export function getMultiChapterRootDir(workspaceId: string) {
+  return path.join(getWorkspaceDir(workspaceId), MULTI_CHAPTER_ROOT_DIR)
+}
+
+export function getMultiChapterSlotRelativePath(slotName: string | number) {
+  return path.posix.join(MULTI_CHAPTER_ROOT_DIR, normalizeMultiChapterSlotName(slotName))
+}
+
+function getMultiChapterSlotDir(workspaceId: string, slotName: string | number) {
+  return path.join(getWorkspaceDir(workspaceId), MULTI_CHAPTER_ROOT_DIR, normalizeMultiChapterSlotName(slotName))
+}
+
+function getMultiChapterSlotJsonFileName(slotName: string | number) {
+  return `${normalizeMultiChapterSlotName(slotName)}.json`
+}
+
+function getMultiChapterSlotJsonRelativePath(slotName: string | number) {
+  return path.posix.join(getMultiChapterSlotRelativePath(slotName), getMultiChapterSlotJsonFileName(slotName))
+}
+
+function getMultiChapterSlotImagesRelativePath(slotName: string | number) {
+  return path.posix.join(getMultiChapterSlotRelativePath(slotName), 'images')
+}
+
+function assertWorkspacePathInsideRoot(workspaceDir: string, targetPath: string) {
+  const normalizedWorkspaceDir = path.resolve(workspaceDir)
+  const normalizedTargetPath = path.resolve(targetPath)
+  if (
+    normalizedTargetPath !== normalizedWorkspaceDir &&
+    !normalizedTargetPath.startsWith(`${normalizedWorkspaceDir}${path.sep}`)
+  ) {
+    throw new Error('workspace path is outside of the workspace root')
+  }
 }
 
 async function statSafe(targetPath: string) {
@@ -96,7 +182,6 @@ async function ensureWorkspaceStructure(workspaceId: string) {
   await fsp.mkdir(path.join(workspaceDir, 'uploads'), { recursive: true })
   await fsp.mkdir(path.join(workspaceDir, 'output_images'), { recursive: true })
   await fsp.mkdir(path.join(workspaceDir, 'output_json'), { recursive: true })
-  await fsp.mkdir(path.join(workspaceDir, 'repair_json'), { recursive: true })
   await fsp.mkdir(path.join(workspaceDir, 'read_results'), { recursive: true })
   return workspaceDir
 }
@@ -204,6 +289,146 @@ export async function getWorkspaceSummary(workspaceId: string) {
   }
 }
 
+export async function listWorkspaces() {
+  await fsp.mkdir(WORKSPACES_DIR, { recursive: true })
+  const entries = await fsp.readdir(WORKSPACES_DIR, { withFileTypes: true }).catch(() => [])
+  const items = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        try {
+          const summary = await getWorkspaceSummary(entry.name)
+          return {
+            workspaceId: summary.workspaceId,
+            name: summary.name,
+            createdAt: summary.createdAt,
+            updatedAt: summary.updatedAt,
+            assetCount: summary.assetCount,
+            fileCount: summary.fileCount,
+            totalBytes: summary.totalBytes,
+          } satisfies WorkspaceListItem
+        } catch (_error) {
+          return null
+        }
+      }),
+  )
+
+  return items
+    .filter((item): item is WorkspaceListItem => Boolean(item))
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+}
+
+export async function createWorkspace(params?: {
+  name?: string
+}) {
+  const workspace = await ensureWorkspace({
+    name: params?.name,
+  })
+  return await getWorkspaceSummary(workspace.workspaceId)
+}
+
+export async function resolveWorkspaceEntry(params: {
+  workspaceId: string
+  relativePath?: string
+}) {
+  const workspaceId = String(params.workspaceId || '').trim()
+  if (!workspaceId) {
+    throw new Error('workspaceId is required')
+  }
+
+  const { manifest, workspaceDir } = await getExistingWorkspace(workspaceId)
+  const relativePath = getWorkspaceRelativePath(params.relativePath || '')
+  const targetPath = relativePath ? path.resolve(workspaceDir, relativePath) : workspaceDir
+  assertWorkspacePathInsideRoot(workspaceDir, targetPath)
+
+  const targetStat = await statSafe(targetPath)
+  if (!targetStat) {
+    throw new Error(`workspace path not found: ${relativePath || '.'}`)
+  }
+
+  return {
+    workspaceId,
+    workspaceDir,
+    manifest,
+    relativePath,
+    targetPath,
+    targetStat,
+    isDirectory: targetStat.isDirectory(),
+    isFile: targetStat.isFile(),
+    name: relativePath ? path.basename(targetPath) : workspaceId,
+  }
+}
+
+export async function browseWorkspaceDirectory(params: {
+  workspaceId: string
+  relativePath?: string
+}) {
+  const resolved = await resolveWorkspaceEntry(params)
+  if (!resolved.isDirectory) {
+    throw new Error(`workspace path is not a directory: ${resolved.relativePath || '.'}`)
+  }
+
+  const breadcrumbs = [
+    {
+      label: resolved.workspaceId,
+      relativePath: '',
+    },
+  ]
+
+  const segments = resolved.relativePath.split('/').filter(Boolean)
+  let currentPath = ''
+  for (const segment of segments) {
+    currentPath = currentPath ? path.posix.join(currentPath, segment) : segment
+    breadcrumbs.push({
+      label: segment,
+      relativePath: currentPath,
+    })
+  }
+
+  const entries = await fsp.readdir(resolved.targetPath, { withFileTypes: true }).catch(() => [])
+  const mappedEntries = await Promise.all(
+    entries.map(async (entry) => {
+      const entryRelativePath = resolved.relativePath
+        ? path.posix.join(resolved.relativePath, entry.name)
+        : entry.name
+      const entryAbsolutePath = path.join(resolved.targetPath, entry.name)
+      const entryStat = await statSafe(entryAbsolutePath)
+      const childCount = entry.isDirectory()
+        ? (await fsp.readdir(entryAbsolutePath, { withFileTypes: true }).catch(() => [])).length
+        : null
+
+      return {
+        name: entry.name,
+        relativePath: getWorkspaceRelativePath(entryRelativePath),
+        type: entry.isDirectory() ? 'directory' : 'file',
+        size: entryStat?.isFile() ? entryStat.size : 0,
+        modifiedAt: entryStat?.mtime ? entryStat.mtime.toISOString() : '',
+        extension: entry.isFile() ? path.extname(entry.name).toLowerCase() : '',
+        childCount,
+      } satisfies WorkspaceBrowserEntry
+    }),
+  )
+
+  mappedEntries.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === 'directory' ? -1 : 1
+    }
+    return a.name.localeCompare(b.name, 'zh-CN')
+  })
+
+  return {
+    workspaceId: resolved.workspaceId,
+    name: resolved.manifest.name,
+    currentPath: resolved.relativePath,
+    parentPath: resolved.relativePath.includes('/')
+      ? resolved.relativePath.slice(0, resolved.relativePath.lastIndexOf('/'))
+      : '',
+    isRoot: !resolved.relativePath,
+    breadcrumbs,
+    entries: mappedEntries,
+  }
+}
+
 async function clearDirectoryContents(targetDir: string) {
   const entries = await fsp.readdir(targetDir, { withFileTypes: true }).catch(() => [])
   for (const entry of entries) {
@@ -211,32 +436,23 @@ async function clearDirectoryContents(targetDir: string) {
   }
 }
 
-async function pruneRepairSnapshots(workspaceDir: string, keepLatestCount: number) {
-  const repairDir = path.join(workspaceDir, 'repair_json')
-  const entries = await fsp.readdir(repairDir, { withFileTypes: true }).catch(() => [])
-  const files = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile())
-      .map(async (entry) => {
-        const absolutePath = path.join(repairDir, entry.name)
-        const stat = await statSafe(absolutePath)
-        return {
-          absolutePath,
-          entryName: entry.name,
-          mtimeMs: stat?.mtimeMs || 0,
-        }
-      }),
-  )
-  const staleFiles = files
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(Math.max(keepLatestCount, 0))
-  await Promise.all(staleFiles.map((file) => fsp.rm(file.absolutePath, { force: true })))
-  return staleFiles.length
+async function countFilesInDirectory(targetDir: string) {
+  const entries = await fsp.readdir(targetDir, { withFileTypes: true }).catch(() => [])
+  let count = 0
+  for (const entry of entries) {
+    if (entry.isFile()) {
+      count += 1
+      continue
+    }
+    if (entry.isDirectory()) {
+      count += await countFilesInDirectory(path.join(targetDir, entry.name))
+    }
+  }
+  return count
 }
 
 export async function cleanupWorkspaceDerivedFiles(params: {
   workspaceId: string
-  keepRepairSnapshots?: number
 }) {
   const workspaceId = String(params.workspaceId || '').trim()
   if (!workspaceId) {
@@ -247,15 +463,186 @@ export async function cleanupWorkspaceDerivedFiles(params: {
   const workspaceDir = getWorkspaceDir(workspaceId)
   await clearDirectoryContents(path.join(workspaceDir, 'output_images'))
   await clearDirectoryContents(path.join(workspaceDir, 'read_results'))
-  const removedRepairSnapshots = await pruneRepairSnapshots(workspaceDir, params.keepRepairSnapshots ?? 10)
   const after = await getWorkspaceSummary(workspaceId)
 
   return {
     workspaceId,
-    removedRepairSnapshots,
     freedBytes: Math.max(before.totalBytes - after.totalBytes, 0),
     before,
     after,
+  }
+}
+
+export async function rebuildMultiChapterSlots(params: {
+  workspaceId: string
+  jsonText: string
+  slotCount: number
+}) {
+  const workspaceId = String(params.workspaceId || '').trim()
+  if (!workspaceId) {
+    throw new Error('workspaceId is required')
+  }
+  const slotCount = Math.trunc(Number(params.slotCount))
+  if (!Number.isFinite(slotCount) || slotCount <= 0) {
+    throw new Error('slotCount must be a positive integer')
+  }
+
+  await getExistingWorkspace(workspaceId)
+  const rootDir = getMultiChapterRootDir(workspaceId)
+  await fsp.rm(rootDir, { recursive: true, force: true }).catch(() => undefined)
+  await fsp.mkdir(rootDir, { recursive: true })
+
+  for (let index = 1; index <= slotCount; index += 1) {
+    const slotName = normalizeMultiChapterSlotName(index)
+    const slotDir = getMultiChapterSlotDir(workspaceId, slotName)
+    const imagesDir = path.join(slotDir, 'images')
+    const jsonFilePath = path.join(slotDir, getMultiChapterSlotJsonFileName(slotName))
+    await fsp.mkdir(imagesDir, { recursive: true })
+    await fsp.writeFile(jsonFilePath, params.jsonText, 'utf8')
+  }
+
+  return {
+    workspaceId,
+    rootRelativePath: MULTI_CHAPTER_ROOT_DIR,
+    slots: await listMultiChapterSlots(workspaceId),
+  }
+}
+
+export async function resolveMultiChapterSlot(params: {
+  workspaceId: string
+  slotName?: string | number
+  slotRelativePath?: string
+}) {
+  const workspaceId = String(params.workspaceId || '').trim()
+  if (!workspaceId) {
+    throw new Error('workspaceId is required')
+  }
+  await getExistingWorkspace(workspaceId)
+
+  const relativePathInput = getWorkspaceRelativePath(params.slotRelativePath || '')
+  let slotName = String(params.slotName || '').trim()
+  if (!slotName && relativePathInput) {
+    const normalizedRelativePath = relativePathInput.replace(/^\/+/, '')
+    const match = normalizedRelativePath.match(new RegExp(`^${MULTI_CHAPTER_ROOT_DIR}/([^/]+)$`, 'i'))
+    if (match?.[1]) {
+      slotName = match[1]
+    } else if (/^\d+$/.test(normalizedRelativePath)) {
+      slotName = normalizedRelativePath
+    }
+  }
+
+  const normalizedSlotName = normalizeMultiChapterSlotName(slotName)
+  const slotRelativePath = getMultiChapterSlotRelativePath(normalizedSlotName)
+  const slotAbsolutePath = getMultiChapterSlotDir(workspaceId, normalizedSlotName)
+  assertWorkspacePathInsideRoot(getWorkspaceDir(workspaceId), slotAbsolutePath)
+
+  const slotStat = await statSafe(slotAbsolutePath)
+  if (!slotStat?.isDirectory()) {
+    throw new Error(`multi chapter slot not found: ${normalizedSlotName}`)
+  }
+
+  const jsonRelativePath = getMultiChapterSlotJsonRelativePath(normalizedSlotName)
+  const jsonFilePath = path.join(getWorkspaceDir(workspaceId), jsonRelativePath)
+  const jsonStat = await statSafe(jsonFilePath)
+  if (!jsonStat?.isFile()) {
+    throw new Error(`multi chapter slot json missing: ${normalizedSlotName}`)
+  }
+
+  const imagesRelativePath = getMultiChapterSlotImagesRelativePath(normalizedSlotName)
+  const imagesDirPath = path.join(getWorkspaceDir(workspaceId), imagesRelativePath)
+  await fsp.mkdir(imagesDirPath, { recursive: true })
+
+  return {
+    workspaceId,
+    slotName: normalizedSlotName,
+    slotRelativePath,
+    slotAbsolutePath,
+    jsonFileName: getMultiChapterSlotJsonFileName(normalizedSlotName),
+    jsonRelativePath,
+    jsonFilePath,
+    imagesRelativePath,
+    imagesDirPath,
+  }
+}
+
+export async function listMultiChapterSlots(workspaceId: string) {
+  const normalizedWorkspaceId = String(workspaceId || '').trim()
+  if (!normalizedWorkspaceId) {
+    throw new Error('workspaceId is required')
+  }
+  await getExistingWorkspace(normalizedWorkspaceId)
+  const rootDir = getMultiChapterRootDir(normalizedWorkspaceId)
+  await fsp.mkdir(rootDir, { recursive: true })
+  const entries = await fsp.readdir(rootDir, { withFileTypes: true }).catch(() => [])
+  const items = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
+      .map(async (entry) => {
+        const slot = await resolveMultiChapterSlot({
+          workspaceId: normalizedWorkspaceId,
+          slotName: entry.name,
+        }).catch(() => null)
+        if (!slot) {
+          return null
+        }
+        const slotStat = await statSafe(slot.slotAbsolutePath)
+        const jsonStat = await statSafe(slot.jsonFilePath)
+        const imagesStat = await statSafe(slot.imagesDirPath)
+        return {
+          slotName: slot.slotName,
+          slotRelativePath: slot.slotRelativePath,
+          slotAbsolutePath: slot.slotAbsolutePath,
+          jsonFileName: slot.jsonFileName,
+          jsonRelativePath: slot.jsonRelativePath,
+          jsonFilePath: slot.jsonFilePath,
+          imagesRelativePath: slot.imagesRelativePath,
+          imagesDirPath: slot.imagesDirPath,
+          imageCount: imagesStat?.isDirectory() ? await countFilesInDirectory(slot.imagesDirPath) : 0,
+          createdAt: slotStat?.birthtime ? slotStat.birthtime.toISOString() : jsonStat?.birthtime?.toISOString() || '',
+          updatedAt: (jsonStat?.mtime || slotStat?.mtime)?.toISOString?.() || '',
+        } satisfies MultiChapterSlotSummary
+      }),
+  )
+
+  return items
+    .filter((item): item is MultiChapterSlotSummary => Boolean(item))
+    .sort((a, b) => Number(a.slotName) - Number(b.slotName))
+}
+
+export async function overwriteMultiChapterSlotImages(params: {
+  workspaceId: string
+  slotName?: string | number
+  slotRelativePath?: string
+  files: Array<{
+    originalname: string
+    path: string
+  }>
+}) {
+  const slot = await resolveMultiChapterSlot({
+    workspaceId: params.workspaceId,
+    slotName: params.slotName,
+    slotRelativePath: params.slotRelativePath,
+  })
+  const files = Array.isArray(params.files) ? params.files : []
+  if (!files.length) {
+    throw new Error('images are required')
+  }
+
+  await clearDirectoryContents(slot.imagesDirPath)
+  let importedCount = 0
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index]
+    const originalName = String(file?.originalname || '').trim()
+    const extension = path.extname(originalName).toLowerCase() || '.png'
+    const storedFileName = `${String(index + 1).padStart(3, '0')}${extension}`
+    await fsp.copyFile(String(file.path || '').trim(), path.join(slot.imagesDirPath, storedFileName))
+    importedCount += 1
+  }
+
+  return {
+    ...slot,
+    importedCount,
+    imageCount: await countFilesInDirectory(slot.imagesDirPath),
   }
 }
 
@@ -276,7 +663,6 @@ export async function deleteWorkspace(workspaceId: string) {
 
 export async function cleanupStaleWorkspaceDerivedAssets(params: {
   retentionDays: number
-  keepRepairSnapshots?: number
 }) {
   const retentionDays = Number(params.retentionDays)
   if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
@@ -306,12 +692,11 @@ export async function cleanupStaleWorkspaceDerivedAssets(params: {
     checkedCount += 1
     const result = await cleanupWorkspaceDerivedFiles({
       workspaceId,
-      keepRepairSnapshots: params.keepRepairSnapshots ?? 5,
     }).catch(() => null)
     if (!result) {
       continue
     }
-    if (result.freedBytes > 0 || result.removedRepairSnapshots > 0) {
+    if (result.freedBytes > 0) {
       cleanedCount += 1
       freedBytes += result.freedBytes
     }
@@ -408,7 +793,7 @@ export async function writeWorkspaceJsonAsset(params: {
   text: string
   assetId?: string
   workspaceName?: string
-  assetType?: Extract<WorkspaceAssetType, 'json' | 'repair_json'>
+  assetType?: Extract<WorkspaceAssetType, 'json'>
   relativeDir?: string
 }) {
   const workspace = await ensureWorkspace({
@@ -418,7 +803,7 @@ export async function writeWorkspaceJsonAsset(params: {
   const assetType = params.assetType || 'json'
   const fileName = normalizeJsonFileName(params.fileName || 'textbook.json')
   const isPrimaryJson = assetType === 'json' && !params.relativeDir
-  const relativeDir = getWorkspaceRelativePath(params.relativeDir || (assetType === 'repair_json' ? 'repair_json' : 'output_json'))
+  const relativeDir = getWorkspaceRelativePath(params.relativeDir || 'output_json')
   const relativePath = isPrimaryJson
     ? PRIMARY_JSON_RELATIVE_PATH
     : path.posix.join(relativeDir, fileName)
@@ -497,6 +882,27 @@ export async function resolveManagedJsonInput(params: {
     }
   }
 
+  if (workspaceId && jsonFilePath) {
+    const workspaceRoot = path.resolve(getWorkspaceDir(workspaceId))
+    const candidatePath = path.isAbsolute(jsonFilePath)
+      ? path.resolve(jsonFilePath)
+      : path.resolve(workspaceRoot, getWorkspaceRelativePath(jsonFilePath))
+    if (!candidatePath.startsWith(workspaceRoot)) {
+      throw new Error('jsonFilePath points outside of the workspace root')
+    }
+    const fileStat = await fsp.stat(candidatePath).catch(() => null)
+    if (!fileStat?.isFile()) {
+      throw new Error('jsonFilePath does not exist or is not a file')
+    }
+    return {
+      workspaceId,
+      jsonAssetId: '',
+      jsonFilePath: candidatePath,
+      publicUrl: `/workspace-assets/${workspaceId}/${getWorkspaceRelativePath(path.relative(workspaceRoot, candidatePath))}`,
+      fileName: path.basename(candidatePath),
+    }
+  }
+
   if (!jsonFilePath) {
     throw new Error('jsonAssetId is required, or jsonFilePath must be provided')
   }
@@ -531,23 +937,4 @@ export async function readWorkspaceJsonText(params: {
     ...resolved,
     text,
   }
-}
-
-export async function writeWorkspaceRepairSnapshot(params: {
-  workspaceId: string
-  sourceFileName?: string
-  jsonFilePath: string
-  payload: unknown
-}) {
-  const preferred = String(params.sourceFileName || '').trim()
-  const fileName = preferred
-    ? normalizeJsonFileName(preferred)
-    : normalizeJsonFileName(path.basename(params.jsonFilePath))
-
-  return await writeWorkspaceJsonAsset({
-    workspaceId: params.workspaceId,
-    fileName,
-    text: `${JSON.stringify(params.payload, null, 2)}\n`,
-    assetType: 'repair_json',
-  })
 }

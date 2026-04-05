@@ -37,16 +37,39 @@
           <option value="false">无答案</option>
         </select>
       </label>
+      <label class="field">
+        <span>章节数量</span>
+        <input
+          v-model.number="state.multiChapterSlotCount"
+          class="glass-input"
+          type="number"
+          min="1"
+          max="99"
+        />
+      </label>
     </div>
 
     <div class="action-row">
       <button class="primary-button" @click="actions.generateTextbookJson">生成基础 JSON</button>
       <button class="secondary-button" @click="actions.saveTextbookJson">选择位置并保存</button>
+      <button
+        class="secondary-button"
+        :disabled="state.multiChapterSlotSetupRunning"
+        @click="actions.createMultiChapterSlotsFromTextbookForm"
+      >
+        {{ state.multiChapterSlotSetupRunning ? '创建槽位中...' : '批量生成到当前工作区' }}
+      </button>
     </div>
 
     <p v-if="state.jsonFormError" class="panel-status is-error">{{ state.jsonFormError }}</p>
     <p v-if="state.jsonSaveStatus" class="panel-status" :class="{ 'is-error': state.jsonSaveError }">
       {{ state.jsonSaveStatus }}
+    </p>
+    <p v-if="state.multiChapterSlotSetupStatus" class="panel-status" :class="{ 'is-error': state.multiChapterSlotSetupError }">
+      {{ state.multiChapterSlotSetupStatus }}
+    </p>
+    <p v-if="state.multiChapterSlotsStatus" class="panel-status" :class="{ 'is-error': state.multiChapterSlotsError }">
+      {{ state.multiChapterSlotsStatus }}
     </p>
 
     <pre v-if="state.generatedTextbookJson" class="code-surface">{{ state.generatedTextbookJson }}</pre>

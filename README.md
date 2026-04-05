@@ -44,7 +44,6 @@ data/
       output_images/
       output_json/
         main.json
-      repair_json/
       read_results/
 ```
 
@@ -120,7 +119,7 @@ npm start
 - `PDF_JPEG_QUALITY`
   JPG 质量，默认 `90`
 - `MAX_PENDING_QUEUE_PAGES`
-  跨页待补队列上限，默认 `6`
+  跨页待补队列上限，默认 `8`
 - `WORKSPACE_DERIVED_RETENTION_DAYS`
   自动清理旧中间产物的保留天数，默认 `7`
 - `WORKSPACE_MAINTENANCE_INTERVAL_MS`
@@ -162,7 +161,6 @@ Docker 部署默认会在容器启动时自动执行迁移。
 - `uploads`
 - `output_images`
 - `output_json`
-- `repair_json`
 - `merged_json`
 - `read_results`
 - PostgreSQL 数据
@@ -370,7 +368,6 @@ sudo docker compose down
 
 - `output_images`
 - `read_results`
-- 旧的 `repair_json` 快照
 
 不会清：
 
@@ -429,4 +426,3 @@ sudo docker compose down
 - 默认分支：`main`
 - 推送前不要把真实密钥写入仓库
 - `.env` 不应提交到 Git
-

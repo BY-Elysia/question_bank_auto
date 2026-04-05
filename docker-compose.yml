@@ -24,7 +24,6 @@ services:
       - app_uploads:/app/uploads
       - app_output_images:/app/output_images
       - app_output_json:/app/output_json
-      - app_repair_json:/app/repair_json
       - app_merged_json:/app/merged_json
       - app_read_results:/app/read_results
 
@@ -61,7 +60,6 @@ volumes:
   app_uploads:
   app_output_images:
   app_output_json:
-  app_repair_json:
   app_merged_json:
   app_read_results:
   redis_data:

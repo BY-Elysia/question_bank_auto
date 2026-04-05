@@ -37,7 +37,7 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 
 RUN chmod +x /app/docker-entrypoint.sh \
-  && mkdir -p /app/data /app/runtime_cache /app/uploads /app/output_images /app/output_json /app/repair_json /app/merged_json /app/read_results
+  && mkdir -p /app/data /app/runtime_cache /app/uploads /app/output_images /app/output_json /app/merged_json /app/read_results
 
 ENV NODE_ENV=production
 ENV PORT=5001

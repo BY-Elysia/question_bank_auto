@@ -55,6 +55,10 @@
             <PageGallery :state="state" :actions="actions" />
           </section>
 
+          <section v-else-if="currentPage === 'workspaces'" class="stack-column">
+            <WorkspacesPanel :state="state" :actions="actions" />
+          </section>
+
           <section v-else-if="currentPage === 'repair'" class="stack-column">
             <QuestionRepairPanel :state="state" :actions="actions" />
           </section>
@@ -101,6 +105,7 @@ import QuestionBankAssistantPanel from './components/QuestionBankAssistantPanel.
 import QuestionBankDatabasePanel from './components/QuestionBankDatabasePanel.vue'
 import QuestionRepairPanel from './components/QuestionRepairPanel.vue'
 import TextbookJsonPanel from './components/TextbookJsonPanel.vue'
+import WorkspacesPanel from './components/WorkspacesPanel.vue'
 import WorkspaceNav from './components/WorkspaceNav.vue'
 import { useQuestionBankWorkbench } from './composables/useQuestionBankWorkbench'
 
@@ -110,6 +115,7 @@ const pipelineKind = ref('textbook')
 const pipelineStep = ref('kind')
 
 const pages = [
+  { id: 'workspaces', label: '工作区', description: '管理与浏览工作区' },
   { id: 'overview', label: '总览', description: '入口与状态' },
   { id: 'pipeline', label: '结构化处理', description: '教材与试卷分流' },
   { id: 'pdf', label: '页图工作台', description: 'PDF 与页图画廊' },
@@ -132,11 +138,10 @@ const chapterBatchConfiguredCount = computed(
   () =>
     (Array.isArray(state.chapterBatchTasks) ? state.chapterBatchTasks : []).filter(
       (task) =>
-        String(task?.jsonLabel || '').trim() ||
-        String(task?.serverJsonPath || '').trim() ||
+        String(task?.slotRelativePath || '').trim() ||
         String(task?.initChapter || '').trim() ||
         String(task?.initSection || '').trim() ||
-        (Array.isArray(task?.imageFiles) && task.imageFiles.length),
+        Number(task?.slotImageCount || 0) > 0,
     ).length,
 )
 
@@ -273,9 +278,15 @@ watch(
   (value) => {
     if (value) {
       void actions.refreshCurrentWorkspaceSummary({ workspaceId: value, silent: true })
+      void actions.loadWorkspaceList({ silent: true })
+      if (state.workspaceBrowser?.workspaceId !== value) {
+        void actions.browseCurrentWorkspace('', { workspaceId: value, silent: true })
+      }
       return
     }
     actions.clearCurrentWorkspaceSummary()
+    actions.clearWorkspaceBrowser()
+    void actions.loadWorkspaceList({ silent: true })
   },
   { immediate: true },
 )
@@ -292,6 +303,7 @@ watch(
 onMounted(() => {
   actions.loadQuestionBankDbSummary().catch(() => {})
   actions.loadExamQuestionTypeOptions().catch(() => {})
+  actions.loadWorkspaceList().catch(() => {})
 })
 
 const overviewItems = computed(() => [

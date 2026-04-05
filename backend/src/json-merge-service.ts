@@ -8,6 +8,7 @@ import {
   normalizeJsonFileName,
 } from './question-bank-service'
 import type { ChapterItem, TextbookJsonPayload } from './types'
+import { writeWorkspaceJsonAsset } from './workspace-store'
 
 function chapterIdentity(item: ChapterItem) {
   return JSON.stringify({
@@ -26,16 +27,16 @@ function ensureCompatibleBase(base: TextbookJsonPayload, current: TextbookJsonPa
   const baseMeta = getPayloadSourceMeta(base)
   const currentMeta = getPayloadSourceMeta(current)
   if (base.courseId !== current.courseId) {
-    throw new Error(`文件 ${fileName} 的 courseId 与首个文件不一致`)
+    throw new Error(`文件 ${fileName} 的 courseId 与第一个文件不一致`)
   }
   if (baseMeta.documentType !== currentMeta.documentType) {
-    throw new Error(`文件 ${fileName} 的 documentType 与首个文件不一致`)
+    throw new Error(`文件 ${fileName} 的 documentType 与第一个文件不一致`)
   }
   if (baseMeta.externalId !== currentMeta.externalId) {
-    throw new Error(`文件 ${fileName} 的来源 external_id 与首个文件不一致`)
+    throw new Error(`文件 ${fileName} 的 externalId 与第一个文件不一致`)
   }
   if (baseMeta.hasAnswer !== currentMeta.hasAnswer) {
-    throw new Error(`文件 ${fileName} 的 hasAnswer 与首个文件不一致`)
+    throw new Error(`文件 ${fileName} 的 hasAnswer 与第一个文件不一致`)
   }
 }
 
@@ -228,16 +229,8 @@ function buildMergedFileName(preferredName: string, sourceNames: string[]) {
   return normalizeJsonFileName(`${stem}_merged.json`)
 }
 
-export async function mergeTextbookJsonFiles(params: {
-  files: Array<{ fileName: string; text: string }>
-  outputFileName?: string
-}) {
-  const { files, outputFileName = '' } = params
-  if (!Array.isArray(files) || files.length < 2) {
-    throw new Error('至少需要选择 2 个 JSON 文件')
-  }
-
-  const parsedFiles = files.map(({ fileName, text }) => {
+function parseTextbookJsonFiles(files: Array<{ fileName: string; text: string }>) {
+  return files.map(({ fileName, text }) => {
     const parsed = JSON.parse(text) as unknown
     if (!isValidTextbookPayload(parsed)) {
       throw new Error(`文件 ${fileName} 不是有效的题库 JSON`)
@@ -247,7 +240,9 @@ export async function mergeTextbookJsonFiles(params: {
       payload: parsed as TextbookJsonPayload,
     }
   })
+}
 
+function buildMergedPayload(parsedFiles: Array<{ fileName: string; payload: TextbookJsonPayload }>) {
   const base = parsedFiles[0].payload
   const baseMeta = getPayloadSourceMeta(base)
   const merged: TextbookJsonPayload = {
@@ -272,10 +267,50 @@ export async function mergeTextbookJsonFiles(params: {
 
   sortMergedChapters(merged.chapters)
   sortMergedQuestions(merged.questions)
+
+  return {
+    merged,
+    duplicateChapterCount,
+    duplicateQuestionCount,
+  }
+}
+
+export async function mergeTextbookJsonFiles(params: {
+  files: Array<{ fileName: string; text: string }>
+  outputFileName?: string
+  workspaceId?: string
+}) {
+  const { files, outputFileName = '', workspaceId = '' } = params
+  if (!Array.isArray(files) || files.length < 2) {
+    throw new Error('至少需要选择 2 个 JSON 文件')
+  }
+
+  const parsedFiles = parseTextbookJsonFiles(files)
+  const { merged, duplicateChapterCount, duplicateQuestionCount } = buildMergedPayload(parsedFiles)
+  const mergedText = `${JSON.stringify(merged, null, 2)}\n`
+
   await fsp.mkdir(MERGED_JSON_DIR, { recursive: true })
   const mergedFileName = buildMergedFileName(outputFileName, parsedFiles.map((item) => item.fileName))
   const mergedFilePath = path.join(MERGED_JSON_DIR, mergedFileName)
-  await fsp.writeFile(mergedFilePath, `${JSON.stringify(merged, null, 2)}\n`, { encoding: 'utf8' })
+  await fsp.writeFile(mergedFilePath, mergedText, { encoding: 'utf8' })
+
+  const normalizedWorkspaceId = String(workspaceId || '').trim()
+  let persistedToWorkspace = false
+  let persistedWorkspaceId = ''
+  let jsonAssetId = ''
+  let workspaceFilePath = ''
+
+  if (normalizedWorkspaceId) {
+    const saved = await writeWorkspaceJsonAsset({
+      workspaceId: normalizedWorkspaceId,
+      fileName: mergedFileName,
+      text: mergedText,
+    })
+    persistedToWorkspace = true
+    persistedWorkspaceId = saved.workspaceId
+    jsonAssetId = saved.asset.assetId
+    workspaceFilePath = saved.filePath
+  }
 
   return {
     message: 'success',
@@ -286,5 +321,9 @@ export async function mergeTextbookJsonFiles(params: {
     questionsCount: merged.questions.length,
     duplicateChapterCount,
     duplicateQuestionCount,
+    persistedToWorkspace,
+    workspaceId: persistedWorkspaceId,
+    jsonAssetId,
+    workspaceFilePath,
   }
 }

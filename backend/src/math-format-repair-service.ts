@@ -1,6 +1,4 @@
-import fsp from 'node:fs/promises'
-import path from 'node:path'
-import { ARK_MODEL, REPAIR_JSON_DIR } from './config'
+import { ARK_MODEL } from './config'
 import {
   buildLegacyQuestionId,
   isObject,
@@ -11,7 +9,6 @@ import {
   extractArkText,
   extractFirstJsonObject,
   loadTextbookJson,
-  normalizeJsonFileName,
   payloadExpectsAnswer,
   parseModelJsonObject,
   repairModelJsonByDoubao,
@@ -27,15 +24,6 @@ type MathFormatRepairTargetType =
   | 'childStandardAnswer'
 
 type JsonNode = Record<string, unknown>
-
-function buildRepairJsonFileName(sourceFileName: string, jsonFilePath: string) {
-  const preferred = String(sourceFileName || '').trim()
-  if (preferred) {
-    const base = path.basename(preferred).replace(/[\\/:*?"<>|]/g, '_')
-    return base.toLowerCase().endsWith('.json') ? base : `${base}.json`
-  }
-  return normalizeJsonFileName(path.basename(jsonFilePath))
-}
 
 function getOrCreateTextBlock(host: JsonNode, key: string) {
   const current = host[key]
@@ -281,16 +269,9 @@ export async function repairMathFormatInTextbookJson(params: {
   target.textBlock.text = repaired.repairedText
   await saveTextbookJson(jsonFilePath, payload)
 
-  await fsp.mkdir(REPAIR_JSON_DIR, { recursive: true })
-  const repairJsonFileName = buildRepairJsonFileName(sourceFileName, jsonFilePath)
-  const repairJsonPath = path.join(REPAIR_JSON_DIR, repairJsonFileName)
-  await fsp.writeFile(repairJsonPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: 'utf8' })
-
   return {
     message: 'success',
     jsonFilePath,
-    repairJsonFileName,
-    repairJsonPath,
     chapterTitle: target.chapterTitle,
     sectionTitle: target.sectionTitle,
     questionId: target.questionId,

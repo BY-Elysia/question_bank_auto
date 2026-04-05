@@ -6,7 +6,6 @@ import { runWithArkApiKey } from '../ark-request-context'
 import {
   batchId,
   isValidTextbookPayload,
-  loadTextbookJson,
   normalizeJsonFileName,
   sanitizeFileName,
   toImageDataUrlFromFile,
@@ -22,8 +21,8 @@ import { cleanupUploadedFiles, readUploadedFileText, upload } from '../upload'
 import {
   readWorkspaceJsonText,
   resolveManagedJsonInput,
+  resolveMultiChapterSlot,
   writeWorkspaceJsonAsset,
-  writeWorkspaceRepairSnapshot,
 } from '../workspace-store'
 
 const router = Router()
@@ -32,22 +31,12 @@ function getArkApiKeyFromRequest(req: Request) {
   return String(req.header('x-ark-api-key') || '').trim()
 }
 
-async function buildManagedJsonSnapshot(params: {
-  workspaceId: string
-  jsonFilePath: string
-  sourceFileName?: string
-}) {
-  if (!params.workspaceId) {
-    return null
-  }
-
-  const payload = await loadTextbookJson(params.jsonFilePath)
-  return await writeWorkspaceRepairSnapshot({
-    workspaceId: params.workspaceId,
-    sourceFileName: params.sourceFileName,
-    jsonFilePath: params.jsonFilePath,
-    payload,
-  })
+function toStringArray(value: unknown) {
+  const rawItems = Array.isArray(value) ? value : value == null ? [] : [value]
+  const normalized = rawItems
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+  return [...new Set(normalized)]
 }
 
 router.post('/api/textbook-json/save', async (req: Request, res: Response) => {
@@ -83,6 +72,10 @@ router.post('/api/textbook-json/save', async (req: Request, res: Response) => {
       })
     }
 
+    if (!workspaceId) {
+      return res.status(400).json({ message: 'workspaceId is required; please create and select a workspace first' })
+    }
+
     const saved = await writeWorkspaceJsonAsset({
       workspaceId,
       fileName,
@@ -111,6 +104,9 @@ router.post('/api/textbook-json/import', upload.single('json'), async (req: Requ
     }
 
     const workspaceId = String(req.body?.workspaceId || '').trim()
+    if (!workspaceId) {
+      return res.status(400).json({ message: 'workspaceId is required; please create and select a workspace first' })
+    }
     const originalName = req.file.originalname || 'textbook.json'
     const ext = path.extname(originalName).toLowerCase()
     if (ext !== '.json') {
@@ -201,10 +197,8 @@ router.post('/api/textbook-json/merge', upload.array('jsonFiles', 30), async (re
   try {
     const files = (req.files as Express.Multer.File[] | undefined) ?? []
     const outputFileName = String(req.body?.outputFileName || '').trim()
-
-    if (files.length < 2) {
-      return res.status(400).json({ message: 'at least two jsonFiles are required' })
-    }
+    const workspaceId = String(req.body?.workspaceId || '').trim()
+    const slotRelativePaths = toStringArray(req.body?.slotRelativePaths)
 
     for (const file of files) {
       const ext = path.extname(file.originalname || '').toLowerCase()
@@ -213,14 +207,45 @@ router.post('/api/textbook-json/merge', upload.array('jsonFiles', 30), async (re
       }
     }
 
-    const result = await mergeTextbookJsonFiles({
-      files: await Promise.all(
+    if (slotRelativePaths.length > 0 && !workspaceId) {
+      return res.status(400).json({ message: 'workspaceId is required when merging workspace multi chapter slots' })
+    }
+
+    const workspaceFiles = await Promise.all(
+      slotRelativePaths.map(async (slotRelativePath) => {
+        const slot = await resolveMultiChapterSlot({
+          workspaceId,
+          slotRelativePath,
+        })
+        return {
+          fileName: slot.slotRelativePath || slot.jsonFileName,
+          text: await fsp.readFile(slot.jsonFilePath, 'utf8'),
+        }
+      }),
+    )
+
+    const mergeFiles = [
+      ...workspaceFiles,
+      ...(await Promise.all(
         files.map(async (file) => ({
           fileName: file.originalname || 'textbook.json',
           text: await readUploadedFileText(file),
         })),
-      ),
+      )),
+    ]
+
+    if (mergeFiles.length < 2) {
+      return res.status(400).json({
+        message: slotRelativePaths.length > 0
+          ? 'at least two workspace slotRelativePaths or jsonFiles are required'
+          : 'at least two jsonFiles are required',
+      })
+    }
+
+    const result = await mergeTextbookJsonFiles({
+      files: mergeFiles,
       outputFileName,
+      workspaceId: slotRelativePaths.length > 0 ? workspaceId : '',
     })
 
     return res.json(result)
@@ -241,6 +266,16 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
     const questionId = String(req.body?.questionId || '').trim()
+    const childQuestionId = String(req.body?.childQuestionId || '').trim()
+    const childNoRaw = req.body?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const hasAnswerSourceRaw = String(req.body?.hasAnswerSource || '').trim().toLowerCase()
+    const hasAnswerSource =
+      hasAnswerSourceRaw === 'true' ? true : hasAnswerSourceRaw === 'false' ? false : null
+    const generateAnswerIfMissingRaw = String(req.body?.generateAnswerIfMissing || '').trim().toLowerCase()
+    const generateAnswerIfMissing =
+      generateAnswerIfMissingRaw === 'true' ? true : generateAnswerIfMissingRaw === 'false' ? false : null
     const sourceFileName = String(req.body?.sourceFileName || '').trim()
     const filesRaw = (req.files as Express.Multer.File[] | undefined) ?? []
     const files = filesRaw.filter((file) => /^(images?|repairImages?)$/i.test(file.fieldname))
@@ -263,29 +298,28 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
         sectionNo,
         questionNo,
         questionId,
+        childQuestionId,
+        childNo,
+        hasAnswerSource,
+        generateAnswerIfMissing,
         imageDataUrls,
         imageLabels: files.map((file) => file.originalname || ''),
         sourceFileName,
       }),
     )
 
-    const snapshot = await buildManagedJsonSnapshot({
-      workspaceId: resolved.workspaceId,
-      jsonFilePath: resolved.jsonFilePath,
-      sourceFileName,
-    })
-
     return res.json({
       ...result,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
-      repairJsonAssetId: snapshot?.asset.assetId || '',
-      repairJsonWorkspacePath: snapshot?.filePath || '',
-      repairJsonUrl: snapshot?.publicUrl || '',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    return res.status(500).json({ message: `Repair question failed: ${msg}` })
+    const rawText =
+      error && typeof error === 'object' && typeof (error as { rawText?: unknown }).rawText === 'string'
+        ? String((error as { rawText?: string }).rawText || '')
+        : ''
+    return res.status(500).json({ message: `Repair question failed: ${msg}`, rawText })
   } finally {
     await cleanupUploadedFiles(req)
   }
@@ -327,19 +361,10 @@ router.post('/api/textbook-json/repair-math-format', async (req: Request, res: R
       }),
     )
 
-    const snapshot = await buildManagedJsonSnapshot({
-      workspaceId: resolved.workspaceId,
-      jsonFilePath: resolved.jsonFilePath,
-      sourceFileName,
-    })
-
     return res.json({
       ...result,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
-      repairJsonAssetId: snapshot?.asset.assetId || '',
-      repairJsonWorkspacePath: snapshot?.filePath || '',
-      repairJsonUrl: snapshot?.publicUrl || '',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -358,6 +383,7 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
     const questionNo = Number(req.body?.questionNo)
     const questionId = String(req.body?.questionId || '').trim()
     const childQuestionId = String(req.body?.childQuestionId || '').trim()
+    const targetType = String(req.body?.targetType || '').trim()
     const childNoRaw = req.body?.childNo
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
@@ -376,28 +402,21 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
     const result = await attachImagesToQuestionInTextbookJson({
       jsonFilePath: resolved.jsonFilePath,
       sourceFileName,
+      workspaceId: resolved.workspaceId,
       chapterNo,
       sectionNo,
       questionNo,
       questionId,
       childQuestionId,
       childNo,
+      targetType: targetType === 'standardAnswer' ? 'standardAnswer' : 'prompt',
       files,
-    })
-
-    const snapshot = await buildManagedJsonSnapshot({
-      workspaceId: resolved.workspaceId,
-      jsonFilePath: resolved.jsonFilePath,
-      sourceFileName,
     })
 
     return res.json({
       ...result,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
-      repairJsonAssetId: snapshot?.asset.assetId || '',
-      repairJsonWorkspacePath: snapshot?.filePath || '',
-      repairJsonUrl: snapshot?.publicUrl || '',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -410,18 +429,20 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
 router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), async (req: Request, res: Response) => {
   try {
     const files = (req.files as Express.Multer.File[] | undefined) ?? []
-    if (!files.length) {
-      return res.status(400).json({ message: 'at least one upload file is required' })
-    }
-
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
     const workspaceIdInput = String(req.body?.workspaceId || '').trim()
     const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
+    const clearTargetDir = String(req.body?.clearTargetDir || '').trim().toLowerCase() === 'true'
+    const workspaceSourceRelativePath = String(req.body?.workspaceSourceRelativePath || '').trim()
     const relativePathsRaw = Array.isArray(req.body?.relativePaths)
       ? req.body.relativePaths
       : req.body?.relativePaths
         ? [req.body.relativePaths]
         : []
+
+    if (!files.length && !workspaceSourceRelativePath) {
+      return res.status(400).json({ message: 'at least one upload file is required, or workspaceSourceRelativePath must be provided' })
+    }
 
     const relativePaths = relativePathsRaw.map((item: unknown) => String(item || ''))
     const resolved = jsonFilePathRaw || workspaceIdInput || jsonAssetIdInput
@@ -436,8 +457,15 @@ router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), as
           jsonAssetId: '',
         }
 
+    if (!resolved.workspaceId) {
+      return res.status(400).json({ message: 'workspaceId is required; please create and select a workspace first' })
+    }
+
     const result = await importUploadsFolderIntoServer({
       jsonFilePath: resolved.jsonFilePath,
+      workspaceId: resolved.workspaceId,
+      clearTargetDir,
+      workspaceSourceRelativePath,
       files: files.map((file, index) => ({
         originalname: file.originalname,
         path: file.path,
@@ -462,7 +490,7 @@ router.post('/api/textbook-json/import-uploads', upload.array('files', 2000), as
   }
 })
 
-router.post('/api/textbook-json/generate-answer', async (req: Request, res: Response) => {
+router.post('/api/textbook-json/generate-answer', upload.any(), async (req: Request, res: Response) => {
   try {
     const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
     const workspaceIdInput = String(req.body?.workspaceId || '').trim()
@@ -474,6 +502,8 @@ router.post('/api/textbook-json/generate-answer', async (req: Request, res: Resp
     const childNoRaw = req.body?.childNo
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const filesRaw = (req.files as Express.Multer.File[] | undefined) ?? []
+    const files = filesRaw.filter((file) => /^(images?|answerImages?)$/i.test(file.fieldname))
 
     if (!questionId) {
       return res.status(400).json({ message: 'questionId is required' })
@@ -484,6 +514,7 @@ router.post('/api/textbook-json/generate-answer', async (req: Request, res: Resp
       jsonAssetId: jsonAssetIdInput,
       jsonFilePath: jsonFilePathRaw,
     })
+    const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
 
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       generateQuestionAnswerInTextbookJson({
@@ -493,26 +524,20 @@ router.post('/api/textbook-json/generate-answer', async (req: Request, res: Resp
         childQuestionId,
         childNo,
         answerPrompt,
+        imageDataUrls,
       }),
     )
-
-    const snapshot = await buildManagedJsonSnapshot({
-      workspaceId: resolved.workspaceId,
-      jsonFilePath: resolved.jsonFilePath,
-      sourceFileName,
-    })
 
     return res.json({
       ...result,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
-      repairJsonAssetId: snapshot?.asset.assetId || '',
-      repairJsonWorkspacePath: snapshot?.filePath || '',
-      repairJsonUrl: snapshot?.publicUrl || '',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Generate answer failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
   }
 })
 
@@ -551,19 +576,10 @@ router.post('/api/textbook-json/update-question-type', async (req: Request, res:
       childNo,
     })
 
-    const snapshot = await buildManagedJsonSnapshot({
-      workspaceId: resolved.workspaceId,
-      jsonFilePath: resolved.jsonFilePath,
-      sourceFileName,
-    })
-
     return res.json({
       ...result,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
-      repairJsonAssetId: snapshot?.asset.assetId || '',
-      repairJsonWorkspacePath: snapshot?.filePath || '',
-      repairJsonUrl: snapshot?.publicUrl || '',
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

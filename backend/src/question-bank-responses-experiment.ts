@@ -91,6 +91,19 @@ function extractSubQuestionNoFromQuestionId(questionId: string) {
   return match?.[4] || ''
 }
 
+function extractTopQuestionNoFromKey(value: string) {
+  const normalized = normalizeDigits(String(value || '').trim())
+  if (!normalized) return ''
+  const byTitle = normalized.match(/第\s*(\d+)\s*题/)
+  if (byTitle?.[1]) return byTitle[1]
+  const byQuestionId = normalized.match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
+  if (byQuestionId?.[3]) return byQuestionId[3]
+  const byChapterKey = normalized.match(/^ch_(\d+)_(\d+)(?::|_q)(\d+)$/)
+  if (byChapterKey?.[3]) return byChapterKey[3]
+  const trailing = normalized.match(/(\d+)(?!.*\d)/)
+  return trailing?.[1] || ''
+}
+
 function resolveContinueQuestionKey(continueQuestionKey: string | null) {
   const direct = String(continueQuestionKey || '').trim()
   if (direct) return direct
@@ -163,11 +176,31 @@ function detectExtractorRangeMismatch(params: {
   return { shouldRetry: false, reason: '' }
 }
 
+function detectBoundaryReasonScopeMismatch(params: {
+  boundaryReason: string
+  processingStartQuestionKey: string | null
+}) {
+  const { boundaryReason, processingStartQuestionKey } = params
+  const startNo = Number(extractQuestionNoFromText(processingStartQuestionKey || '') || 0)
+  if (!startNo) {
+    return { shouldRetry: false, reason: '' }
+  }
+  const boundaryNos = extractDistinctQuestionNos(boundaryReason)
+  const earlierNos = boundaryNos.filter((num) => num > 0 && num < startNo)
+  if (!earlierNos.length) {
+    return { shouldRetry: false, reason: '' }
+  }
+  return {
+    shouldRetry: true,
+    reason: `当前处理起点是第${startNo}题，但边界理由中提到了起点之前的题号（${earlierNos.join(', ')}），说明边界判断没有严格按起点范围判断。`,
+  }
+}
+
 function shouldClearTrailingPendingAfterExtraction(items: QuestionItem[], continueKey: string | null) {
   if (!continueKey || !items.length) {
     return false
   }
-  const continueNo = Number(extractQuestionNoFromText(continueKey) || 0)
+  const continueNo = Number(extractTopQuestionNoFromKey(continueKey) || 0)
   if (!continueNo) {
     return false
   }
@@ -181,6 +214,62 @@ function shouldClearTrailingPendingAfterExtraction(items: QuestionItem[], contin
   const hasMatched = topNos.includes(continueNo)
   const hasLater = topNos.some((value) => value > continueNo)
   return hasMatched && !hasLater && lastNo === continueNo
+}
+
+function excludePendingQuestionItems(items: QuestionItem[], continueKey: string) {
+  if (!continueKey) {
+    return { filtered: items, droppedCount: 0 }
+  }
+  const normalizedKey = normalizeDigits(continueKey).replace(/\s+/g, '')
+  const continueNo = Number(extractQuestionNoFromText(continueKey) || 0)
+  const filtered = items.filter((item) => {
+    const itemNo = Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0)
+    if (continueNo && itemNo && itemNo >= continueNo) {
+      return false
+    }
+    const compactTitle = normalizeDigits(item.title || '').replace(/\s+/g, '')
+    if (compactTitle && normalizedKey && compactTitle.includes(normalizedKey)) {
+      return false
+    }
+    return true
+  })
+  return {
+    filtered,
+    droppedCount: Math.max(0, items.length - filtered.length),
+  }
+}
+
+function buildBoundaryExtractorConflictRetryHint(params: {
+  boundaryReason: string
+  boundaryRawText?: string
+  previousExtractReason?: string
+  previousExtractRawText?: string
+  processingStartQuestionKey?: string | null
+  extractEndBeforeQuestionKey?: string | null
+}) {
+  const {
+    boundaryReason,
+    boundaryRawText = '',
+    previousExtractReason = '',
+    previousExtractRawText = '',
+    processingStartQuestionKey = null,
+    extractEndBeforeQuestionKey = null,
+  } = params
+
+  return [
+    '冲突修复：边界判断已经确认当前图片队列中存在可完整入库的题目，但提取结果前一轮却返回了空 questionsToUpsert。',
+    `startQuestionKey=${processingStartQuestionKey || 'null'}`,
+    `endBeforeQuestionKey=${extractEndBeforeQuestionKey || 'null'}`,
+    boundaryReason ? `边界判断理由：${boundaryReason}` : '',
+    boundaryRawText ? `边界原始输出：${boundaryRawText}` : '',
+    previousExtractReason ? `上一轮提取理由：${previousExtractReason}` : '',
+    previousExtractRawText ? `上一轮提取原始输出：${previousExtractRawText}` : '',
+    '请重新逐张核对图片，并严格按范围提取所有完整题目。',
+    '如果 startQuestionKey 不为 null 且 endBeforeQuestionKey 为 null，必须继续提取起点题之后所有完整顶层大题，不能只返回起点题。',
+    '只有在你能明确证明当前范围内确实没有任何完整题时，才能继续返回空数组；否则必须输出题目。',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function buildCrossPageContext(params: {
@@ -314,14 +403,14 @@ function buildBoundarySharedInstruction() {
     '要求:',
     '1) 只输出边界判断 JSON，不要输出题干、答案、rubric。',
     '2) 当前处理起点题号为 null 时，表示从队列第一页实际出现的第一个顶层大题开始。',
-    '3) hasExtractableQuestions 判断的是：从起点开始，到当前队列最后一页为止，是否已经出现至少一道完整可导入的顶层大题。',
+    '3) hasExtractableQuestions 判断的是：从当前处理起点开始，到当前队列最后一页为止，是否已经出现至少一道完整可导入的顶层大题（可以不是当前处理起点对应那道题）。注意：是从当前处理起点开始，不是从整组图片第一页开始。',
     '4) needNextPage 只判断“当前处理起点题号”对应那道题是否还需要下一页；不要用最后一题替代它。',
     '5) continueQuestionKey 只判断“当前输入图片队列中，按阅读顺序实际出现的最后一道顶层大题”是谁；它不是当前章的最后一题，不是当前小节的最后一题，也不是当前处理起点那道题，除非这道题确实就是整组图片里最后出现的那一道题。',
     '6) 如果最后一页发生了小节或章节切换，必须先根据图片实际内容判断切换后最后出现的顶层大题是谁，再决定 continueQuestionKey；不能因为起点题来自旧小节，就把旧小节那道题误当成整组图片里的最后一题。',
     '7) 如果这道“整组图片里最后出现的顶层大题”还要续到下一页，则 continueQuestionKey 返回它；否则返回 null。',
-    '8) continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。这里的第几题是指的顶层大题，不是它的某个小问，若最后一页切到新小节，则用新小节标题。',
+    '8) continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。这里的第几题是指顶层大题，不是它的某个小问；若最后一页切到新小节，则用新小节标题。',
     '9) 对长题必须核对小问链和答案链是否真正闭合；不能只看页面末尾像是结束了就返回不跨页。',
-    '10) hasExtractableQuestions=true 与 needNextPage=true 可以同时成立；这表示起点题还没补完，但当前队列里已经有别的完整题可导入。',
+    '10) hasExtractableQuestions=true 与 needNextPage=true 可以同时成立；这表示起点题还没补完，但当前队列里已经有别的完整顶层大题可导入。',
     '11) 例1：起点=第2题，当前队列里第2题补完，后面第3题完整，整组图片里最后出现的顶层大题是第4题且它跨页 => hasExtractableQuestions=true, needNextPage=false, continueQuestionKey=第4题。',
     '12) 例2：起点=第6题，当前队列里第6题补完，后面第7题完整，且整组图片里最后出现的顶层大题也已结束 => hasExtractableQuestions=true, needNextPage=false, continueQuestionKey=null。',
     '13) 例3：上半仍是习题8.1第8题，下半已切到习题8.2第1题，且整组图片最后出现的顶层大题是习题8.2第1题，则 continueQuestionKey 必须是“第八章 不定积分 | 习题8.2 | 第1题”，绝不能继续返回习题8.1第8题。',
@@ -331,7 +420,8 @@ function buildBoundarySharedInstruction() {
     '  "question": {',
     '    "needNextPage": true/false,',
     '    "continueQuestionKey": "string or null",',
-    '    "hasExtractableQuestions": true/false',
+    '    "hasExtractableQuestions": true/false,',
+    '    "reason": "string"',
     '  }',
     '}',
   ].join('\n')
@@ -345,6 +435,7 @@ function buildBoundaryDynamicInstruction(params: {
   processingStartQuestionKey?: string | null
   pendingContinueQuestionKey?: string | null
   crossPageContext?: string
+  retryHint?: string
 }) {
   const {
     currentChapterTitle,
@@ -354,6 +445,7 @@ function buildBoundaryDynamicInstruction(params: {
     processingStartQuestionKey = null,
     pendingContinueQuestionKey = null,
     crossPageContext = '',
+    retryHint = '',
   } = params
 
   return [
@@ -365,6 +457,10 @@ function buildBoundaryDynamicInstruction(params: {
     `- 当前处理起点题号: ${processingStartQuestionKey || 'null'}`,
     `- 跨页续题标记: ${pendingContinueQuestionKey || 'null'}`,
     crossPageContext ? `- 跨页补充上下文: ${crossPageContext}` : '',
+    processingStartQuestionKey
+      ? '- 重要约束：startQuestionKey 是本轮判断起点。图片里即使还能看到它之前的题，也只能把那些内容当作题面背景，不能再把它们纳入 hasExtractableQuestions、needNextPage、continueQuestionKey 的判断，也不要在 reason 里把那些题算进当前范围。'
+      : '',
+    retryHint ? `- 重试纠偏要求: ${retryHint}` : '',
   ]
     .filter(Boolean)
     .join('\n')
@@ -401,17 +497,17 @@ function buildExtractSharedInstruction(
     '2) startQuestionKey=null 时，从队列第一页实际出现的第一个顶层大题开始。',
     '3) endBeforeQuestionKey!=null 时，只提取到该题之前；该题本身严禁输出。',
     '4) endBeforeQuestionKey=null 时，必须提取从 startQuestionKey 开始到当前队列末尾之间所有完整顶层大题；绝不能自行制造新的截止题号，也绝不能只提取起点题。',
-    '5) startQuestionKey 与 endBeforeQuestionKey 指向同一道题时，不表示空范围；表示当前正在续这道题。若它在当前队列里已完整结束，就输出它；否则不要输出。',
+    '5) 如果某道顶层大题还有后续小问、后续答案或收尾结论要延续到下一页，那么整道顶层大题都不得输出；不能只输出该题前面已经完整的部分小问。',
     '6) 典型场景：起点=第2题，截止=第4题，当前队列里第2题已完整、后面第3题完整 => 必须同时输出第2题和第3题，不输出第4题。',
     '7) 典型场景：起点=第6题，截止=null，当前队列里第6题已完整、后面第7题完整 => 必须同时输出第6题和第7题。',
     questionSelectionMode === 'all_visible'
-      ? '8) 因为本次答案需要由模型生成，所以不要再根据答案是否跨页来决定是否丢题；题干以当前页可见内容为准。'
+      ? '9) 因为本次答案需要由模型生成，所以不要再根据答案是否跨页来决定是否丢题；题干以当前页可见内容为准。'
       : '',
     questionSelectionMode === 'all_visible'
-      ? '9) 本次单页直提时，如与通用“完整性”约束冲突，以“当前页所有习题都要提取”为准。'
+      ? '10) 本次单页直提时，如与通用“完整性”约束冲突，以“当前页所有习题都要提取”为准。'
       : '',
     ...buildSharedQuestionContentRuleLines(
-      questionSelectionMode === 'all_visible' ? 10 : 8,
+      questionSelectionMode === 'all_visible' ? 11 : 9,
       'questionsToUpsert',
       answerHandlingMode,
     ),
@@ -422,10 +518,12 @@ function buildExtractSharedInstruction(
     '    "chapterTitle": "string or null",',
     '    "sectionTitle": "string or null",',
     '    "switchSectionTitle": "string or null",',
-    '    "needReprocessSameImage": true/false',
+    '    "needReprocessSameImage": true/false,',
+    '    "reason": "string"',
     '  },',
     '  "question": {',
-    '    "questionsToUpsert": [ ...question objects... ]',
+    '    "questionsToUpsert": [ ...question objects... ],',
+    '    "reason": "string"',
     '  }',
     '}',
   ].join('\n')
@@ -463,6 +561,9 @@ function buildExtractDynamicInstruction(params: {
       startQuestionKey: processingStartQuestionKey || null,
       endBeforeQuestionKey: extractEndBeforeQuestionKey || null,
     })}`,
+    processingStartQuestionKey
+      ? '- 重要约束：startQuestionKey 是本轮提取起点。图片里即使还能看到它之前的题，也只能把那些内容当作题面背景，禁止把它们再次输出；reason 里也不要再把那些题描述成“本轮可导入”。'
+      : '',
     retryHint ? `- 重试提示: ${retryHint}` : '',
   ]
     .filter(Boolean)
@@ -524,6 +625,7 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
   processingStartQuestionKey?: string | null
   pendingContinueQuestionKey?: string | null
   crossPageContext?: string
+  retryHint?: string
 }): Promise<BoundaryDetectWithPrefixCacheResult> {
   const {
     imageDataUrls,
@@ -534,6 +636,7 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
     processingStartQuestionKey = null,
     pendingContinueQuestionKey = null,
     crossPageContext = '',
+    retryHint = '',
   } = params
 
   if (!getEffectiveArkApiKey()) {
@@ -552,6 +655,7 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
     processingStartQuestionKey,
     pendingContinueQuestionKey,
     crossPageContext,
+    retryHint,
   })
   const fullInstruction = `${sharedInstruction}\n\n${dynamicInstruction}`
 
@@ -589,7 +693,7 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
           : null,
       hasExtractableQuestions:
         questionRaw.hasExtractableQuestions === true || questionRaw.hasExtractableQuestion === true,
-      reason: '',
+      reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
       rawText: result.text,
     },
     prefixCacheDebug: {
@@ -701,6 +805,10 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
     (typeof chapterNode.switchSectionTitle === 'string' && chapterNode.switchSectionTitle) ||
     (typeof output.switchSectionTitle === 'string' && output.switchSectionTitle) ||
     ''
+  const chapterReasonRaw =
+    (typeof chapterNode.reason === 'string' && chapterNode.reason) ||
+    (typeof output.reason === 'string' && output.reason) ||
+    ''
   const questionsCandidateRaw: unknown =
     (Array.isArray(questionNode.questionsToUpsert) && questionNode.questionsToUpsert) ||
     (Array.isArray(questionNode.questions) && questionNode.questions) ||
@@ -712,6 +820,10 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
       (output as Record<string, unknown>).questionList) ||
     []
   const questionsCandidate = Array.isArray(questionsCandidateRaw) ? questionsCandidateRaw : []
+  const questionReasonRaw =
+    (typeof questionNode.reason === 'string' && questionNode.reason) ||
+    (typeof output.reason === 'string' && output.reason) ||
+    (dataNode && typeof dataNode.reason === 'string' ? dataNode.reason : '')
   return {
     chapter: {
       chapterTitle:
@@ -728,13 +840,13 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
           : null,
       needReprocessSameImage:
         chapterNode.needReprocessSameImage === true || output.needReprocessSameImage === true,
-      reason: '',
+      reason: typeof chapterReasonRaw === 'string' ? chapterReasonRaw : '',
     },
     question: {
       questionsToUpsert: questionsCandidate,
       needNextPage: false,
       continueQuestionKey: null,
-      reason: '',
+      reason: typeof questionReasonRaw === 'string' ? questionReasonRaw : '',
       rawText: result.text,
     },
     prefixCacheDebug: {
@@ -746,7 +858,7 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
   }
 }
 
-async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
+async function detectLastQuestionContinuationWithLookaheadByDoubaoStrict(params: {
   queueImageDataUrls: string[]
   lookaheadImageDataUrl: string
   currentChapterTitle: string
@@ -764,26 +876,30 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
   } = params
 
   const instruction = [
-    '你是最后一题续页确认器。你只判断“当前队列最后一页中的最后一道顶层大题”是否继续到下一页预读图，不判断 hasExtractableQuestions，也不判断起点题是否完整。',
+    '你是预读续题判断器。',
+    '你只负责判断正式队列中的最后一道顶层大题，是否继续到了下一页预读图。',
+    '你不判断 hasExtractableQuestions，也不判断当前处理起点题是否完整。',
     `- 当前章标题: ${currentChapterTitle}`,
     `- 当前小节标题: ${currentSectionTitle}`,
     `- 当前小节 chapterId: ${currentSectionChapterId}`,
-    `- 预读页: ${lookaheadImageLabel || 'next_page_preview'}`,
+    `- 预读页标签: ${lookaheadImageLabel || 'next_page_preview'}`,
     '规则:',
-    '1) 前N张图才是当前队列；最后1张图只是下一页预读图，不属于当前队列。',
-    '2) 你必须先只根据前N张队列图片，识别“当前队列里按阅读顺序最后出现的那一道顶层大题”是谁；严禁把最后这张预读图里的题号算进当前队列。',
-    '3) 这道“当前队列最后一题”不是当前章/小节的最后一题，也不是起点题，除非它确实就是前N张队列图片里最后出现的题。',
-    '4) 如果当前队列最后一页发生了小节或章节切换，必须只按当前队列图片里的切换后内容识别最后一道顶层大题；不能把切换前旧小节的题误当成最后一题。',
-    '5) 在确定了“当前队列最后一题”之后，才允许查看最后1张预读图，并且只判断这道题是否继续到了下一页。',
-    '6) 如果预读图页首仍在继续这道“当前队列最后一题”，则 continueQuestionKey 返回该题完整定位“章标题 | 小节标题 | 第几题”。',
-    '7) 如果预读图没有继续这道题，则 continueQuestionKey 返回 null。',
-    '8) 预读图里出现的新题、后续题、其他更大的题号，统统不能当作当前队列最后一题，也不能直接当作 continueQuestionKey。',
-    '9) 典型场景：若当前队列页上半还是习题8.1第8题，下半已切到习题8.2第1题，那么当前队列最后一道顶层大题是习题8.2第1题；如果预读页继续的是这道题，则 continueQuestionKey 必须返回习题8.2第1题，不能返回习题8.1第8题。',
-    '10) 典型场景：若当前队列实际只到第3题，预读页里后面又出现第4题、第5题，也绝不能把第5题当成当前队列最后一题；你只能判断第3题是否在预读页继续。',
+    '1) 前 N 张图才是正式队列；最后 1 张图只是下一页预读图，不属于正式队列。',
+    '2) 你必须先只根据前 N 张正式队列图片，按阅读顺序找到“正式队列里最后出现的那一道顶层大题”。',
+    '3) 如果你先选中的候选题后面，在正式队列中又出现了任何新的顶层大题，说明候选题不是最后一题，必须继续往后重找，直到锁定真正最后一题。',
+    '4) 在锁定正式队列最后一题之前，禁止使用预读页里的任何题号、内容、答案来辅助判断。',
+    '5) 锁定正式队列最后一题后，才允许查看最后 1 张预读页，并且只判断这道题是否继续到下一页。',
+    '6) 预读页里出现的新题、后续题、其他更大的题号，不能当作正式队列最后一题，也不能直接拿来返回 continueQuestionKey。',
+    '7) 如果预读页页首仍在继续这道“正式队列最后一题”，则 continueQuestionKey 返回该题完整定位“章标题 | 小节标题 | 第几题”。',
+    '8) 如果这道题的后续小问、后续答案、收尾结论只出现在预读页里，这恰恰说明正式队列未完成，continueQuestionKey 必须返回这道题，不能返回 null。',
+    '9) 如果预读页没有继续这道题，则 continueQuestionKey 返回 null。',
+    '10) reason 必须说明：你在正式队列里识别到的最后一题是谁，以及预读页是否继续了这道题。',
+    '11) 当前章标题和小节标题只用于构造 continueQuestionKey，不能拿它们替代“正式队列最后一题”的识别过程。',
     '严格输出 JSON：',
     '{',
     '  "question": {',
-    '    "continueQuestionKey": "string or null"',
+    '    "continueQuestionKey": "string or null",',
+    '    "reason": "string"',
     '  }',
     '}',
   ].join('\n')
@@ -836,7 +952,7 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
       typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
         ? questionRaw.continueQuestionKey.trim()
         : null,
-    reason: '',
+    reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
     rawText: text,
   }
 }
@@ -1237,7 +1353,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         })
       : ''
 
-  const boundaryDetect = await detectChapterBoundaryAndPendingByDoubaoWithPrefixCache({
+  let boundaryDetect = await detectChapterBoundaryAndPendingByDoubaoWithPrefixCache({
     imageDataUrls: questionImageDataUrls,
     currentChapterTitle: activeChapterTitle,
     currentSectionTitle: activeSectionTitle,
@@ -1247,6 +1363,26 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     pendingContinueQuestionKey,
     crossPageContext,
   })
+  let boundaryRetryReason = ''
+  const boundaryScopeMismatch = detectBoundaryReasonScopeMismatch({
+    boundaryReason: boundaryDetect.question.reason,
+    processingStartQuestionKey,
+  })
+  if (boundaryScopeMismatch.shouldRetry) {
+    const boundaryRetryDetect = await detectChapterBoundaryAndPendingByDoubaoWithPrefixCache({
+      imageDataUrls: questionImageDataUrls,
+      currentChapterTitle: activeChapterTitle,
+      currentSectionTitle: activeSectionTitle,
+      currentSectionChapterId: activeSectionChapterId,
+      mode,
+      processingStartQuestionKey,
+      pendingContinueQuestionKey,
+      crossPageContext,
+      retryHint: `${boundaryScopeMismatch.reason} 从当前处理起点开始判断 hasExtractableQuestions、needNextPage 和 continueQuestionKey，不要再把起点之前的题纳入当前范围，也不要在 reason 里把它们算进去。`,
+    })
+    boundaryRetryReason = boundaryRetryDetect.question.reason || ''
+    boundaryDetect = boundaryRetryDetect
+  }
 
   let chapterDetect: ChapterDetectResult = {
     chapterTitle: null,
@@ -1274,10 +1410,12 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   const extractPrefixCacheRuns: PrefixCacheDebugInfo[] = []
   const boundaryContinueKey = resolveContinueQuestionKey(boundaryDetect.question.continueQuestionKey)
   let effectiveBoundaryContinueKey: string | null = boundaryContinueKey || null
+  let lookaheadContinueQuestionKey: string | null = null
   let boundaryLookaheadReason = ''
+  let boundaryLookaheadRawText = ''
   if (lookaheadImageDataUrl) {
     try {
-      const lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubao({
+      const lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubaoStrict({
         queueImageDataUrls: questionImageDataUrls,
         lookaheadImageDataUrl,
         currentChapterTitle: activeChapterTitle,
@@ -1286,7 +1424,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         lookaheadImageLabel: lookaheadImageLabel || null,
       })
       boundaryLookaheadReason = lookaheadDetect.reason || ''
-      effectiveBoundaryContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+      boundaryLookaheadRawText = lookaheadDetect.rawText || ''
+      lookaheadContinueQuestionKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+      effectiveBoundaryContinueKey = lookaheadContinueQuestionKey
     } catch (error) {
       boundaryLookaheadReason = error instanceof Error ? `预读判断失败: ${error.message}` : `预读判断失败: ${String(error)}`
     }
@@ -1304,8 +1444,23 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   let normalizedCount = 0
   let rangeFixRetried = false
   let rangeMismatchBlocked = false
+  const processingStartTopQuestionNo = extractTopQuestionNoFromKey(processingStartQuestionKey || '')
+  const effectiveContinueTopQuestionNo = extractTopQuestionNoFromKey(effectiveBoundaryContinueKey || '')
+  const pendingStartNeedsMorePages = Boolean(
+    processingStartTopQuestionNo
+    && effectiveContinueTopQuestionNo
+    && processingStartTopQuestionNo === effectiveContinueTopQuestionNo,
+  )
 
-  if (boundaryDetect.question.hasExtractableQuestions) {
+  if (pendingStartNeedsMorePages) {
+    finalQuestionDetect = {
+      questionsToUpsert: [],
+      needNextPage: true,
+      continueQuestionKey: effectiveBoundaryContinueKey || processingStartQuestionKey || null,
+      reason: boundaryLookaheadReason || boundaryDetect.question.reason,
+      rawText: boundaryLookaheadRawText || boundaryDetect.question.rawText,
+    }
+  } else if (boundaryDetect.question.hasExtractableQuestions) {
     let questionsRaw: unknown[] = []
     const extractDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
       imageDataUrls: questionImageDataUrls,
@@ -1359,7 +1514,41 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     }
 
     if (!questionsRaw.length) {
-      throw new Error('Boundary detected extractable questions, but extractor returned no questions')
+      const conflictRetryDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
+        imageDataUrls: questionImageDataUrls,
+        currentChapterTitle: chapterTitle,
+        currentSectionTitle: sectionTitle,
+        currentSectionChapterId: section.chapterId,
+        afterSwitchMode: false,
+        mode,
+        processingStartQuestionKey,
+        extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+        answerHandlingMode,
+        retryHint: buildBoundaryExtractorConflictRetryHint({
+          boundaryReason: boundaryDetect.question.reason,
+          boundaryRawText: boundaryDetect.question.rawText,
+          previousExtractReason: retryExtractReason || extractReason,
+          previousExtractRawText: finalQuestionDetect.rawText,
+          processingStartQuestionKey,
+          extractEndBeforeQuestionKey: effectiveBoundaryContinueKey || null,
+        }),
+      })
+      extractPrefixCacheRuns.push(conflictRetryDetect.prefixCacheDebug)
+      finalQuestionDetect = {
+        ...conflictRetryDetect.question,
+        needNextPage: Boolean(effectiveBoundaryContinueKey),
+        continueQuestionKey: effectiveBoundaryContinueKey || null,
+        reason: boundaryDetect.question.reason || conflictRetryDetect.question.reason,
+      }
+      retryExtractReason = [retryExtractReason, conflictRetryDetect.question.reason].filter(Boolean).join(' | ')
+      chapterDetect = conflictRetryDetect.chapter
+      questionsRaw = finalQuestionDetect.questionsToUpsert
+      extractReturnedCount = Array.isArray(questionsRaw) ? questionsRaw.length : 0
+      retried = true
+    }
+
+    if (!questionsRaw.length) {
+      throw new Error('Boundary detected extractable questions, but extractor returned no questions after conflict repair')
     }
 
     const normalizedQuestionsAll = questionsRaw
@@ -1375,6 +1564,23 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
     }
     normalizedQuestions = pendingFiltered.filtered
     normalizedCount = normalizedQuestions.length
+
+    if (
+      lookaheadContinueQuestionKey
+      && shouldClearTrailingPendingAfterExtraction(normalizedQuestions, lookaheadContinueQuestionKey)
+    ) {
+      pendingFiltered = excludePendingQuestionItems(normalizedQuestions, lookaheadContinueQuestionKey)
+      normalizedQuestions = pendingFiltered.filtered
+      normalizedCount = normalizedQuestions.length
+      effectiveBoundaryContinueKey = lookaheadContinueQuestionKey
+      finalQuestionDetect = {
+        ...finalQuestionDetect,
+        needNextPage: true,
+        continueQuestionKey: lookaheadContinueQuestionKey,
+        reason: boundaryLookaheadReason || finalQuestionDetect.reason,
+      }
+    }
+
     let rangeMismatch = detectExtractorRangeMismatch({
       boundaryReason: boundaryDetect.question.reason,
       processingStartQuestionKey,
@@ -1594,7 +1800,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   normalizedQuestions = rewriteQuestionTitlesByResolvedChapter(payload, normalizedQuestions)
 
   const effectiveHasExtractableQuestions =
-    boundaryDetect.question.hasExtractableQuestions && !rangeMismatchBlocked
+    boundaryDetect.question.hasExtractableQuestions && normalizedQuestions.length > 0 && !rangeMismatchBlocked
 
   if (effectiveHasExtractableQuestions) {
     upsertQuestionsById(payload, normalizedQuestions)
@@ -1655,9 +1861,13 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       pendingPageLabels,
       boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
       boundaryNeedNextPage: boundaryDetect.question.needNextPage,
-      boundaryContinueQuestionKey: effectiveBoundaryContinueKey,
+      boundaryContinueQuestionKey: boundaryContinueKey || null,
+      lookaheadContinueQuestionKey,
+      effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
       boundaryLookaheadLabel: lookaheadImageLabel || null,
       boundaryLookaheadReason,
+      boundaryLookaheadRawText,
+      boundaryRetryReason,
       pendingReviewFixRetried,
       integrityFixRetried,
       rangeFixRetried,
@@ -1697,13 +1907,18 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         pendingPagesCount: pendingPageDataUrls.length,
         pendingPageLabels,
         upsertedCount: normalizedQuestions.length,
+        upsertedQuestionTitles: normalizedQuestions.map((item) => item.title || item.questionId),
         pendingReviewCount: pendingReviewLogs.length,
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
-        boundaryContinueQuestionKey: effectiveBoundaryContinueKey,
+        boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadContinueQuestionKey,
+        effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,
         boundaryLookaheadReason,
+        boundaryLookaheadRawText,
+        boundaryRetryReason,
         boundaryReason: boundaryDetect.question.reason,
         extractReason,
         retryExtractReason,
@@ -1731,13 +1946,18 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         pendingPagesCount: 0,
         pendingPageLabels: [],
         upsertedCount: normalizedQuestions.length,
+        upsertedQuestionTitles: normalizedQuestions.map((item) => item.title || item.questionId),
         pendingReviewCount: pendingReviewLogs.length,
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
-        boundaryContinueQuestionKey: effectiveBoundaryContinueKey,
+        boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadContinueQuestionKey,
+        effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,
         boundaryLookaheadReason,
+        boundaryLookaheadRawText,
+        boundaryRetryReason,
         boundaryReason: boundaryDetect.question.reason,
         extractReason,
         retryExtractReason,

@@ -30,7 +30,7 @@ import {
   setQuestionSession,
 } from '../state'
 import { cleanupUploadedFiles, upload } from '../upload'
-import { resolveManagedJsonInput } from '../workspace-store'
+import { resolveManagedJsonInput, resolveMultiChapterSlot } from '../workspace-store'
 
 const router = Router()
 
@@ -38,11 +38,73 @@ function getArkApiKeyFromRequest(req: Request) {
   return String(req.header('x-ark-api-key') || '').trim()
 }
 
+function getSlotRelativePathFromBody(body: unknown) {
+  return String((body as Record<string, unknown> | null)?.slotRelativePath || '').trim()
+}
+
+async function resolveChapterSessionTargetFromBody(body: unknown) {
+  const slotRelativePath = getSlotRelativePathFromBody(body)
+  const workspaceIdInput = String((body as Record<string, unknown> | null)?.workspaceId || '').trim()
+  if (slotRelativePath) {
+    const slot = await resolveMultiChapterSlot({
+      workspaceId: workspaceIdInput,
+      slotRelativePath,
+    })
+    return {
+      jsonFilePath: slot.jsonFilePath,
+      workspaceId: slot.workspaceId,
+      jsonAssetId: '',
+      slotRelativePath: slot.slotRelativePath,
+      slotName: slot.slotName,
+      imagesDirPath: slot.imagesDirPath,
+    }
+  }
+
+  const resolved = await resolveManagedJsonInput({
+    workspaceId: workspaceIdInput,
+    jsonAssetId: String((body as Record<string, unknown> | null)?.jsonAssetId || '').trim(),
+    jsonFilePath: String((body as Record<string, unknown> | null)?.jsonFilePath || '').trim(),
+  })
+  return {
+    jsonFilePath: resolved.jsonFilePath,
+    workspaceId: resolved.workspaceId,
+    jsonAssetId: resolved.jsonAssetId,
+    slotRelativePath: '',
+    slotName: '',
+    imagesDirPath: '',
+  }
+}
+
+async function resolveChapterSessionImageDirFromBody(body: unknown) {
+  const slotRelativePath = getSlotRelativePathFromBody(body)
+  const workspaceIdInput = String((body as Record<string, unknown> | null)?.workspaceId || '').trim()
+  if (slotRelativePath) {
+    const slot = await resolveMultiChapterSlot({
+      workspaceId: workspaceIdInput,
+      slotRelativePath,
+    })
+    return {
+      imageDir: slot.imagesDirPath,
+      slotRelativePath: slot.slotRelativePath,
+      slotName: slot.slotName,
+      workspaceId: slot.workspaceId,
+    }
+  }
+
+  const imageDirRaw = String((body as Record<string, unknown> | null)?.imageDir || '').trim()
+  if (!imageDirRaw) {
+    throw new Error('imageDir is required')
+  }
+  return {
+    imageDir: path.resolve(imageDirRaw),
+    slotRelativePath: '',
+    slotName: '',
+    workspaceId: workspaceIdInput,
+  }
+}
+
 router.post('/api/chapters/session/init', async (req: Request, res: Response) => {
   try {
-    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
-    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
-    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const currentChapterTitleRaw = String(req.body?.currentChapterTitle || '').trim()
     const currentSectionTitleRaw = String(req.body?.currentSectionTitle || '').trim()
 
@@ -50,11 +112,7 @@ router.post('/api/chapters/session/init', async (req: Request, res: Response) =>
       return res.status(400).json({ message: 'currentChapterTitle and currentSectionTitle are required' })
     }
 
-    const resolved = await resolveManagedJsonInput({
-      workspaceId: workspaceIdInput,
-      jsonAssetId: jsonAssetIdInput,
-      jsonFilePath: jsonFilePathRaw,
-    })
+    const resolved = await resolveChapterSessionTargetFromBody(req.body)
 
     const payload = await loadTextbookJson(resolved.jsonFilePath)
     const chapter = ensureTopChapter(payload, currentChapterTitleRaw)
@@ -95,6 +153,7 @@ router.post('/api/chapters/session/init', async (req: Request, res: Response) =>
       jsonFilePath: resolved.jsonFilePath,
       workspaceId: resolved.workspaceId,
       jsonAssetId: resolved.jsonAssetId,
+      slotRelativePath: resolved.slotRelativePath,
       currentChapterTitle: chapterSession.currentChapterTitle,
       currentSectionTitle: chapterSession.currentSectionTitle,
       currentSectionChapterId: section.chapterId,
@@ -279,21 +338,18 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
   try {
     const arkApiKey = getArkApiKeyFromRequest(req)
     const sessionId = String(req.body?.sessionId || '').trim()
-    const imageDirRaw = String(req.body?.imageDir || '').trim()
     const overrideChapterTitle = String(req.body?.currentChapterTitle || '').trim()
     const overrideSectionTitle = String(req.body?.currentSectionTitle || '').trim()
 
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!imageDirRaw) {
-      return res.status(400).json({ message: 'imageDir is required' })
-    }
     if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
-    const imageDir = path.resolve(imageDirRaw)
+    const imageTarget = await resolveChapterSessionImageDirFromBody(req.body)
+    const imageDir = imageTarget.imageDir
     const dirStat = await fsp.stat(imageDir).catch(() => null)
     if (!dirStat || !dirStat.isDirectory()) {
       return res.status(400).json({ message: 'imageDir does not exist or is not a directory' })
@@ -361,6 +417,7 @@ router.post('/api/chapters/session/auto-run', async (req: Request, res: Response
       message: 'success',
       sessionId,
       imageDir,
+      slotRelativePath: imageTarget.slotRelativePath,
       totalCount: names.length,
       successCount,
       failedCount,
@@ -382,21 +439,18 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
   try {
     const arkApiKey = getArkApiKeyFromRequest(req)
     const sessionId = String(req.body?.sessionId || '').trim()
-    const imageDirRaw = String(req.body?.imageDir || '').trim()
     const overrideChapterTitle = String(req.body?.currentChapterTitle || '').trim()
     const overrideSectionTitle = String(req.body?.currentSectionTitle || '').trim()
 
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!imageDirRaw) {
-      return res.status(400).json({ message: 'imageDir is required' })
-    }
     if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
-    const imageDir = path.resolve(imageDirRaw)
+    const imageTarget = await resolveChapterSessionImageDirFromBody(req.body)
+    const imageDir = imageTarget.imageDir
     const dirStat = await fsp.stat(imageDir).catch(() => null)
     if (!dirStat || !dirStat.isDirectory()) {
       return res.status(400).json({ message: 'imageDir does not exist or is not a directory' })
@@ -420,6 +474,7 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
       type: 'start',
       sessionId,
       imageDir,
+      slotRelativePath: imageTarget.slotRelativePath,
       totalCount: names.length,
       currentChapterTitle: overrideChapterTitle || streamStartSession?.currentChapterTitle || '',
       currentSectionTitle: overrideSectionTitle || streamStartSession?.currentSectionTitle || '',
@@ -508,6 +563,7 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
       type: 'done',
       sessionId,
       imageDir,
+      slotRelativePath: imageTarget.slotRelativePath,
       totalCount: names.length,
       successCount,
       failedCount,
@@ -537,22 +593,20 @@ router.post('/api/chapters/session/auto-run-stream-responses', async (req: Reque
 router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: Response) => {
   let streamStarted = false
   try {
+    const arkApiKey = getArkApiKeyFromRequest(req)
     const sessionId = String(req.body?.sessionId || '').trim()
-    const imageDirRaw = String(req.body?.imageDir || '').trim()
     const overrideChapterTitle = String(req.body?.currentChapterTitle || '').trim()
     const overrideSectionTitle = String(req.body?.currentSectionTitle || '').trim()
 
     if (!sessionId) {
       return res.status(400).json({ message: 'sessionId is required' })
     }
-    if (!imageDirRaw) {
-      return res.status(400).json({ message: 'imageDir is required' })
-    }
     if (!(await getChapterSession(sessionId))) {
       return res.status(404).json({ message: 'session not found, please init first' })
     }
 
-    const imageDir = path.resolve(imageDirRaw)
+    const imageTarget = await resolveChapterSessionImageDirFromBody(req.body)
+    const imageDir = imageTarget.imageDir
     const dirStat = await fsp.stat(imageDir).catch(() => null)
     if (!dirStat || !dirStat.isDirectory()) {
       return res.status(400).json({ message: 'imageDir does not exist or is not a directory' })
@@ -576,6 +630,7 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
       type: 'start',
       sessionId,
       imageDir,
+      slotRelativePath: imageTarget.slotRelativePath,
       totalCount: names.length,
       currentChapterTitle: overrideChapterTitle || streamStartSession?.currentChapterTitle || '',
       currentSectionTitle: overrideSectionTitle || streamStartSession?.currentSectionTitle || '',
@@ -603,15 +658,17 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
         const lookaheadName = index + 1 < names.length ? names[index + 1] : ''
         const lookaheadImagePath = lookaheadName ? path.join(imageDir, lookaheadName) : ''
         const lookaheadImageDataUrl = lookaheadImagePath ? await toImageDataUrl(lookaheadImagePath) : ''
-        const result = await processChapterSessionImage({
-          sessionId,
-          imageDataUrl,
-          imageLabel: name,
-          lookaheadImageDataUrl,
-          lookaheadImageLabel: lookaheadName,
-          overrideChapterTitle: firstImage ? overrideChapterTitle : '',
-          overrideSectionTitle: firstImage ? overrideSectionTitle : '',
-        })
+        const result = await runWithArkApiKey(arkApiKey, () =>
+          processChapterSessionImage({
+            sessionId,
+            imageDataUrl,
+            imageLabel: name,
+            lookaheadImageDataUrl,
+            lookaheadImageLabel: lookaheadName,
+            overrideChapterTitle: firstImage ? overrideChapterTitle : '',
+            overrideSectionTitle: firstImage ? overrideSectionTitle : '',
+          }),
+        )
         firstImage = false
         successCount += 1
         const item = {
@@ -659,6 +716,7 @@ router.post('/api/chapters/session/auto-run-stream', async (req: Request, res: R
       type: 'done',
       sessionId,
       imageDir,
+      slotRelativePath: imageTarget.slotRelativePath,
       totalCount: names.length,
       successCount,
       failedCount,

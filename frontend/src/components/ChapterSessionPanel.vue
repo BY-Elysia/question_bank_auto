@@ -515,6 +515,9 @@
       <p v-if="state.chapterBatchStatus" class="panel-status" :class="{ 'is-error': state.chapterBatchError }">
         {{ state.chapterBatchStatus }}
       </p>
+      <p v-if="state.multiChapterSlotsStatus" class="panel-status" :class="{ 'is-error': state.multiChapterSlotsError }">
+        {{ state.multiChapterSlotsStatus }}
+      </p>
 
       <div v-if="batchTasks.length" class="process-panel">
         <article class="process-card process-live" :class="batchSummaryCardClass">
@@ -549,20 +552,32 @@
           <div class="process-card__header">
             <div>
               <strong>{{ batchTaskLabel(task) }}</strong>
-              <p>{{ task.jsonLabel || '未选择 JSON' }} · {{ task.folderLabel || '未选择图片文件夹' }}</p>
+              <p>{{ task.slotRelativePath || '未选择工作区槽位' }} · {{ task.slotJsonFileName || '未绑定 JSON' }}</p>
             </div>
             <span class="process-badge" :class="batchTaskBadgeClass(task)">{{ batchTaskBadgeLabel(task) }}</span>
           </div>
 
           <div class="field-grid compact-grid">
             <div class="field field-span-2">
-              <span>章节 JSON</span>
+              <span>工作区槽位</span>
               <div class="action-row inline-row">
-                <button class="secondary-button" :disabled="state.chapterBatchRunning" @click="actions.chooseChapterBatchTaskJson(task.id)">
-                  选择 JSON 文件
-                </button>
-                <span class="glass-pill" :class="{ 'is-active': Boolean(task.jsonLabel) }">
-                  {{ task.jsonLabel || '尚未选择文件' }}
+                <select
+                  class="glass-input"
+                  :disabled="state.chapterBatchRunning || state.multiChapterSlotsLoading"
+                  :value="task.slotRelativePath || ''"
+                  @change="actions.setChapterBatchTaskSlot(task.id, $event.target.value)"
+                >
+                  <option value="">请选择章节槽位</option>
+                  <option
+                    v-for="slot in multiChapterSlots"
+                    :key="slot.slotRelativePath"
+                    :value="slot.slotRelativePath"
+                  >
+                    {{ slot.slotRelativePath }} · {{ slot.imageCount }} 张
+                  </option>
+                </select>
+                <span class="glass-pill" :class="{ 'is-active': Boolean(task.slotJsonFileName) }">
+                  {{ task.slotJsonFileName || '尚未绑定 JSON' }}
                 </span>
               </div>
             </div>
@@ -572,16 +587,23 @@
             </label>
             <label class="field">
               <span>当前小节</span>
-              <input v-model.trim="task.initSection" class="glass-input" type="text" :disabled="state.chapterBatchRunning" placeholder="习题8.1" />
+              <input v-model.trim="task.initSection" class="glass-input" type="text" :disabled="state.chapterBatchRunning" placeholder="??8.1" />
             </label>
             <div class="field field-span-2">
-              <span>图片文件夹</span>
-              <div class="action-row inline-row">
-                <button class="secondary-button" :disabled="state.chapterBatchRunning" @click="actions.chooseChapterBatchTaskFolder(task.id)">
-                  选择图片文件夹
-                </button>
-                <span class="glass-pill" :class="{ 'is-active': task.imageFiles.length > 0 }">
-                  {{ task.folderLabel ? `${task.folderLabel} · ${task.imageFiles.length} 张` : '尚未选择文件夹' }}
+              <span>槽位图片</span>
+              <div class="action-row inline-row wrap-top">
+                <label class="file-shell">
+                  <span>上传并覆盖槽位图片</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    :disabled="state.chapterBatchRunning || !task.slotRelativePath"
+                    @change="actions.uploadChapterBatchTaskImages(task.id, $event)"
+                  />
+                </label>
+                <span class="glass-pill" :class="{ 'is-active': Number(task.slotImageCount || 0) > 0 }">
+                  {{ task.slotRelativePath ? `${task.slotRelativePath} · ${task.slotImageCount || 0} 张` : '请先选择槽位' }}
                 </span>
               </div>
             </div>
@@ -598,7 +620,7 @@
           <div class="process-summary-grid">
             <article class="process-metric">
               <span>总页数</span>
-              <strong>{{ task.totalCount || task.imageFiles.length || 0 }}</strong>
+              <strong>{{ task.totalCount || task.slotImageCount || 0 }}</strong>
             </article>
             <article class="process-metric">
               <span>已完成</span>
@@ -633,11 +655,17 @@
             </div>
             <div>
               <span>当前阶段</span>
-              <strong>{{ task.phase || '待命' }}</strong>
+              <strong>{{ task.phase || '??' }}</strong>
             </div>
           </div>
 
-          <pre v-if="batchTaskLogTail(task)" class="code-surface chapter-task-log">{{ batchTaskLogTail(task) }}</pre>
+          <div v-if="batchTaskLogTail(task)" class="chapter-task-log-stack">
+            <pre class="code-surface chapter-task-log">{{ batchTaskLogTail(task) }}</pre>
+            <details v-if="batchTaskLogFull(task) && batchTaskLogFull(task) !== batchTaskLogTail(task)" class="chapter-task-log-details">
+              <summary>查看完整处理日志</summary>
+              <pre class="code-surface chapter-task-log chapter-task-log--full">{{ batchTaskLogFull(task) }}</pre>
+            </details>
+          </div>
         </article>
       </div>
     </template>
@@ -660,6 +688,7 @@ const props = defineProps({
 })
 
 const batchTasks = computed(() => (Array.isArray(props.state.chapterBatchTasks) ? props.state.chapterBatchTasks : []))
+const multiChapterSlots = computed(() => (Array.isArray(props.state.multiChapterSlots) ? props.state.multiChapterSlots : []))
 
 const runModeLabel = computed(() => (props.state.chapterRunMode === 'multi' ? '多章并行' : '单章流程'))
 const processingModeLabel = computed(() => (props.state.chapterProcessingMode === 'responses' ? 'Responses前缀缓存实验版' : '原逻辑'))
@@ -807,7 +836,7 @@ const batchSummary = computed(() => ({
   ready: batchTasks.value.filter((task) => isBatchTaskReady(task)).length,
   running: batchTasks.value.filter((task) => task?.running).length,
   pagesCompleted: batchTasks.value.reduce((sum, task) => sum + Number(task?.completedCount ?? 0), 0),
-  pagesTotal: batchTasks.value.reduce((sum, task) => sum + Number(task?.totalCount || task?.imageFiles?.length || 0), 0),
+  pagesTotal: batchTasks.value.reduce((sum, task) => sum + Number(task?.totalCount || task?.slotImageCount || 0), 0),
 }))
 
 const batchSummaryCardClass = computed(() => {
@@ -818,11 +847,10 @@ const batchSummaryCardClass = computed(() => {
 
 function isBatchTaskConfigured(task) {
   return Boolean(
-    String(task?.jsonLabel || '').trim() ||
-      String(task?.serverJsonPath || '').trim() ||
+    String(task?.slotRelativePath || '').trim() ||
       String(task?.initChapter || '').trim() ||
       String(task?.initSection || '').trim() ||
-      (Array.isArray(task?.imageFiles) && task.imageFiles.length),
+      Number(task?.slotImageCount || 0) > 0,
   )
 }
 
@@ -862,18 +890,17 @@ function manualSectionBadgeClass(chapter, section) {
 
 function isBatchTaskReady(task) {
   return Boolean(
-    String(task?.serverJsonPath || '').trim() &&
+    String(task?.slotRelativePath || '').trim() &&
       String(task?.initChapter || '').trim() &&
       String(task?.initSection || '').trim() &&
-      Array.isArray(task?.imageFiles) &&
-      task.imageFiles.length,
+      Number(task?.slotImageCount || 0) > 0,
   )
 }
 
 function batchTaskLabel(task) {
   return (
-    String(task?.jsonLabel || '').trim() ||
-    String(task?.folderLabel || '').trim() ||
+    String(task?.slotRelativePath || '').trim() ||
+    String(task?.slotJsonFileName || '').trim() ||
     [String(task?.initChapter || '').trim(), String(task?.initSection || '').trim()].filter(Boolean).join(' / ') ||
     '请先填写当前章和当前小节'
   )
@@ -906,7 +933,7 @@ function batchTaskCardClass(task) {
 }
 
 function batchTaskProgress(task) {
-  const total = Number(task?.totalCount || task?.imageFiles?.length || 0)
+  const total = Number(task?.totalCount || task?.slotImageCount || 0)
   const completed = Number(task?.completedCount || 0)
   return total ? `${completed}/${total}` : '0/0'
 }
@@ -918,4 +945,29 @@ function batchTaskLogTail(task) {
     .filter(Boolean)
   return lines.slice(-8).join('\n')
 }
+
+function batchTaskLogFull(task) {
+  return String(task?.logs || '')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .join('\n')
+}
 </script>
+
+<style scoped>
+.chapter-task-log-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.chapter-task-log-details summary {
+  cursor: pointer;
+  color: #17304f;
+  font-weight: 600;
+}
+
+.chapter-task-log--full {
+  max-height: 480px;
+}
+</style>

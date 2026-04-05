@@ -1,4 +1,7 @@
-import { nextTick, reactive } from 'vue'
+﻿import { nextTick, reactive } from 'vue'
+
+import { createChapterSessionFlow } from './useChapterSessionFlow'
+import { applyExamSourceMeta, createExamSessionFlow } from './useExamSessionFlow'
 
 function getWindowApi(name) {
   if (typeof window === 'undefined') {
@@ -17,6 +20,10 @@ async function fileToText(file) {
 
 function triggerJsonDownload(fileName, text) {
   const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
+  triggerBlobDownload(fileName, blob)
+}
+
+function triggerBlobDownload(fileName, blob) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -31,6 +38,15 @@ function normalizeJsonDownloadName(fileName, fallback = 'main.json') {
     return fallback
   }
   return trimmed.toLowerCase().endsWith('.json') ? trimmed : `${trimmed}.json`
+}
+
+function normalizeDownloadName(fileName, fallback = 'download.bin') {
+  const trimmed = String(fileName || '').trim()
+  return trimmed || fallback
+}
+
+function normalizeImageAttachTargetType(value) {
+  return String(value || '').trim() === 'standardAnswer' ? 'standardAnswer' : 'prompt'
 }
 
 export function useQuestionBankWorkbench() {
@@ -52,10 +68,22 @@ export function useQuestionBankWorkbench() {
     examJsonSaveStatus: '',
     examJsonSaveError: false,
     currentWorkspaceId: '',
+    workspaceListLoading: false,
+    workspaceListStatus: '',
+    workspaceListError: false,
+    workspaceList: [],
+    workspaceCreateName: '',
+    workspaceCreateRunning: false,
     workspaceSummaryLoading: false,
     workspaceSummaryStatus: '',
     workspaceSummaryError: false,
     workspaceSummary: null,
+    workspaceBrowserLoading: false,
+    workspaceBrowserStatus: '',
+    workspaceBrowserError: false,
+    workspaceBrowser: null,
+    workspaceBrowserDownloadTarget: '',
+    workspaceDownloadRunning: false,
     workspaceCleanupRunning: false,
     workspaceDeleteRunning: false,
     chapterSessionJsonLabel: '',
@@ -86,6 +114,7 @@ export function useQuestionBankWorkbench() {
     examSessionHasAnswer: true,
     examSessionCurrentMajor: '',
     examSessionCurrentMinor: '',
+    examSessionPayload: null,
     examSessionStatus: '',
     examSessionError: false,
     examQuestionTypeOptions: [],
@@ -108,6 +137,7 @@ export function useQuestionBankWorkbench() {
     repairProcessing: false,
     repairStatus: '',
     repairError: false,
+    repairRawText: '',
     repairResult: null,
     mathFormatRepairForm: {
       targetType: 'standardAnswer',
@@ -126,6 +156,7 @@ export function useQuestionBankWorkbench() {
       childNo: '',
       questionId: '',
       childQuestionId: '',
+      targetType: 'prompt',
     },
     imageAttachFiles: [],
     imageAttachProcessing: false,
@@ -133,9 +164,22 @@ export function useQuestionBankWorkbench() {
     imageAttachError: false,
     imageAttachResult: null,
     visualizerFileName: '',
-    visualizerFileHandle: null,
     visualizerServerJsonPath: '',
     visualizerJsonAssetId: '',
+    visualizerWorkspaceId: '',
+    visualizerWorkspaceBrowserLoading: false,
+    visualizerWorkspaceBrowserStatus: '',
+    visualizerWorkspaceBrowserError: false,
+    visualizerWorkspaceBrowser: null,
+    visualizerImportJsonFile: null,
+    visualizerImportJsonName: '',
+    visualizerImportJsonSourceMode: 'workspace',
+    visualizerImportWorkspaceJsonPath: '',
+    visualizerImportSourceMode: 'workspace',
+    visualizerImportFolderFiles: [],
+    visualizerImportFolderLabel: '',
+    visualizerImportWorkspacePath: '',
+    visualizerImportWorkspaceLabel: '',
     visualizerStatus: '',
     visualizerError: false,
     visualizerUploadsProcessing: false,
@@ -150,10 +194,14 @@ export function useQuestionBankWorkbench() {
     visualizerRepairProcessing: false,
     visualizerRepairStatus: '',
     visualizerRepairError: false,
+    visualizerRepairRawText: '',
     visualizerQuestionTypeProcessing: false,
     visualizerRepairImageFiles: [],
+    visualizerImageAttachTarget: 'prompt',
     visualizerRewriteResult: null,
+    mergeSourceMode: 'upload',
     mergeJsonFiles: [],
+    mergeWorkspaceSlotPaths: [],
     mergeOutputFileName: 'merged_textbook.json',
     mergeProcessing: false,
     mergeStatus: '',
@@ -218,6 +266,14 @@ export function useQuestionBankWorkbench() {
     chapterBatchStopping: false,
     chapterBatchStatus: '',
     chapterBatchError: false,
+    multiChapterSlotCount: 3,
+    multiChapterSlotSetupRunning: false,
+    multiChapterSlotSetupStatus: '',
+    multiChapterSlotSetupError: false,
+    multiChapterSlotsLoading: false,
+    multiChapterSlotsStatus: '',
+    multiChapterSlotsError: false,
+    multiChapterSlots: [],
     jsonForm: {
       version: 'v1.1',
       courseId: '',
@@ -239,9 +295,7 @@ export function useQuestionBankWorkbench() {
   })
 
   let selectedPdfSequence = 0
-  let chapterAutoAbortController = null
   let chapterManualAbortController = null
-  let examAutoAbortController = null
   let chapterBatchTaskSequence = 0
   let chapterManualChapterSequence = 0
   let chapterManualSectionSequence = 0
@@ -261,15 +315,14 @@ export function useQuestionBankWorkbench() {
     chapterBatchTaskSequence += 1
     return {
       id: `chapter_task_${Date.now()}_${chapterBatchTaskSequence}`,
-      jsonLabel: '',
-      serverJsonPath: '',
-      jsonAssetId: '',
       workspaceId: '',
-      jsonHandle: null,
+      slotName: '',
+      slotRelativePath: '',
+      slotJsonFileName: '',
+      slotJsonRelativePath: '',
+      slotImageCount: 0,
       initChapter: '',
       initSection: '',
-      imageFiles: [],
-      folderLabel: '',
       sessionId: '',
       currentChapter: '',
       currentSection: '',
@@ -299,10 +352,23 @@ export function useQuestionBankWorkbench() {
     return Math.max(1, Math.min(6, Math.trunc(numeric)))
   }
 
+  function normalizeMultiChapterSlotCount(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      return 1
+    }
+    return Math.max(1, Math.min(99, Math.trunc(numeric)))
+  }
+
+  function normalizeMergeSourceMode(value) {
+    return String(value || '').trim() === 'workspace' ? 'workspace' : 'upload'
+  }
+
   function getChapterBatchTaskLabel(task) {
     return (
-      String(task?.jsonLabel || '').trim() ||
-      String(task?.folderLabel || '').trim() ||
+      String(task?.slotRelativePath || '').trim() ||
+      String(task?.slotName || '').trim() ||
+      String(task?.slotJsonFileName || '').trim() ||
       [String(task?.initChapter || '').trim(), String(task?.initSection || '').trim()].filter(Boolean).join(' / ') ||
       '未命名章节任务'
     )
@@ -312,16 +378,25 @@ export function useQuestionBankWorkbench() {
     return state.chapterBatchTasks.find((item) => item?.id === taskId) || null
   }
 
+  function findMultiChapterSlot(slotRelativePath) {
+    const normalizedPath = String(slotRelativePath || '').trim()
+    if (!normalizedPath) {
+      return null
+    }
+    return (Array.isArray(state.multiChapterSlots) ? state.multiChapterSlots : []).find(
+      (item) => String(item?.slotRelativePath || '').trim() === normalizedPath,
+    ) || null
+  }
+
   function isChapterBatchTaskConfigured(task) {
     if (!task || typeof task !== 'object') {
       return false
     }
     return Boolean(
-      String(task.jsonLabel || '').trim() ||
-        String(task.serverJsonPath || '').trim() ||
+      String(task.slotRelativePath || '').trim() ||
         String(task.initChapter || '').trim() ||
         String(task.initSection || '').trim() ||
-        (Array.isArray(task.imageFiles) && task.imageFiles.length),
+        Number(task.slotImageCount || 0) > 0,
     )
   }
 
@@ -330,11 +405,10 @@ export function useQuestionBankWorkbench() {
       return false
     }
     return Boolean(
-      String(task.serverJsonPath || '').trim() &&
+      String(task.slotRelativePath || '').trim() &&
         String(task.initChapter || '').trim() &&
         String(task.initSection || '').trim() &&
-        Array.isArray(task.imageFiles) &&
-        task.imageFiles.length,
+        Number(task.slotImageCount || 0) > 0,
     )
   }
 
@@ -523,7 +597,7 @@ export function useQuestionBankWorkbench() {
     }
     const upper = raw.toUpperCase()
     if (upper === 'PROGRAMMING' || upper === 'CODE') {
-      return 'code'
+      return 'CODE'
     }
     return upper
   }
@@ -534,17 +608,8 @@ export function useQuestionBankWorkbench() {
     state.workingJsonExamType = meta.examType || ''
     state.workingJsonHasAnswer = typeof meta.hasAnswer === 'boolean' ? meta.hasAnswer : null
     if (meta.documentType === 'exam') {
-      applyExamSourceMeta(meta)
+      applyExamSourceMeta(state, meta)
     }
-  }
-
-  function applyExamSourceMeta(meta) {
-    if (!meta || typeof meta !== 'object') {
-      return
-    }
-    state.examSessionTitle = String(meta.title || '').trim()
-    state.examSessionExamType = String(meta.examType || '').trim() || 'midterm'
-    state.examSessionHasAnswer = meta.hasAnswer !== false
   }
 
   async function parseApiResponse(resp) {
@@ -575,9 +640,64 @@ export function useQuestionBankWorkbench() {
     state.workspaceSummary = null
   }
 
+  function clearWorkspaceBrowser() {
+    state.workspaceBrowserLoading = false
+    state.workspaceBrowserError = false
+    state.workspaceBrowserStatus = ''
+    state.workspaceBrowser = null
+    state.workspaceBrowserDownloadTarget = ''
+  }
+
+  function clearVisualizerWorkspaceBrowser() {
+    state.visualizerWorkspaceBrowserLoading = false
+    state.visualizerWorkspaceBrowserError = false
+    state.visualizerWorkspaceBrowserStatus = ''
+    state.visualizerWorkspaceBrowser = null
+  }
+
+  function clearVisualizerWorkspaceBindings() {
+    state.visualizerFileName = ''
+    state.visualizerServerJsonPath = ''
+    state.visualizerJsonAssetId = ''
+    state.visualizerImportJsonFile = null
+    state.visualizerImportJsonName = ''
+    state.visualizerImportJsonSourceMode = 'workspace'
+    state.visualizerImportWorkspaceJsonPath = ''
+    state.visualizerImportSourceMode = 'workspace'
+    state.visualizerImportFolderFiles = []
+    state.visualizerImportFolderLabel = ''
+    state.visualizerImportWorkspacePath = ''
+    state.visualizerImportWorkspaceLabel = ''
+    state.visualizerStatus = ''
+    state.visualizerError = false
+    state.visualizerUploadsStatus = ''
+    state.visualizerUploadsError = false
+    state.visualizerPayload = null
+    state.visualizerAnswerStatus = ''
+    state.visualizerAnswerError = false
+    state.visualizerRepairStatus = ''
+    state.visualizerRepairError = false
+    state.visualizerRepairRawText = ''
+    state.visualizerRepairImageFiles = []
+    state.visualizerRewriteResult = null
+  }
+
+  function clearMultiChapterSlots() {
+    state.multiChapterSlotsLoading = false
+    state.multiChapterSlotsError = false
+    state.multiChapterSlotsStatus = ''
+    state.multiChapterSlots = []
+    state.mergeWorkspaceSlotPaths = []
+    state.multiChapterSlotSetupRunning = false
+    state.multiChapterSlotSetupError = false
+    state.multiChapterSlotSetupStatus = ''
+  }
+
   function resetCurrentWorkspaceBindings() {
     state.currentWorkspaceId = ''
     clearCurrentWorkspaceSummary()
+    clearWorkspaceBrowser()
+    clearMultiChapterSlots()
 
     state.outputFolder = ''
     state.pages = []
@@ -598,19 +718,13 @@ export function useQuestionBankWorkbench() {
     state.examSessionTitle = ''
     state.examSessionCurrentMajor = ''
     state.examSessionCurrentMinor = ''
+    state.examSessionPayload = null
 
-    state.visualizerFileName = ''
-    state.visualizerFileHandle = null
-    state.visualizerServerJsonPath = ''
-    state.visualizerJsonAssetId = ''
-    state.visualizerPayload = null
-    state.visualizerUploadsStatus = ''
-    state.visualizerUploadsError = false
-    state.visualizerRepairStatus = ''
-    state.visualizerRepairError = false
-    state.visualizerAnswerStatus = ''
-    state.visualizerAnswerError = false
-    state.visualizerRewriteResult = null
+    state.visualizerWorkspaceId = ''
+    clearVisualizerWorkspaceBrowser()
+    clearVisualizerWorkspaceBindings()
+
+    state.chapterBatchTasks = state.chapterBatchTasks.map(() => createChapterBatchTask())
   }
 
   function buildManagedJsonBody(ref, extra = {}) {
@@ -802,7 +916,7 @@ export function useQuestionBankWorkbench() {
     task.completedCount = 0
     task.successCount = 0
     task.failedCount = 0
-    task.totalCount = Array.isArray(task.imageFiles) ? task.imageFiles.length : 0
+    task.totalCount = Number(task.slotImageCount || 0)
     task.currentFileName = ''
     task.logs = ''
     task.lastQuestion = null
@@ -816,19 +930,137 @@ export function useQuestionBankWorkbench() {
     state.chapterBatchTasks.forEach((task) => resetChapterBatchTaskRuntime(task))
   }
 
-  async function loadVisualizerJsonFile(file, fileHandle = null) {
-    if (!file) {
+  function buildVisualizerImportFolderLabel(files) {
+    const items = Array.isArray(files) ? files : []
+    if (!items.length) {
+      return ''
+    }
+    const firstRelativePath = String(items[0]?.webkitRelativePath || items[0]?.name || '').trim()
+    const rootName = firstRelativePath.split('/')[0] || 'images'
+    return `${rootName}（${items.length} 个文件）`
+  }
+
+  function setVisualizerWorkspaceFolder(relativePath) {
+    const normalizedPath = String(relativePath || '').trim().replace(/^\/+/, '')
+    state.visualizerImportWorkspacePath = normalizedPath
+    state.visualizerImportWorkspaceLabel = normalizedPath || '工作区根目录'
+    state.visualizerUploadsError = false
+  }
+
+  function onVisualizerJsonFileChange(event) {
+    const file = event?.target?.files?.[0] ?? null
+    state.visualizerImportJsonFile = file
+    state.visualizerImportJsonName = file?.name || ''
+    if (file) {
+      state.visualizerImportJsonSourceMode = 'local'
+    }
+    state.visualizerError = false
+    if (event?.target) {
+      event.target.value = ''
+    }
+  }
+
+  function clearVisualizerWorkspaceJsonFile() {
+    state.visualizerImportWorkspaceJsonPath = ''
+  }
+
+  function requireCurrentWorkspace(message = '请先在工作区页面手动创建并选定一个工作区') {
+    const workspaceId = String(state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      throw new Error(message)
+    }
+    return workspaceId
+  }
+
+  function requireVisualizerWorkspace(message = '请先在可视化这里选择一个工作区') {
+    const workspaceId = String(state.visualizerWorkspaceId || '').trim()
+    if (!workspaceId) {
+      throw new Error(message)
+    }
+    return workspaceId
+  }
+
+  function onVisualizerBundleFolderChange(event) {
+    const files = Array.from(event?.target?.files ?? [])
+    state.visualizerImportFolderFiles = files
+    state.visualizerImportFolderLabel = buildVisualizerImportFolderLabel(files)
+    if (files.length) {
+      state.visualizerImportSourceMode = 'local'
+    }
+    state.visualizerUploadsError = false
+    if (event?.target) {
+      event.target.value = ''
+    }
+  }
+
+  function useCurrentVisualizerWorkspacePathForVisualizer() {
+    const currentPath = String(state.visualizerWorkspaceBrowser?.currentPath || '').trim()
+    setVisualizerWorkspaceFolder(currentPath)
+    state.visualizerImportSourceMode = 'workspace'
+  }
+
+  function useCurrentWorkspaceBrowserPathForVisualizer() {
+    useCurrentVisualizerWorkspacePathForVisualizer()
+  }
+
+  function useDefaultWorkspaceUploadsForVisualizer() {
+    setVisualizerWorkspaceFolder('uploads/source_uploads')
+    state.visualizerImportSourceMode = 'workspace'
+  }
+
+  function clearVisualizerWorkspaceFolder() {
+    state.visualizerImportWorkspacePath = ''
+    state.visualizerImportWorkspaceLabel = ''
+  }
+
+  async function importVisualizerBundle() {
+    const jsonFile = state.visualizerImportJsonFile
+    const folderFiles = Array.isArray(state.visualizerImportFolderFiles) ? state.visualizerImportFolderFiles : []
+    const jsonSourceMode = String(state.visualizerImportJsonSourceMode || '').trim() === 'local' ? 'local' : 'workspace'
+    const workspaceJsonPath = String(state.visualizerImportWorkspaceJsonPath || '').trim()
+    const sourceMode = String(state.visualizerImportSourceMode || '').trim() === 'local' ? 'local' : 'workspace'
+    const workspaceFolderPath = String(state.visualizerImportWorkspacePath || '').trim()
+    const usingLocalFolder = sourceMode === 'local'
+    const visualizerWorkspaceId = String(state.visualizerWorkspaceId || '').trim()
+    const hasCurrentVisualizerWorkspace =
+      Boolean(visualizerWorkspaceId)
+      && Boolean(String(state.visualizerServerJsonPath || '').trim())
+      && Boolean(String(state.visualizerJsonAssetId || '').trim())
+
+    if (!visualizerWorkspaceId) {
+      state.visualizerError = true
+      state.visualizerStatus = '请先在可视化这里选择一个工作区'
+      return
+    }
+    if (jsonSourceMode === 'local' && !(jsonFile instanceof File) && !hasCurrentVisualizerWorkspace) {
+      state.visualizerError = true
+      state.visualizerStatus = '首次导入请先选择题库 JSON；已有工作区时可直接使用工作区目录或重新选择本地图片文件夹'
+      return
+    }
+    if (jsonSourceMode === 'workspace' && !workspaceJsonPath) {
+      state.visualizerError = true
+      state.visualizerStatus = '请先选择工作区里的具体 JSON 文件'
+      return
+    }
+    if (usingLocalFolder && !folderFiles.length) {
+      state.visualizerUploadsError = true
+      state.visualizerUploadsStatus = '请先选择图片文件夹'
+      return
+    }
+    if (!usingLocalFolder && !workspaceFolderPath) {
+      state.visualizerUploadsError = true
+      state.visualizerUploadsStatus = '请先选择工作区目录，或切换到本地文件夹模式'
       return
     }
 
     state.visualizerError = false
-    state.visualizerStatus = '解析 JSON 中...'
+    state.visualizerUploadsError = false
+    state.visualizerUploadsProcessing = true
+    state.visualizerStatus = '正在导入 JSON 到工作区...'
+    state.visualizerUploadsStatus = ''
     state.visualizerAnswerProcessing = false
     state.visualizerAnswerStatus = ''
     state.visualizerAnswerError = false
-    state.visualizerUploadsProcessing = false
-    state.visualizerUploadsStatus = ''
-    state.visualizerUploadsError = false
     state.visualizerRepairError = false
     state.visualizerRepairStatus = ''
     state.visualizerQuestionTypeProcessing = false
@@ -836,102 +1068,119 @@ export function useQuestionBankWorkbench() {
     state.visualizerRewriteResult = null
 
     try {
-      const text = await fileToText(file)
-      const parsed = JSON.parse(text)
-      const chapters = Array.isArray(parsed?.chapters) ? parsed.chapters : null
-      const questions = Array.isArray(parsed?.questions) ? parsed.questions : null
-      const sourceMeta = getPayloadSourceMeta(parsed)
+      let managedRef = {
+        workspaceId: visualizerWorkspaceId,
+        jsonAssetId: String(state.visualizerJsonAssetId || '').trim(),
+        jsonFilePath: String(state.visualizerServerJsonPath || '').trim(),
+      }
+      let createdFromJson = false
 
-      if (!chapters || !questions) {
-        throw new Error('当前文件不是支持的题库 JSON，缺少 chapters 或 questions 数组')
+      if (jsonSourceMode === 'local' && jsonFile instanceof File) {
+        const text = await fileToText(jsonFile)
+        const parsed = JSON.parse(text)
+        const chapters = Array.isArray(parsed?.chapters) ? parsed.chapters : null
+        const questions = Array.isArray(parsed?.questions) ? parsed.questions : null
+        if (!chapters || !questions) {
+          throw new Error('当前文件不是支持的题库 JSON，缺少 chapters 或 questions 数组')
+        }
+
+        state.visualizerStatus = '正在导入 JSON 到工作区...'
+        const imported = await uploadJsonFileToWorkspace(jsonFile, {
+          workspaceId: visualizerWorkspaceId,
+        })
+        managedRef = {
+          workspaceId: String(imported.workspaceId || '').trim(),
+          jsonAssetId: String(imported.jsonAssetId || '').trim(),
+          jsonFilePath: String(imported.workspaceFilePath || imported.filePath || '').trim(),
+        }
+        state.visualizerFileName = jsonFile.name
+        state.visualizerServerJsonPath = managedRef.jsonFilePath
+        state.visualizerJsonAssetId = managedRef.jsonAssetId
+        createdFromJson = true
+      } else if (jsonSourceMode === 'workspace') {
+        managedRef = {
+          workspaceId: visualizerWorkspaceId,
+          jsonAssetId: '',
+          jsonFilePath: workspaceJsonPath,
+        }
+        state.visualizerFileName = String(workspaceJsonPath.split('/').pop() || 'workspace.json')
+        state.visualizerServerJsonPath = workspaceJsonPath
+        state.visualizerJsonAssetId = ''
+        createdFromJson = true
+      } else {
+        state.visualizerStatus = usingLocalFolder ? '正在替换所选工作区图片文件夹...' : '正在使用工作区目录更新图片路径...'
       }
 
-      const imported = await uploadJsonFileToWorkspace(file, {
-        workspaceId: state.currentWorkspaceId,
+      state.visualizerStatus = createdFromJson
+        ? usingLocalFolder
+          ? '正在准备 JSON 并复制图片文件夹到工作区...'
+          : '正在准备 JSON 并使用工作区目录匹配图片路径...'
+        : usingLocalFolder
+          ? '正在覆盖所选工作区图片文件夹...'
+          : '正在使用工作区目录更新所选工作区图片路径...'
+
+      const formData = new FormData()
+      appendManagedJsonFormData(formData, managedRef)
+      if (usingLocalFolder) {
+        formData.append('clearTargetDir', 'true')
+        for (const file of folderFiles) {
+          formData.append('files', file, file.name)
+          formData.append('relativePaths', String(file.webkitRelativePath || file.name || ''))
+        }
+      } else {
+        formData.append('workspaceSourceRelativePath', workspaceFolderPath)
+      }
+
+      const resp = await fetch('/api/textbook-json/import-uploads', {
+        method: 'POST',
+        body: formData,
       })
-      state.visualizerPayload = parsed
-      state.visualizerFileName = file.name
-      state.visualizerFileHandle = fileHandle
-      state.visualizerServerJsonPath = String(imported.workspaceFilePath || imported.filePath || '')
-      state.visualizerJsonAssetId = String(imported.jsonAssetId || '')
-      state.currentWorkspaceId = String(imported.workspaceId || state.currentWorkspaceId || '')
-      state.visualizerStatus = `已加载 ${file.name}（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}），共 ${chapters.length} 个结构节点，${questions.length} 道题`
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '导入图片文件夹失败')
+      }
+
+      const payload = await refreshVisualizerPayloadFromWorkspace({
+        cacheToken: Date.now(),
+      })
+      const sourceMeta = getPayloadSourceMeta(payload)
+      const importedCount = Number(data.importedCount ?? (usingLocalFolder ? folderFiles.length : 0))
+      const rewrittenCount = Number(data.rewrittenCount ?? 0)
+      const matchedCount = Number(data.matchedCount ?? 0)
+      const sourceModeLabel = usingLocalFolder ? '图片文件夹' : `工作区目录 ${workspaceFolderPath || '根目录'}`
+      const jsonModeLabel = jsonSourceMode === 'local'
+        ? state.visualizerFileName
+        : workspaceJsonPath
+
+      state.visualizerStatus =
+        createdFromJson
+          ? `已加载 ${jsonModeLabel}（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}）`
+          : usingLocalFolder
+            ? `已覆盖所选工作区图片文件夹（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}）`
+            : `已使用工作区目录更新当前题库图片路径（${sourceMeta.documentType === 'exam' ? '试卷' : '教材'}）`
+      state.visualizerUploadsStatus =
+        usingLocalFolder
+          ? (
+              createdFromJson
+                ? `图片文件夹已复制到工作区：${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址`
+                : `图片文件夹已覆盖到所选工作区：${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址`
+            )
+          : `${sourceModeLabel} 已参与匹配：扫描 ${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址`
+      state.visualizerImportJsonFile = null
+      state.visualizerImportJsonName = ''
+      if (usingLocalFolder) {
+        state.visualizerImportFolderFiles = []
+        state.visualizerImportFolderLabel = ''
+      }
     } catch (error) {
       state.visualizerError = true
       state.visualizerPayload = null
       state.visualizerFileName = ''
-      state.visualizerFileHandle = null
       state.visualizerServerJsonPath = ''
       state.visualizerJsonAssetId = ''
-      state.visualizerAnswerProcessing = false
-      state.visualizerAnswerStatus = ''
-      state.visualizerAnswerError = false
+      state.visualizerStatus = error instanceof Error ? error.message : '导入工作区失败'
+    } finally {
       state.visualizerUploadsProcessing = false
-      state.visualizerUploadsStatus = ''
-      state.visualizerUploadsError = false
-      state.visualizerQuestionTypeProcessing = false
-      state.visualizerRepairImageFiles = []
-      state.visualizerRewriteResult = null
-      state.visualizerStatus = error instanceof Error ? error.message : '解析 JSON 失败'
-    }
-  }
-
-  async function onVisualizerJsonChange(event) {
-    const file = event?.target?.files?.[0] ?? null
-    if (event?.target) {
-      event.target.value = ''
-    }
-    await loadVisualizerJsonFile(file, null)
-  }
-
-  async function chooseVisualizerJsonFile() {
-    if (!supportsPicker('showOpenFilePicker')) {
-      state.visualizerError = true
-      state.visualizerStatus = '当前浏览器不支持文件选择器，请改用下方文件上传'
-      return
-    }
-
-    try {
-      const [handle] = await window.showOpenFilePicker({
-        excludeAcceptAllOption: true,
-        multiple: false,
-        types: [
-          {
-            description: '题库 JSON',
-            accept: {
-              'application/json': ['.json'],
-            },
-          },
-        ],
-      })
-      const file = await handle.getFile()
-      await loadVisualizerJsonFile(file, handle)
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        return
-      }
-      state.visualizerError = true
-      state.visualizerStatus = error instanceof Error ? error.message : '选择可视化 JSON 失败'
-    }
-  }
-
-  async function reloadVisualizerJsonFile() {
-    if (!state.visualizerFileHandle) {
-      state.visualizerError = true
-      state.visualizerStatus = '当前文件没有可重读句柄，请重新选择一次 JSON 文件'
-      return
-    }
-
-    state.visualizerError = false
-    state.visualizerStatus = `重新读取 ${state.visualizerFileName || '当前文件'} 中...`
-
-    try {
-      const file = await state.visualizerFileHandle.getFile()
-      await loadVisualizerJsonFile(file, state.visualizerFileHandle)
-      state.visualizerStatus = `已重新读取 ${file.name}，当前内容已刷新`
-    } catch (error) {
-      state.visualizerError = true
-      state.visualizerStatus = error instanceof Error ? error.message : '重新读取当前文件失败'
     }
   }
 
@@ -1066,7 +1315,7 @@ export function useQuestionBankWorkbench() {
 
   async function refreshVisualizerPayloadFromWorkspace(options = {}) {
     const text = await readWorkspaceJsonText({
-      workspaceId: state.currentWorkspaceId,
+      workspaceId: state.visualizerWorkspaceId,
       jsonAssetId: state.visualizerJsonAssetId,
       jsonFilePath: state.visualizerServerJsonPath,
     })
@@ -1084,6 +1333,7 @@ export function useQuestionBankWorkbench() {
       mediaItems = [],
       childNo = null,
       childQuestionId = '',
+      targetType = 'prompt',
     } = params || {}
     const payload = state.visualizerPayload
     const questions = Array.isArray(payload?.questions) ? payload.questions : []
@@ -1093,6 +1343,7 @@ export function useQuestionBankWorkbench() {
     }
 
     const normalizedMediaItems = Array.isArray(mediaItems) ? mediaItems : []
+    const normalizedTargetType = normalizeImageAttachTargetType(targetType)
     const children = Array.isArray(question.children) ? question.children : []
     const child =
       children.find((item) => String(item?.questionId || '').trim() === String(childQuestionId || '').trim()) ||
@@ -1100,18 +1351,24 @@ export function useQuestionBankWorkbench() {
       children.find((item) => typeof item?.questionId === 'string' && item.questionId.endsWith(`_${childNo}`))
 
     if (child && typeof child === 'object') {
-      if (child.prompt && typeof child.prompt === 'object') {
-        child.prompt.media = normalizedMediaItems
+      const targetField = normalizedTargetType === 'standardAnswer' ? 'standardAnswer' : 'prompt'
+      if (child[targetField] && typeof child[targetField] === 'object') {
+        child[targetField].media = normalizedMediaItems
       } else {
-        child.prompt = {
-          text: typeof child.prompt === 'string' ? child.prompt : String(child.prompt?.text || ''),
+        child[targetField] = {
+          text: typeof child[targetField] === 'string' ? child[targetField] : String(child[targetField]?.text || ''),
           media: normalizedMediaItems,
         }
       }
       return true
     }
 
-    const targetField = String(question.nodeType || '').toUpperCase() === 'GROUP' ? 'stem' : 'prompt'
+    const targetField =
+      normalizedTargetType === 'standardAnswer'
+        ? 'standardAnswer'
+        : String(question.nodeType || '').toUpperCase() === 'GROUP'
+          ? 'stem'
+          : 'prompt'
     if (question[targetField] && typeof question[targetField] === 'object') {
       question[targetField].media = normalizedMediaItems
     } else {
@@ -1208,7 +1465,7 @@ export function useQuestionBankWorkbench() {
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      state.visualizerRepairStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
 
@@ -1229,7 +1486,7 @@ export function useQuestionBankWorkbench() {
           ...buildVisualizerArkHeaders(),
         },
         body: JSON.stringify(buildManagedJsonBody({
-          workspaceId: state.currentWorkspaceId,
+          workspaceId: state.visualizerWorkspaceId,
           jsonAssetId: state.visualizerJsonAssetId,
           jsonFilePath: state.visualizerServerJsonPath,
         }, {
@@ -1252,7 +1509,7 @@ export function useQuestionBankWorkbench() {
         childNo: effectiveChildNo,
         childQuestionId: childQuestionId || '',
       })
-      state.visualizerRepairStatus = `已修复 ${blockLabel || data.targetLabel || targetType}`
+      state.visualizerRepairStatus = `已修复 ${blockLabel || data.targetLabel || targetType}，并写入所选工作区`
     } catch (error) {
       state.visualizerRepairError = true
       state.visualizerRepairStatus = error instanceof Error ? error.message : '公式修复失败'
@@ -1262,7 +1519,13 @@ export function useQuestionBankWorkbench() {
   }
 
   function onVisualizerRepairImageChange(event) {
-    state.visualizerRepairImageFiles = Array.from(event?.target?.files ?? [])
+    const appendedFiles = Array.from(event?.target?.files ?? [])
+    if (appendedFiles.length) {
+      state.visualizerRepairImageFiles = [
+        ...state.visualizerRepairImageFiles,
+        ...appendedFiles,
+      ]
+    }
     state.visualizerRepairError = false
     state.visualizerRewriteResult = null
     if (event?.target) {
@@ -1274,74 +1537,11 @@ export function useQuestionBankWorkbench() {
     state.visualizerRepairImageFiles = []
   }
 
-  async function importVisualizerUploadsFolder(files) {
-    if (!state.visualizerServerJsonPath) {
-      state.visualizerUploadsError = true
-      state.visualizerUploadsStatus = '请先加载一个 JSON，再上传本地 uploads 文件夹'
+  function removeVisualizerRepairImage(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= state.visualizerRepairImageFiles.length) {
       return
     }
-    if (!Array.isArray(files) || !files.length) {
-      state.visualizerUploadsError = true
-      state.visualizerUploadsStatus = '请选择 uploads 文件夹中的图片文件'
-      return
-    }
-
-    state.visualizerUploadsProcessing = true
-    state.visualizerUploadsError = false
-    state.visualizerUploadsStatus = `正在上传 uploads 文件夹，共 ${files.length} 个文件...`
-
-    try {
-      const formData = new FormData()
-      appendManagedJsonFormData(formData, {
-        workspaceId: state.currentWorkspaceId,
-        jsonAssetId: state.visualizerJsonAssetId,
-        jsonFilePath: state.visualizerServerJsonPath,
-      })
-
-      for (const file of files) {
-        formData.append('files', file, file.name)
-        formData.append('relativePaths', String(file.webkitRelativePath || file.name || ''))
-      }
-
-      const resp = await fetch('/api/textbook-json/import-uploads', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '上传 uploads 文件夹失败')
-      }
-
-      let syncWarning = ''
-      try {
-        await refreshVisualizerPayloadFromWorkspace({
-          cacheToken: Date.now(),
-        })
-        await syncVisualizerJsonToLocalFile()
-      } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '工作区 JSON 刷新失败'
-      }
-
-      const importedCount = Number(data.importedCount ?? files.length)
-      const rewrittenCount = Number(data.rewrittenCount ?? 0)
-      const matchedCount = Number(data.matchedCount ?? 0)
-      state.visualizerUploadsStatus = syncWarning
-        ? `已上传 ${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址，但本地同步失败：${syncWarning}`
-        : `已上传 ${importedCount} 个文件，匹配 ${matchedCount} 个图片引用，改写 ${rewrittenCount} 个地址`
-    } catch (error) {
-      state.visualizerUploadsError = true
-      state.visualizerUploadsStatus = error instanceof Error ? error.message : '上传 uploads 文件夹失败'
-    } finally {
-      state.visualizerUploadsProcessing = false
-    }
-  }
-
-  async function onVisualizerUploadsFolderChange(event) {
-    const files = Array.from(event?.target?.files ?? [])
-    if (event?.target) {
-      event.target.value = ''
-    }
-    await importVisualizerUploadsFolder(files)
+    state.visualizerRepairImageFiles = state.visualizerRepairImageFiles.filter((_, currentIndex) => currentIndex !== index)
   }
 
   async function attachImagesFromVisualizer(params) {
@@ -1352,10 +1552,11 @@ export function useQuestionBankWorkbench() {
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
     const blockLabel = String(params?.blockLabel || '').trim()
+    const targetType = normalizeImageAttachTargetType(params?.targetType || state.visualizerImageAttachTarget)
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      state.visualizerRepairStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
     if (!state.visualizerRepairImageFiles.length) {
@@ -1372,12 +1573,13 @@ export function useQuestionBankWorkbench() {
     try {
       const formData = new FormData()
       appendManagedJsonFormData(formData, {
-        workspaceId: state.currentWorkspaceId,
+        workspaceId: state.visualizerWorkspaceId,
         jsonAssetId: state.visualizerJsonAssetId,
         jsonFilePath: state.visualizerServerJsonPath,
       })
       formData.append('sourceFileName', state.visualizerFileName || '')
       formData.append('questionId', questionId)
+      formData.append('targetType', targetType)
       if (childQuestionId) {
         formData.append('childQuestionId', childQuestionId)
       }
@@ -1402,18 +1604,12 @@ export function useQuestionBankWorkbench() {
         mediaItems: Array.isArray(data.mediaItems) ? data.mediaItems : [],
         childNo,
         childQuestionId: String(data.childQuestionId || childQuestionId),
+        targetType: String(data.targetType || targetType),
       })
       state.visualizerRepairImageFiles = []
 
-      let syncWarning = ''
-      try {
-        await syncVisualizerJsonToLocalFile()
-      } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
-      }
-      state.visualizerRepairStatus = syncWarning
-        ? `已为 ${blockLabel || questionTitle || questionId} 补图，但回写本地文件失败：${syncWarning}`
-        : `已为 ${blockLabel || questionTitle || questionId} 补充 ${Number(data.mediaCount ?? 0)} 张图片`
+      state.visualizerRepairStatus =
+        `已为 ${blockLabel || questionTitle || questionId} 补充 ${Number(data.mediaCount ?? 0)} 张图片，并写入所选工作区`
     } catch (error) {
       state.visualizerRepairError = true
       state.visualizerRepairStatus = error instanceof Error ? error.message : '当前题目补图失败'
@@ -1434,7 +1630,7 @@ export function useQuestionBankWorkbench() {
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      state.visualizerRepairStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
     if (!questionId || !questionType) {
@@ -1455,7 +1651,7 @@ export function useQuestionBankWorkbench() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(buildManagedJsonBody({
-          workspaceId: state.currentWorkspaceId,
+          workspaceId: state.visualizerWorkspaceId,
           jsonAssetId: state.visualizerJsonAssetId,
           jsonFilePath: state.visualizerServerJsonPath,
         }, {
@@ -1478,15 +1674,8 @@ export function useQuestionBankWorkbench() {
         childQuestionId: String(data.childQuestionId || childQuestionId),
       })
 
-      let syncWarning = ''
-      try {
-        await syncVisualizerJsonToLocalFile()
-      } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
-      }
-      state.visualizerRepairStatus = syncWarning
-        ? `已更新 ${blockLabel || questionTitle || questionId} 的题型，但回写本地文件失败：${syncWarning}`
-        : `已更新 ${blockLabel || questionTitle || questionId} 的题型为 ${String(data.questionTypeLabel || data.questionType || questionType)}`
+      state.visualizerRepairStatus =
+        `已更新 ${blockLabel || questionTitle || questionId} 的题型为 ${String(data.questionTypeLabel || data.questionType || questionType)}，并写入所选工作区`
     } catch (error) {
       state.visualizerRepairError = true
       state.visualizerRepairStatus = error instanceof Error ? error.message : '题型修改失败'
@@ -1503,10 +1692,11 @@ export function useQuestionBankWorkbench() {
     const childNo =
       childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
     const blockLabel = String(params?.blockLabel || '').trim()
+    const imageFiles = Array.isArray(params?.imageFiles) ? params.imageFiles : []
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerAnswerError = true
-      state.visualizerAnswerStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      state.visualizerAnswerStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
     if (!questionId) {
@@ -1521,23 +1711,31 @@ export function useQuestionBankWorkbench() {
     state.visualizerRewriteResult = null
 
     try {
+      const formData = new FormData()
+      appendManagedJsonFormData(formData, {
+        workspaceId: state.visualizerWorkspaceId,
+        jsonAssetId: state.visualizerJsonAssetId,
+        jsonFilePath: state.visualizerServerJsonPath,
+      })
+      formData.append('sourceFileName', state.visualizerFileName || '')
+      formData.append('questionId', questionId)
+      if (childQuestionId) {
+        formData.append('childQuestionId', childQuestionId)
+      }
+      if (Number.isInteger(childNo) && childNo > 0) {
+        formData.append('childNo', String(childNo))
+      }
+      formData.append('answerPrompt', String(state.visualizerAnswerPrompt || '').trim())
+      for (const file of imageFiles) {
+        formData.append('images', file, file.name)
+      }
+
       const resp = await fetch('/api/textbook-json/generate-answer', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           ...buildVisualizerArkHeaders(),
         },
-        body: JSON.stringify(buildManagedJsonBody({
-          workspaceId: state.currentWorkspaceId,
-          jsonAssetId: state.visualizerJsonAssetId,
-          jsonFilePath: state.visualizerServerJsonPath,
-        }, {
-          sourceFileName: state.visualizerFileName || '',
-          questionId,
-          childQuestionId,
-          childNo,
-          answerPrompt: String(state.visualizerAnswerPrompt || '').trim(),
-        })),
+        body: formData,
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -1551,15 +1749,7 @@ export function useQuestionBankWorkbench() {
         childQuestionId: String(data.childQuestionId || childQuestionId),
       })
 
-      let syncWarning = ''
-      try {
-        await syncVisualizerJsonToLocalFile()
-      } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
-      }
-      state.visualizerAnswerStatus = syncWarning
-        ? `已为 ${blockLabel || questionTitle || questionId} 生成答案，但回写本地文件失败：${syncWarning}`
-        : `已为 ${blockLabel || questionTitle || questionId} 生成答案，并已写回当前 JSON`
+      state.visualizerAnswerStatus = `已为 ${blockLabel || questionTitle || questionId} 生成答案，并写入所选工作区`
     } catch (error) {
       state.visualizerAnswerError = true
       state.visualizerAnswerStatus = error instanceof Error ? error.message : '答案生成失败'
@@ -1571,10 +1761,18 @@ export function useQuestionBankWorkbench() {
   async function repairQuestionFromVisualizer(params) {
     const questionId = String(params?.questionId || '').trim()
     const questionTitle = String(params?.questionTitle || '').trim()
+    const childQuestionId = String(params?.childQuestionId || '').trim()
+    const childNoRaw = params?.childNo
+    const childNo =
+      childNoRaw === '' || childNoRaw === null || childNoRaw === undefined ? null : Number(childNoRaw)
+    const blockLabel = String(params?.blockLabel || '').trim()
+    const hasAnswerSource = typeof params?.hasAnswerSource === 'boolean' ? params.hasAnswerSource : null
+    const generateAnswerIfMissing =
+      typeof params?.generateAnswerIfMissing === 'boolean' ? params.generateAnswerIfMissing : null
 
     if (!state.visualizerServerJsonPath) {
       state.visualizerRepairError = true
-      state.visualizerRepairStatus = '当前可视化文件尚未同步到修复工作区，请重新选择一次 JSON 文件'
+      state.visualizerRepairStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
     if (!state.visualizerRepairImageFiles.length) {
@@ -1585,18 +1783,31 @@ export function useQuestionBankWorkbench() {
 
     state.visualizerRepairProcessing = true
     state.visualizerRepairError = false
-    state.visualizerRepairStatus = `正在根据图片重写 ${questionTitle || questionId}...`
+    state.visualizerRepairStatus = `正在根据图片重写 ${blockLabel || questionTitle || questionId}...`
+    state.visualizerRepairRawText = ''
     state.visualizerRewriteResult = null
 
     try {
       const formData = new FormData()
       appendManagedJsonFormData(formData, {
-        workspaceId: state.currentWorkspaceId,
+        workspaceId: state.visualizerWorkspaceId,
         jsonAssetId: state.visualizerJsonAssetId,
         jsonFilePath: state.visualizerServerJsonPath,
       })
       formData.append('sourceFileName', state.visualizerFileName || '')
       formData.append('questionId', questionId)
+      if (childQuestionId) {
+        formData.append('childQuestionId', childQuestionId)
+      }
+      if (Number.isInteger(childNo) && childNo > 0) {
+        formData.append('childNo', String(childNo))
+      }
+      if (typeof hasAnswerSource === 'boolean') {
+        formData.append('hasAnswerSource', String(hasAnswerSource))
+      }
+      if (typeof generateAnswerIfMissing === 'boolean') {
+        formData.append('generateAnswerIfMissing', String(generateAnswerIfMissing))
+      }
       for (const file of state.visualizerRepairImageFiles) {
         formData.append('images', file, file.name)
       }
@@ -1610,34 +1821,46 @@ export function useQuestionBankWorkbench() {
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
+        state.visualizerRepairRawText = String(data.rawText || '')
+        state.visualizerRewriteResult = {
+          chapterTitle: '',
+          sectionTitle: '',
+          questionId,
+          childQuestionId,
+          childNo: Number(childNo ?? 0),
+          questionTitle: String(questionTitle || questionId),
+          action: 'failed',
+          insertIndex: -1,
+          questionsCount: 0,
+          imageCount: Number(state.visualizerRepairImageFiles.length),
+          reason: '',
+          targetLabel: String(blockLabel || ''),
+          rawText: String(data.rawText || ''),
+        }
         throw new Error(data.message || '当前题目重写失败')
       }
 
+      state.visualizerRepairRawText = String(data.rawText || '')
       upsertQuestionInVisualizerPayload(data.question)
       state.visualizerRewriteResult = {
-        repairJsonPath: String(data.repairJsonPath || ''),
-        repairJsonFileName: String(data.repairJsonFileName || ''),
         chapterTitle: String(data.chapterTitle || ''),
         sectionTitle: String(data.sectionTitle || ''),
         questionId: String(data.questionId || questionId),
+        childQuestionId: String(data.childQuestionId || childQuestionId),
+        childNo: Number(data.childNo ?? childNo ?? 0),
         questionTitle: String(data.questionTitle || questionTitle || questionId),
         action: String(data.action || ''),
         insertIndex: Number(data.insertIndex ?? -1),
         questionsCount: Number(data.questionsCount ?? 0),
         imageCount: Number(data.imageCount ?? state.visualizerRepairImageFiles.length),
         reason: String(data.reason || ''),
+        targetLabel: String(data.targetLabel || blockLabel || ''),
+        rawText: String(data.rawText || ''),
       }
       state.visualizerRepairImageFiles = []
 
-      let syncWarning = ''
-      try {
-        await syncVisualizerJsonToLocalFile()
-      } catch (syncError) {
-        syncWarning = syncError instanceof Error ? syncError.message : '回写本地文件失败'
-      }
-      state.visualizerRepairStatus = syncWarning
-        ? `已按图片重写 ${state.visualizerRewriteResult.questionTitle}，但回写本地文件失败：${syncWarning}`
-        : `已按图片重写 ${state.visualizerRewriteResult.questionTitle}`
+      state.visualizerRepairStatus =
+        `已按图片重写 ${state.visualizerRewriteResult.targetLabel || state.visualizerRewriteResult.questionTitle}，并写入所选工作区`
     } catch (error) {
       state.visualizerRepairError = true
       state.visualizerRepairStatus = error instanceof Error ? error.message : '当前题目重写失败'
@@ -1726,22 +1949,38 @@ export function useQuestionBankWorkbench() {
       pendingPagesCount: Number(safeQuestion.pendingPagesCount ?? 0),
       pendingPageLabels: Array.isArray(safeQuestion.pendingPageLabels) ? safeQuestion.pendingPageLabels : [],
       processingStartQuestionKey: safeQuestion.processingStartQuestionKey || '',
+      processingStartQuestionLabel: safeQuestion.processingStartQuestionLabel || '',
       continueQuestionKey: safeQuestion.continueQuestionKey || '',
+      continueQuestionLabel: safeQuestion.continueQuestionLabel || '',
       nextStartQuestionKey: safeQuestion.nextStartQuestionKey || '',
+      nextStartQuestionLabel: safeQuestion.nextStartQuestionLabel || '',
       boundaryNeedNextPage: safeQuestion.boundaryNeedNextPage === true,
       boundaryHasExtractableQuestions: safeQuestion.boundaryHasExtractableQuestions === true,
       boundaryContinueQuestionKey: safeQuestion.boundaryContinueQuestionKey || '',
+      boundaryContinueQuestionLabel: safeQuestion.boundaryContinueQuestionLabel || '',
+      lookaheadContinueQuestionKey: safeQuestion.lookaheadContinueQuestionKey || '',
+      lookaheadContinueQuestionLabel: safeQuestion.lookaheadContinueQuestionLabel || '',
+      effectiveContinueQuestionKey: safeQuestion.effectiveContinueQuestionKey || '',
+      effectiveContinueQuestionLabel: safeQuestion.effectiveContinueQuestionLabel || '',
+      upsertedQuestionTitles: Array.isArray(safeQuestion.upsertedQuestionTitles) ? safeQuestion.upsertedQuestionTitles : [],
       boundaryLookaheadLabel: safeQuestion.boundaryLookaheadLabel || '',
       boundaryLookaheadReason: safeQuestion.boundaryLookaheadReason || '',
+      boundaryLookaheadRawText: safeQuestion.boundaryLookaheadRawText || '',
+      lookaheadConsistencyReason: safeQuestion.lookaheadConsistencyReason || '',
+      boundaryRetryReason: safeQuestion.boundaryRetryReason || '',
       pendingReviewCount: Number(safeQuestion.pendingReviewCount ?? 0),
       droppedPendingQuestionCount: Number(safeQuestion.droppedPendingQuestionCount ?? 0),
       extractReturnedCount: Number(safeQuestion.extractReturnedCount ?? 0),
       normalizedCount: Number(safeQuestion.normalizedCount ?? 0),
       questionsCount: totalQuestions ?? safeQuestion.questionsCount ?? null,
       sessionStoredProcessingStartQuestionKey: safeQuestion.sessionStoredProcessingStartQuestionKey || '',
+      sessionStoredProcessingStartQuestionLabel: safeQuestion.sessionStoredProcessingStartQuestionLabel || '',
       sessionStoredPendingContinueQuestionKey: safeQuestion.sessionStoredPendingContinueQuestionKey || '',
+      sessionStoredPendingContinueQuestionLabel: safeQuestion.sessionStoredPendingContinueQuestionLabel || '',
       effectiveProcessingStartQuestionKey: safeQuestion.effectiveProcessingStartQuestionKey || '',
+      effectiveProcessingStartQuestionLabel: safeQuestion.effectiveProcessingStartQuestionLabel || '',
       effectiveExtractEndBeforeQuestionKey: safeQuestion.effectiveExtractEndBeforeQuestionKey || '',
+      effectiveExtractEndBeforeQuestionLabel: safeQuestion.effectiveExtractEndBeforeQuestionLabel || '',
       effectiveExtractMode: safeQuestion.effectiveExtractMode || '',
       reason: safeQuestion.reason || '',
       boundaryReason: safeQuestion.boundaryReason || '',
@@ -1811,35 +2050,51 @@ export function useQuestionBankWorkbench() {
       const queueText = Array.isArray(question.pendingPageLabels) && question.pendingPageLabels.length
         ? `，队列页: ${question.pendingPageLabels.join(' + ')}`
         : ''
-      const debugParts = [
-        `边界可提取: ${question.boundaryHasExtractableQuestions === true ? 'true' : 'false'}`,
-        `边界needNextPage: ${question.boundaryNeedNextPage === true ? 'true' : 'false'}`,
-        `边界续题: ${question.boundaryContinueQuestionKey || '空'}`,
-        question.boundaryLookaheadLabel ? `边界预读页: ${question.boundaryLookaheadLabel}` : '',
-        question.boundaryLookaheadReason ? `边界预读原因: ${question.boundaryLookaheadReason}` : '',
-        question.boundaryReason ? `边界原因: ${question.boundaryReason}` : '',
-        question.extractReason ? `提取原因: ${question.extractReason}` : '',
-        question.retryExtractReason ? `提取重试原因: ${question.retryExtractReason}` : '',
-        question.integrityRetryReason ? `完整性重提原因: ${question.integrityRetryReason}` : '',
-        question.rangeRetryReason ? `范围重提原因: ${question.rangeRetryReason}` : '',
-        `提取返回题数: ${question.extractReturnedCount ?? 0}`,
-        `归一化后题数: ${question.normalizedCount ?? 0}`,
-        `session起点原值: ${question.sessionStoredProcessingStartQuestionKey || '空'}`,
-        `session续题原值: ${question.sessionStoredPendingContinueQuestionKey || '空'}`,
-        `实收起点: ${question.effectiveProcessingStartQuestionKey || '空'}`,
-        `实收截止: ${question.effectiveExtractEndBeforeQuestionKey || '空'}`,
-        `实收模式: ${question.effectiveExtractMode || '空'}`,
-        `待校对重提: ${question.pendingReviewFixRetried === true ? 'true' : 'false'}`,
-        `完整性重提: ${question.integrityFixRetried === true ? 'true' : 'false'}`,
-        `范围重提: ${question.rangeFixRetried === true ? 'true' : 'false'}`,
-        `范围拦截: ${question.rangeMismatchBlocked === true ? 'true' : 'false'}`,
-        `普通重提: ${question.retried === true ? 'true' : 'false'}`,
-        `截掉题数: ${question.droppedPendingQuestionCount ?? 0}`,
-        question.reason ? `原因: ${question.reason}` : '',
-      ].filter(Boolean).join(' | ')
+      const boundaryPart = [
+        `边界助手输出: 可提取=${question.boundaryHasExtractableQuestions === true ? 'true' : 'false'}`,
+        `needNextPage=${question.boundaryNeedNextPage === true ? 'true' : 'false'}`,
+        `续题=${question.boundaryContinueQuestionLabel || question.boundaryContinueQuestionKey || '空'}`,
+        question.boundaryRetryReason ? `重判原因=${question.boundaryRetryReason}` : '',
+        question.boundaryReason ? `原因=${question.boundaryReason}` : '',
+      ].filter(Boolean).join('，')
+      const lookaheadPart = question.boundaryLookaheadLabel || question.boundaryLookaheadReason || question.lookaheadContinueQuestionKey
+        ? [
+            `预读助手输出: 预读页=${question.boundaryLookaheadLabel || '空'}`,
+            `续题=${question.lookaheadContinueQuestionLabel || question.lookaheadContinueQuestionKey || '空'}`,
+            question.boundaryLookaheadReason ? `原因=${question.boundaryLookaheadReason}` : '',
+            question.lookaheadConsistencyReason ? `对齐处理=${question.lookaheadConsistencyReason}` : '',
+          ].filter(Boolean).join('，')
+        : ''
+      const extractPart = [
+        `提取助手输出: 返回题数=${question.extractReturnedCount ?? 0}`,
+        `归一化后题数=${question.normalizedCount ?? 0}`,
+        question.extractReason ? `原因=${question.extractReason}` : '',
+        question.retryExtractReason ? `重试原因=${question.retryExtractReason}` : '',
+        question.integrityRetryReason ? `完整性重提=${question.integrityRetryReason}` : '',
+        question.rangeRetryReason ? `范围重提=${question.rangeRetryReason}` : '',
+      ].filter(Boolean).join('，')
+      const finalPart = [
+        `最终生效: session起点原值=${question.sessionStoredProcessingStartQuestionLabel || question.sessionStoredProcessingStartQuestionKey || '空'}`,
+        `session续题原值=${question.sessionStoredPendingContinueQuestionLabel || question.sessionStoredPendingContinueQuestionKey || '空'}`,
+        `本次实收起点=${question.effectiveProcessingStartQuestionLabel || question.effectiveProcessingStartQuestionKey || '空'}`,
+        `本次实收截止=${question.effectiveExtractEndBeforeQuestionLabel || question.effectiveExtractEndBeforeQuestionKey || '空'}`,
+        `最终续题=${question.effectiveContinueQuestionLabel || question.effectiveContinueQuestionKey || question.continueQuestionLabel || question.continueQuestionKey || '空'}`,
+        `实收模式=${question.effectiveExtractMode || '空'}`,
+        `待校对重提=${question.pendingReviewFixRetried === true ? 'true' : 'false'}`,
+        `完整性重提=${question.integrityFixRetried === true ? 'true' : 'false'}`,
+        `范围重提=${question.rangeFixRetried === true ? 'true' : 'false'}`,
+        `范围拦截=${question.rangeMismatchBlocked === true ? 'true' : 'false'}`,
+        `普通重提=${question.retried === true ? 'true' : 'false'}`,
+        `截掉题数=${question.droppedPendingQuestionCount ?? 0}`,
+        Array.isArray(question.upsertedQuestionTitles) && question.upsertedQuestionTitles.length
+          ? `写回题目=${question.upsertedQuestionTitles.join('、')}`
+          : '',
+        question.reason ? `最终原因=${question.reason}` : '',
+      ].filter(Boolean).join('，')
+      const debugParts = [boundaryPart, lookaheadPart, extractPart, finalPart].filter(Boolean).join(' | ')
       const pendingText = question.pending
-        ? `跨页处理中，处理起点: ${question.processingStartQuestionKey || '空'}，更新后起点: ${question.nextStartQuestionKey || '空'}，续题: ${question.continueQuestionKey || '空'}，队列页数: ${question.pendingPagesCount ?? '?'}${queueText}`
-        : `已入库，新增题目 ${question.upsertedCount ?? 0}，更新后起点: ${question.nextStartQuestionKey || '空'}`
+        ? `跨页处理中，处理起点: ${question.processingStartQuestionLabel || question.processingStartQuestionKey || '空'}，更新后起点: ${question.nextStartQuestionLabel || question.nextStartQuestionKey || '空'}，续题: ${question.continueQuestionLabel || question.continueQuestionKey || '空'}，队列页数: ${question.pendingPagesCount ?? '?'}${queueText}`
+        : `已入库，新增题目 ${question.upsertedCount ?? 0}，更新后起点: ${question.nextStartQuestionLabel || question.nextStartQuestionKey || '空'}`
       return `第 ${event.currentIndex}/${event.totalCount} 页完成: ${event.fileName} | 当前小节: ${event.currentSectionTitle || ''} | ${pendingText}${debugParts ? ` | ${debugParts}` : ''}`
     }
     if (event.type === 'done') {
@@ -1881,11 +2136,13 @@ export function useQuestionBankWorkbench() {
   }
 
   async function uploadJsonFileToWorkspace(file, options = {}) {
+    const workspaceId = String(options?.workspaceId || state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      throw new Error('请先在工作区页面手动创建并选定一个工作区')
+    }
     const formData = new FormData()
     formData.append('json', file, file.name)
-    if (options?.workspaceId) {
-      formData.append('workspaceId', String(options.workspaceId))
-    }
+    formData.append('workspaceId', workspaceId)
     const resp = await fetch('/api/textbook-json/import', {
       method: 'POST',
       body: formData,
@@ -1914,16 +2171,16 @@ export function useQuestionBankWorkbench() {
     return String(data.text || '')
   }
 
-  function parseDownloadFileName(resp, fallbackName = 'main.json') {
+  function parseDownloadFileName(resp, fallbackName = 'download.bin') {
     const disposition = String(resp.headers.get('content-disposition') || '').trim()
     const encodedMatch = disposition.match(/filename="?([^"]+)"?/i)
     if (!encodedMatch?.[1]) {
-      return normalizeJsonDownloadName(fallbackName)
+      return normalizeDownloadName(fallbackName)
     }
     try {
-      return normalizeJsonDownloadName(decodeURIComponent(encodedMatch[1]), fallbackName)
+      return normalizeDownloadName(decodeURIComponent(encodedMatch[1]), fallbackName)
     } catch (_error) {
-      return normalizeJsonDownloadName(encodedMatch[1], fallbackName)
+      return normalizeDownloadName(encodedMatch[1], fallbackName)
     }
   }
 
@@ -1950,7 +2207,7 @@ export function useQuestionBankWorkbench() {
         throw new Error(text || '下载当前 JSON 失败')
       }
     }
-    triggerJsonDownload(parseDownloadFileName(resp, suggestedName), text)
+    triggerJsonDownload(normalizeJsonDownloadName(parseDownloadFileName(resp, suggestedName), suggestedName), text)
   }
 
   async function refreshCurrentWorkspaceSummary(options = {}) {
@@ -2002,9 +2259,7 @@ export function useQuestionBankWorkbench() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          keepRepairSnapshots: 10,
-        }),
+        body: JSON.stringify({}),
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
@@ -2028,46 +2283,11 @@ export function useQuestionBankWorkbench() {
       state.workspaceSummaryStatus = '当前还没有可删除的工作区'
       return
     }
-
-    if (typeof window !== 'undefined') {
-      const confirmed = window.confirm(`确认删除当前工作区 ${workspaceId} 吗？这会删除服务器上的 JSON、PDF、页图和中间产物。`)
-      if (!confirmed) {
-        return
-      }
-    }
-
-    state.workspaceDeleteRunning = true
-    state.workspaceSummaryError = false
-    state.workspaceSummaryStatus = '正在删除当前工作区...'
-
-    try {
-      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
-        method: 'DELETE',
-      })
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '删除当前工作区失败')
-      }
-      resetCurrentWorkspaceBindings()
-      state.workspaceSummaryStatus = `已删除工作区 ${workspaceId}`
-    } catch (error) {
-      state.workspaceSummaryError = true
-      state.workspaceSummaryStatus = error instanceof Error ? error.message : '删除当前工作区失败'
-    } finally {
-      state.workspaceDeleteRunning = false
-    }
+    await deleteWorkspaceById(workspaceId)
   }
 
   async function syncJsonHandleFromWorkspace(ref, fileHandle) {
-    const managedRef = normalizeManagedJsonRef(ref)
-    if ((!managedRef.jsonFilePath && !managedRef.jsonAssetId) || !fileHandle) {
-      return
-    }
-
-    const text = await readWorkspaceJsonText(managedRef)
-    const writable = await fileHandle.createWritable()
-    await writable.write(text)
-    await writable.close()
+    return false
   }
 
   async function importJsonFileToWorkspace(file, payload = null, options = {}) {
@@ -2110,14 +2330,6 @@ export function useQuestionBankWorkbench() {
     const writable = await state.chapterSessionJsonHandle.createWritable()
     await writable.write(String(data.text || ''))
     await writable.close()
-  }
-
-  async function syncVisualizerJsonToLocalFile() {
-    await syncJsonHandleFromWorkspace({
-      workspaceId: state.currentWorkspaceId,
-      jsonAssetId: state.visualizerJsonAssetId,
-      jsonFilePath: state.visualizerServerJsonPath,
-    }, state.visualizerFileHandle)
   }
 
   async function syncExamWorkingJsonToLocalFile() {
@@ -2177,7 +2389,7 @@ export function useQuestionBankWorkbench() {
     state.visualizerError = false
     try {
       await downloadManagedJsonFile({
-        workspaceId: state.currentWorkspaceId,
+        workspaceId: state.visualizerWorkspaceId,
         jsonAssetId: state.visualizerJsonAssetId,
         jsonFilePath: state.visualizerServerJsonPath,
       }, state.visualizerFileName || 'textbook.json')
@@ -2185,6 +2397,413 @@ export function useQuestionBankWorkbench() {
     } catch (error) {
       state.visualizerError = true
       state.visualizerStatus = error instanceof Error ? error.message : '下载当前最新 JSON 失败'
+    }
+  }
+
+  async function loadWorkspaceList(options = {}) {
+    state.workspaceListLoading = true
+    state.workspaceListError = false
+    if (!options?.silent) {
+      state.workspaceListStatus = '正在读取工作区列表...'
+    }
+
+    try {
+      const resp = await fetch('/api/workspaces')
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取工作区列表失败')
+      }
+      state.workspaceList = Array.isArray(data.workspaces) ? data.workspaces : []
+      const workspaceIds = new Set(
+        state.workspaceList
+          .map((workspace) => String(workspace?.workspaceId || '').trim())
+          .filter(Boolean),
+      )
+      const currentVisualizerWorkspaceId = String(state.visualizerWorkspaceId || '').trim()
+      if (currentVisualizerWorkspaceId && !workspaceIds.has(currentVisualizerWorkspaceId)) {
+        state.visualizerWorkspaceId = ''
+        clearVisualizerWorkspaceBrowser()
+        clearVisualizerWorkspaceBindings()
+      }
+      if (!String(state.visualizerWorkspaceId || '').trim() && workspaceIds.size) {
+        const preferredWorkspaceId = workspaceIds.has(String(state.currentWorkspaceId || '').trim())
+          ? String(state.currentWorkspaceId || '').trim()
+          : String(state.workspaceList[0]?.workspaceId || '').trim()
+        if (preferredWorkspaceId) {
+          state.visualizerWorkspaceId = preferredWorkspaceId
+          await browseVisualizerWorkspace('', {
+            workspaceId: preferredWorkspaceId,
+            silent: true,
+          })
+        }
+      }
+      state.workspaceListStatus = options?.silent ? state.workspaceListStatus : `已读取 ${state.workspaceList.length} 个工作区`
+      return state.workspaceList
+    } catch (error) {
+      state.workspaceListError = true
+      state.workspaceListStatus = error instanceof Error ? error.message : '读取工作区列表失败'
+      return []
+    } finally {
+      state.workspaceListLoading = false
+    }
+  }
+
+  function applyMultiChapterSlotToTask(task, slot) {
+    if (!task || !slot || typeof task !== 'object' || typeof slot !== 'object') {
+      return
+    }
+    task.workspaceId = String(slot.workspaceId || state.currentWorkspaceId || '').trim()
+    task.slotName = String(slot.slotName || '').trim()
+    task.slotRelativePath = String(slot.slotRelativePath || '').trim()
+    task.slotJsonFileName = String(slot.jsonFileName || '').trim()
+    task.slotJsonRelativePath = String(slot.jsonRelativePath || '').trim()
+    task.slotImageCount = Number(slot.imageCount || 0)
+    if (!task.status || /选择|槽位|图片|就绪|待补全/.test(task.status)) {
+      task.status = task.slotRelativePath
+        ? `已绑定槽位 ${task.slotRelativePath}，当前已备份 ${task.slotImageCount} 张图片`
+        : ''
+    }
+    task.error = false
+  }
+
+  function syncChapterBatchTasksWithSlots(slots) {
+    const items = Array.isArray(slots) ? slots : []
+    for (const task of Array.isArray(state.chapterBatchTasks) ? state.chapterBatchTasks : []) {
+      const slot = items.find((item) => String(item?.slotRelativePath || '').trim() === String(task?.slotRelativePath || '').trim())
+      if (slot) {
+        applyMultiChapterSlotToTask(task, slot)
+      } else if (String(task?.slotRelativePath || '').trim()) {
+        task.slotImageCount = 0
+        task.error = true
+        task.status = `槽位不存在或已被重建：${task.slotRelativePath}`
+      }
+    }
+  }
+
+  function syncMergeWorkspaceSlotSelections(slots) {
+    const validPaths = new Set(
+      (Array.isArray(slots) ? slots : [])
+        .map((item) => String(item?.slotRelativePath || '').trim())
+        .filter(Boolean),
+    )
+    state.mergeWorkspaceSlotPaths = state.mergeWorkspaceSlotPaths.filter((slotRelativePath) =>
+      validPaths.has(String(slotRelativePath || '').trim()),
+    )
+  }
+
+  async function loadMultiChapterSlots(options = {}) {
+    const workspaceId = String(options?.workspaceId || state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      clearMultiChapterSlots()
+      return []
+    }
+
+    state.multiChapterSlotsLoading = true
+    state.multiChapterSlotsError = false
+    if (!options?.silent) {
+      state.multiChapterSlotsStatus = '正在读取多章节槽位...'
+    }
+
+    try {
+      const slots = await requestMultiChapterSlots(workspaceId)
+      state.multiChapterSlots = slots
+      syncChapterBatchTasksWithSlots(slots)
+      syncMergeWorkspaceSlotSelections(slots)
+      state.multiChapterSlotsStatus = options?.silent ? state.multiChapterSlotsStatus : `已读取 ${slots.length} 个章节槽位`
+      return slots
+    } catch (error) {
+      state.multiChapterSlotsError = true
+      state.multiChapterSlotsStatus = error instanceof Error ? error.message : '读取多章节槽位失败'
+      return []
+    } finally {
+      state.multiChapterSlotsLoading = false
+    }
+  }
+
+  async function browseCurrentWorkspace(relativePath = '', options = {}) {
+    const workspaceId = String(options?.workspaceId || state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      clearWorkspaceBrowser()
+      return null
+    }
+
+    state.workspaceBrowserLoading = true
+    state.workspaceBrowserError = false
+    if (!options?.silent) {
+      state.workspaceBrowserStatus = '正在读取工作区目录...'
+    }
+
+    try {
+      const query = new URLSearchParams()
+      if (String(relativePath || '').trim()) {
+        query.set('path', String(relativePath || '').trim())
+      }
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/browser?${query.toString()}`)
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取工作区目录失败')
+      }
+      state.workspaceBrowser = data.browser || null
+      state.workspaceBrowserStatus = options?.silent ? state.workspaceBrowserStatus : '已刷新工作区目录'
+      return state.workspaceBrowser
+    } catch (error) {
+      state.workspaceBrowserError = true
+      state.workspaceBrowserStatus = error instanceof Error ? error.message : '读取工作区目录失败'
+      return null
+    } finally {
+      state.workspaceBrowserLoading = false
+    }
+  }
+
+  async function browseVisualizerWorkspace(relativePath = '', options = {}) {
+    const workspaceId = String(options?.workspaceId || state.visualizerWorkspaceId || '').trim()
+    if (!workspaceId) {
+      clearVisualizerWorkspaceBrowser()
+      return null
+    }
+
+    state.visualizerWorkspaceBrowserLoading = true
+    state.visualizerWorkspaceBrowserError = false
+    if (!options?.silent) {
+      state.visualizerWorkspaceBrowserStatus = '正在读取可视化工作区目录...'
+    }
+
+    try {
+      const query = new URLSearchParams()
+      if (String(relativePath || '').trim()) {
+        query.set('path', String(relativePath || '').trim())
+      }
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/browser?${query.toString()}`)
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取可视化工作区目录失败')
+      }
+      state.visualizerWorkspaceBrowser = data.browser || null
+      state.visualizerWorkspaceBrowserStatus = options?.silent ? state.visualizerWorkspaceBrowserStatus : '已刷新可视化工作区目录'
+      return state.visualizerWorkspaceBrowser
+    } catch (error) {
+      state.visualizerWorkspaceBrowserError = true
+      state.visualizerWorkspaceBrowserStatus = error instanceof Error ? error.message : '读取可视化工作区目录失败'
+      return null
+    } finally {
+      state.visualizerWorkspaceBrowserLoading = false
+    }
+  }
+
+  async function switchVisualizerWorkspace(workspaceId, options = {}) {
+    const normalizedWorkspaceId = String(workspaceId || '').trim()
+    if (!normalizedWorkspaceId) {
+      state.visualizerWorkspaceId = ''
+      clearVisualizerWorkspaceBrowser()
+      clearVisualizerWorkspaceBindings()
+      return
+    }
+
+    const previousWorkspaceId = String(state.visualizerWorkspaceId || '').trim()
+    const nextPath =
+      normalizedWorkspaceId === previousWorkspaceId
+        ? String(state.visualizerWorkspaceBrowser?.currentPath || '').trim()
+        : ''
+
+    state.visualizerWorkspaceId = normalizedWorkspaceId
+    if (normalizedWorkspaceId !== previousWorkspaceId) {
+      clearVisualizerWorkspaceBindings()
+      clearVisualizerWorkspaceBrowser()
+    }
+
+    await browseVisualizerWorkspace(nextPath, {
+      workspaceId: normalizedWorkspaceId,
+      silent: options?.silent,
+    })
+  }
+
+  async function switchCurrentWorkspace(workspaceId) {
+    const normalizedWorkspaceId = String(workspaceId || '').trim()
+    if (!normalizedWorkspaceId) {
+      resetCurrentWorkspaceBindings()
+      return
+    }
+    if (normalizedWorkspaceId === String(state.currentWorkspaceId || '').trim()) {
+      await Promise.all([
+        refreshCurrentWorkspaceSummary({ workspaceId: normalizedWorkspaceId, silent: true }),
+        loadMultiChapterSlots({ workspaceId: normalizedWorkspaceId, silent: true }),
+        browseCurrentWorkspace(state.workspaceBrowser?.currentPath || '', {
+          workspaceId: normalizedWorkspaceId,
+          silent: true,
+        }),
+      ])
+      return
+    }
+
+    resetCurrentWorkspaceBindings()
+    state.currentWorkspaceId = normalizedWorkspaceId
+    await Promise.all([
+      refreshCurrentWorkspaceSummary({ workspaceId: normalizedWorkspaceId, silent: true }),
+      loadMultiChapterSlots({ workspaceId: normalizedWorkspaceId, silent: true }),
+      browseCurrentWorkspace('', {
+        workspaceId: normalizedWorkspaceId,
+        silent: true,
+      }),
+    ])
+  }
+
+  async function createWorkspaceAction() {
+    state.workspaceCreateRunning = true
+    state.workspaceListError = false
+    state.workspaceListStatus = '正在创建工作区...'
+
+    try {
+      const resp = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: String(state.workspaceCreateName || '').trim(),
+        }),
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '创建工作区失败')
+      }
+      state.workspaceCreateName = ''
+      await loadWorkspaceList({ silent: true })
+      await switchCurrentWorkspace(String(data.summary?.workspaceId || ''))
+      state.workspaceListStatus = `已创建工作区 ${String(data.summary?.workspaceId || '').trim()}`
+    } catch (error) {
+      state.workspaceListError = true
+      state.workspaceListStatus = error instanceof Error ? error.message : '创建工作区失败'
+    } finally {
+      state.workspaceCreateRunning = false
+    }
+  }
+
+  async function downloadCurrentWorkspaceUploads() {
+    const workspaceId = String(state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = '当前还没有可下载交付包的工作区'
+      return
+    }
+
+    state.workspaceDownloadRunning = true
+    state.workspaceSummaryError = false
+    state.workspaceSummaryStatus = '正在打包当前工作区交付包（JSON + 题图）...'
+
+    try {
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/deliverable/download`)
+      if (!resp.ok) {
+        const data = await parseApiResponse(resp)
+        throw new Error(data.message || '下载当前工作区交付包失败')
+      }
+      const contentType = String(resp.headers.get('content-type') || '').toLowerCase()
+      const disposition = String(resp.headers.get('content-disposition') || '')
+      if (contentType.includes('text/html') || (!/attachment/i.test(disposition) && !contentType.includes('zip') && !contentType.includes('gzip'))) {
+        throw new Error('交付包下载接口尚未生效，通常是后端服务还没重启，请重启 backend 后再试')
+      }
+      const blob = await resp.blob()
+      const suggestedName = resp.headers.get('content-type')?.includes('gzip')
+        ? `${workspaceId}_deliverable.tar.gz`
+        : `${workspaceId}_deliverable.zip`
+      triggerBlobDownload(parseDownloadFileName(resp, suggestedName), blob)
+      state.workspaceSummaryStatus = '已开始下载当前工作区交付包'
+    } catch (error) {
+      state.workspaceSummaryError = true
+      state.workspaceSummaryStatus = error instanceof Error ? error.message : '下载当前工作区交付包失败'
+    } finally {
+      state.workspaceDownloadRunning = false
+    }
+  }
+
+  async function downloadWorkspaceBrowserEntry(relativePath = '', options = {}) {
+    const workspaceId = String(options?.workspaceId || state.currentWorkspaceId || '').trim()
+    if (!workspaceId) {
+      state.workspaceBrowserError = true
+      state.workspaceBrowserStatus = '当前还没有可下载的工作区'
+      return
+    }
+
+    const normalizedPath = String(relativePath || '').trim()
+    state.workspaceBrowserDownloadTarget = String(options?.downloadKey || normalizedPath || '__root__').trim()
+    state.workspaceBrowserError = false
+    state.workspaceBrowserStatus = normalizedPath ? `正在下载 ${normalizedPath} ...` : '正在下载当前工作区...'
+
+    try {
+      const query = new URLSearchParams()
+      if (normalizedPath) {
+        query.set('path', normalizedPath)
+      }
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/download?${query.toString()}`)
+      if (!resp.ok) {
+        const data = await parseApiResponse(resp)
+        throw new Error(data.message || '下载工作区内容失败')
+      }
+      const blob = await resp.blob()
+      const fallbackName = normalizedPath
+        ? normalizedPath.split('/').filter(Boolean).slice(-1)[0] || `${workspaceId}.zip`
+        : `${workspaceId}.zip`
+      triggerBlobDownload(parseDownloadFileName(resp, fallbackName), blob)
+      state.workspaceBrowserStatus = normalizedPath ? `已开始下载 ${normalizedPath}` : '已开始下载当前工作区'
+    } catch (error) {
+      state.workspaceBrowserError = true
+      state.workspaceBrowserStatus = error instanceof Error ? error.message : '下载工作区内容失败'
+    } finally {
+      state.workspaceBrowserDownloadTarget = ''
+    }
+  }
+
+  async function openWorkspaceBrowserEntry(entry) {
+    if (!entry || entry.type !== 'directory') {
+      return
+    }
+    await browseCurrentWorkspace(String(entry.relativePath || ''))
+  }
+
+  async function deleteWorkspaceById(workspaceId, options = {}) {
+    const normalizedWorkspaceId = String(workspaceId || '').trim()
+    if (!normalizedWorkspaceId) {
+      state.workspaceListError = true
+      state.workspaceListStatus = '请先选择要删除的工作区'
+      return false
+    }
+
+    if (!options?.skipConfirm && typeof window !== 'undefined') {
+      const confirmed = window.confirm(`确认删除工作区 ${normalizedWorkspaceId} 吗？这会删除服务器上的 JSON、PDF、页图和中间产物。`)
+      if (!confirmed) {
+        return false
+      }
+    }
+
+    state.workspaceDeleteRunning = true
+    state.workspaceSummaryError = false
+    state.workspaceListError = false
+    state.workspaceSummaryStatus = `正在删除工作区 ${normalizedWorkspaceId}...`
+    state.workspaceListStatus = state.workspaceSummaryStatus
+
+    try {
+      const resp = await fetch(`/api/workspaces/${encodeURIComponent(normalizedWorkspaceId)}`, {
+        method: 'DELETE',
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '删除工作区失败')
+      }
+      if (normalizedWorkspaceId === String(state.currentWorkspaceId || '').trim()) {
+        resetCurrentWorkspaceBindings()
+        state.workspaceSummaryStatus = `已删除工作区 ${normalizedWorkspaceId}`
+      }
+      await loadWorkspaceList({ silent: true })
+      state.workspaceListStatus = `已删除工作区 ${normalizedWorkspaceId}`
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除工作区失败'
+      state.workspaceSummaryError = true
+      state.workspaceListError = true
+      state.workspaceSummaryStatus = message
+      state.workspaceListStatus = message
+      return false
+    } finally {
+      state.workspaceDeleteRunning = false
     }
   }
 
@@ -2258,6 +2877,7 @@ export function useQuestionBankWorkbench() {
       workspaceId = '',
       jsonAssetId = '',
       jsonFilePath = '',
+      slotRelativePath = '',
       currentChapterTitle = '',
       currentSectionTitle = '',
     } = params || {}
@@ -2270,6 +2890,7 @@ export function useQuestionBankWorkbench() {
         jsonAssetId,
         jsonFilePath,
       }, {
+        slotRelativePath,
         currentChapterTitle,
         currentSectionTitle,
       })),
@@ -2344,57 +2965,132 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
-  async function requestExamSessionInit(params) {
-    const {
-      workspaceId = '',
-      jsonAssetId = '',
-      jsonFilePath = '',
-    } = params || {}
-
-    const resp = await fetch('/api/exams/session/init', {
+  async function requestMultiChapterSlotSetup(params) {
+    const workspaceId = String(params?.workspaceId || '').trim()
+    const slotCount = normalizeMultiChapterSlotCount(params?.slotCount)
+    const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/multi-chapter/setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildManagedJsonBody({
-        workspaceId,
-        jsonAssetId,
-        jsonFilePath,
-      })),
+      body: JSON.stringify({
+        payload: params?.payload || null,
+        slotCount,
+      }),
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
-      throw new Error(data.message || '初始化失败')
+      throw new Error(data.message || '批量创建多章节槽位失败')
     }
     return data
   }
 
-  async function requestExamProcessImage(params) {
-    const {
-      chapterArkHeaders = {},
-      sessionId = '',
-      imageFile = null,
-      lookaheadFile = null,
-      signal,
-      errorMessage = '自动处理失败',
-    } = params || {}
+  async function requestMultiChapterSlots(workspaceId) {
+    const normalizedWorkspaceId = String(workspaceId || '').trim()
+    const resp = await fetch(`/api/workspaces/${encodeURIComponent(normalizedWorkspaceId)}/multi-chapter/slots`)
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '读取多章节槽位失败')
+    }
+    return Array.isArray(data.slots) ? data.slots : []
+  }
 
+  async function requestMultiChapterSlotImagesUpload(params) {
+    const workspaceId = String(params?.workspaceId || '').trim()
+    const slotRelativePath = String(params?.slotRelativePath || '').trim()
+    const files = Array.isArray(params?.files) ? params.files : []
     const formData = new FormData()
-    formData.append('sessionId', sessionId)
-    formData.append('image', imageFile, imageFile?.name || 'image')
-    if (lookaheadFile) {
-      formData.append('lookaheadImage', lookaheadFile, lookaheadFile.name || 'lookahead')
+    formData.append('slotRelativePath', slotRelativePath)
+    for (const file of files) {
+      formData.append('images', file, file.name)
     }
 
-    const resp = await fetch('/api/exams/session/process-image', {
+    const resp = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/multi-chapter/images`, {
       method: 'POST',
-      headers: chapterArkHeaders,
       body: formData,
-      signal,
     })
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
-      throw new Error(data.message || errorMessage)
+      throw new Error(data.message || '上传章节槽位图片失败')
     }
     return data
+  }
+
+  async function requestChapterAutoRunStream(params) {
+    const processingProfile = params?.processingProfile || getChapterProcessingProfile()
+    const endpoint = processingProfile.mode === 'responses'
+      ? '/api/chapters/session/auto-run-stream-responses'
+      : '/api/chapters/session/auto-run-stream'
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(params?.chapterArkHeaders || {}),
+      },
+      body: JSON.stringify({
+        sessionId: String(params?.sessionId || '').trim(),
+        workspaceId: String(params?.workspaceId || '').trim(),
+        slotRelativePath: String(params?.slotRelativePath || '').trim(),
+        imageDir: String(params?.imageDir || '').trim(),
+        currentChapterTitle: String(params?.currentChapterTitle || '').trim(),
+        currentSectionTitle: String(params?.currentSectionTitle || '').trim(),
+      }),
+      signal: params?.signal,
+    })
+
+    if (!resp.ok) {
+      const data = await parseApiResponse(resp)
+      throw new Error(data.message || '自动处理失败')
+    }
+    if (!resp.body) {
+      throw new Error('后端未返回可读取的流')
+    }
+
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let doneEvent = null
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) {
+        break
+      }
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const rawLine of lines) {
+        const line = String(rawLine || '').trim()
+        if (!line) {
+          continue
+        }
+        const event = JSON.parse(line)
+        if (typeof params?.onEvent === 'function') {
+          await params.onEvent(event)
+        }
+        if (event?.type === 'done') {
+          doneEvent = event
+        }
+        if (event?.type === 'error') {
+          throw new Error(String(event?.message || '自动处理失败'))
+        }
+      }
+    }
+
+    const finalLine = buffer.trim()
+    if (finalLine) {
+      const event = JSON.parse(finalLine)
+      if (typeof params?.onEvent === 'function') {
+        await params.onEvent(event)
+      }
+      if (event?.type === 'done') {
+        doneEvent = event
+      }
+      if (event?.type === 'error') {
+        throw new Error(String(event?.message || '自动处理失败'))
+      }
+    }
+
+    return doneEvent
   }
 
   async function requestExamQuestionTypeOptions() {
@@ -2495,14 +3191,6 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
-  async function syncChapterBatchTaskToLocalFile(task) {
-    await syncJsonHandleFromWorkspace({
-      workspaceId: task?.workspaceId || '',
-      jsonAssetId: task?.jsonAssetId || '',
-      jsonFilePath: task?.serverJsonPath || '',
-    }, task?.jsonHandle)
-  }
-
   async function chooseJsonSessionFile() {
     try {
       const { handle, file, payload } = await pickJsonFileFromPicker()
@@ -2532,6 +3220,8 @@ export function useQuestionBankWorkbench() {
       state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
       state.examSessionJsonAssetId = String(data.jsonAssetId || '')
       state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+      state.examSessionPayload = payload
+      applyExamSourceMeta(state, sourceMeta)
       state.examSessionError = false
       state.examSessionStatus = `已选择试卷 JSON：${file.name}`
     } catch (error) {
@@ -2997,38 +3687,6 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  async function chooseAutoImageFolder() {
-    try {
-      const { handle, images } = await pickImageFolderFromPicker()
-      state.chapterAutoFiles = images
-      state.chapterAutoFolderLabel = handle.name
-      state.chapterAutoError = false
-      state.chapterAutoStatus = `已选择文件夹：${handle.name}，共 ${images.length} 张图片`
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        return
-      }
-      state.chapterAutoError = true
-      state.chapterAutoStatus = error instanceof Error ? error.message : '选择文件夹失败'
-    }
-  }
-
-  async function chooseExamAutoImageFolder() {
-    try {
-      const { handle, images } = await pickImageFolderFromPicker()
-      state.examAutoFiles = images
-      state.examAutoFolderLabel = handle.name
-      state.examAutoError = false
-      state.examAutoStatus = `已选择文件夹：${handle.name}，共 ${images.length} 张图片`
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        return
-      }
-      state.examAutoError = true
-      state.examAutoStatus = error instanceof Error ? error.message : '选择文件夹失败'
-    }
-  }
-
   function addChapterManualChapter() {
     state.chapterManualChapters.push(createChapterManualChapter())
   }
@@ -3306,6 +3964,57 @@ export function useQuestionBankWorkbench() {
     return `${base.replace(/[\\/:*?"<>|]+/g, '_')}.json`
   }
 
+  async function createMultiChapterSlotsFromTextbookForm() {
+    const payload = buildTextbookPayload()
+
+    if (!payload.version || !payload.courseId || !payload.textbook.textbookId) {
+      state.jsonFormError = '请至少填写 version、courseId、textbookId'
+      state.generatedTextbookJson = ''
+      return
+    }
+
+    let workspaceId = ''
+    try {
+      workspaceId = requireCurrentWorkspace('请先在工作区页面手动创建并选定一个工作区，再批量创建多章节槽位')
+    } catch (error) {
+      state.multiChapterSlotSetupRunning = false
+      state.multiChapterSlotSetupError = true
+      state.multiChapterSlotSetupStatus = error instanceof Error ? error.message : '请先选择当前工作区'
+      return
+    }
+
+    const slotCount = normalizeMultiChapterSlotCount(state.multiChapterSlotCount)
+    state.multiChapterSlotCount = slotCount
+    state.jsonFormError = ''
+    state.generatedTextbookJson = JSON.stringify(payload, null, 2)
+    state.multiChapterSlotSetupRunning = true
+    state.multiChapterSlotSetupError = false
+    state.multiChapterSlotSetupStatus = `正在重建当前工作区的 ${slotCount} 个章节槽位...`
+
+    try {
+      const data = await requestMultiChapterSlotSetup({
+        workspaceId,
+        payload,
+        slotCount,
+      })
+      state.currentWorkspaceId = String(data.workspaceId || workspaceId)
+      state.multiChapterSlots = Array.isArray(data.slots) ? data.slots : []
+      syncChapterBatchTasksWithSlots(state.multiChapterSlots)
+      state.multiChapterSlotSetupStatus = `已在当前工作区创建 ${state.multiChapterSlots.length} 个章节槽位`
+      state.multiChapterSlotsStatus = `已读取 ${state.multiChapterSlots.length} 个章节槽位`
+      state.multiChapterSlotsError = false
+      await Promise.all([
+        refreshCurrentWorkspaceSummary({ silent: true }),
+        browseCurrentWorkspace('multi_chapter', { silent: true }).catch(() => null),
+      ])
+    } catch (error) {
+      state.multiChapterSlotSetupError = true
+      state.multiChapterSlotSetupStatus = error instanceof Error ? error.message : '批量创建多章节槽位失败'
+    } finally {
+      state.multiChapterSlotSetupRunning = false
+    }
+  }
+
   function generateTextbookJson() {
     const payload = buildTextbookPayload()
 
@@ -3352,6 +4061,7 @@ export function useQuestionBankWorkbench() {
     const suggestedName = createSuggestedJsonFileName()
 
     try {
+      requireCurrentWorkspace()
       if (supportsPicker('showSaveFilePicker')) {
         const handle = await window.showSaveFilePicker({
           suggestedName,
@@ -3406,6 +4116,7 @@ export function useQuestionBankWorkbench() {
     const suggestedName = createSuggestedExamJsonFileName()
 
     try {
+      requireCurrentWorkspace()
       if (supportsPicker('showSaveFilePicker')) {
         const handle = await window.showSaveFilePicker({
           suggestedName,
@@ -3430,6 +4141,7 @@ export function useQuestionBankWorkbench() {
         state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
         state.examSessionJsonAssetId = String(data.jsonAssetId || '')
         state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+        state.examSessionPayload = payload
         state.generatedExamJson = text.trim()
         state.examJsonSaveStatus = `已保存并载入当前工作副本：${handle.name || suggestedName}`
       } else {
@@ -3440,6 +4152,7 @@ export function useQuestionBankWorkbench() {
         state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
         state.examSessionJsonAssetId = String(data.jsonAssetId || '')
         state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+        state.examSessionPayload = payload
         state.generatedExamJson = text.trim()
         state.examJsonSaveStatus = '当前浏览器不支持原生保存选择器，已下载 JSON 并载入后端工作副本'
       }
@@ -3453,309 +4166,8 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  async function initChapterSession() {
-    if (state.workingJsonDocumentType === 'exam') {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = '当前文件是试卷 JSON，请切换到试卷流程初始化会话'
-      return
-    }
-    if (!state.chapterSessionServerJsonPath || !state.chapterSessionInitChapter || !state.chapterSessionInitSection) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = '请先选择 JSON 文件，并填写当前章、当前小节'
-      return
-    }
-    state.chapterSessionError = false
-    state.chapterSessionStatus = '初始化中...'
-    state.chapterPassLogs = ''
-    state.chapterPassResult = null
-    resetChapterAutoRuntimeState()
-
-    try {
-      const data = await requestChapterSessionInit({
-        workspaceId: state.currentWorkspaceId,
-        jsonAssetId: state.chapterSessionJsonAssetId,
-        jsonFilePath: state.chapterSessionServerJsonPath,
-        currentChapterTitle: state.chapterSessionInitChapter,
-        currentSectionTitle: state.chapterSessionInitSection,
-      })
-      state.chapterSessionId = String(data.sessionId || '')
-      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
-      state.chapterSessionJsonAssetId = String(data.jsonAssetId || state.chapterSessionJsonAssetId || '')
-      state.chapterSessionCurrentChapter = String(data.currentChapterTitle || '')
-      state.chapterSessionCurrentSection = String(data.currentSectionTitle || '')
-      state.chapterSessionStatus = `初始化成功，chapters: ${data.chaptersCount}，questions: ${data.questionsCount || 0}`
-      await syncWorkingJsonToLocalFile().catch(() => {})
-    } catch (error) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = error instanceof Error ? error.message : '初始化失败'
-    }
-  }
-
-  async function initExamSession() {
-    if (state.workingJsonDocumentType && state.workingJsonDocumentType !== 'exam') {
-      state.examSessionError = true
-      state.examSessionStatus = '当前文件不是试卷 JSON，请重新选择试卷文件'
-      return
-    }
-    if (!state.examSessionServerJsonPath) {
-      state.examSessionError = true
-      state.examSessionStatus = '请先选择试卷 JSON 文件'
-      return
-    }
-
-    state.examSessionError = false
-    state.examSessionStatus = '初始化中...'
-    state.examPassLogs = ''
-    state.examPassResult = null
-    resetExamAutoRuntimeState()
-
-    try {
-      const data = await requestExamSessionInit({
-        workspaceId: state.currentWorkspaceId,
-        jsonAssetId: state.examSessionJsonAssetId,
-        jsonFilePath: state.examSessionServerJsonPath,
-      })
-      state.examSessionId = String(data.sessionId || '')
-      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
-      state.examSessionJsonAssetId = String(data.jsonAssetId || state.examSessionJsonAssetId || '')
-      state.examSessionTitle = String(data.examTitle || '')
-      state.examSessionExamType = String(data.examType || '')
-      state.examSessionHasAnswer = data.hasAnswer !== false
-      state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
-      state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
-      state.examSessionStatus = `初始化成功，结构节点 ${Number(data.chaptersCount ?? 0)} 个，题目 ${Number(data.questionsCount ?? 0)} 道`
-      await syncExamWorkingJsonToLocalFile().catch(() => {})
-    } catch (error) {
-      state.examSessionError = true
-      state.examSessionStatus = error instanceof Error ? error.message : '初始化失败'
-    }
-  }
-
   function onExamImageChange(event) {
     state.examImageFile = event?.target?.files?.[0] ?? null
-  }
-
-  async function processExamImage() {
-    if (!ensureChapterArkApiKey()) {
-      return
-    }
-    if (!state.examSessionId) {
-      state.examSessionError = true
-      state.examSessionStatus = '请先初始化试卷会话'
-      return
-    }
-    if (!state.examImageFile) {
-      state.examSessionError = true
-      state.examSessionStatus = '请先上传当前图片'
-      return
-    }
-
-    state.examProcessing = true
-    state.examSessionError = false
-    state.examSessionStatus = '处理中...'
-    state.examPassLogs = ''
-    state.examPassResult = null
-
-    try {
-      const data = await requestExamProcessImage({
-        chapterArkHeaders: buildChapterArkHeaders(),
-        sessionId: state.examSessionId,
-        imageFile: state.examImageFile,
-      })
-      const structureLabel = buildExamStructureLabel(data)
-      state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
-      state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
-      state.examPassResult = {
-        structureLabel,
-        chaptersCount: Number(data.chaptersCount ?? 0),
-        questionsCount: Number(data.questionsCount ?? 0),
-        question: buildQuestionSummary(data.question, data.questionsCount ?? 0),
-      }
-      state.examPassLogs = [
-        `当前结构：${structureLabel || '未识别'}`,
-        `结构节点：${state.examPassResult.chaptersCount}`,
-        `题目总数：${state.examPassResult.questionsCount}`,
-        `本次新增：${state.examPassResult.question.upsertedCount}`,
-        `跨页待续：${state.examPassResult.question.pending ? '是' : '否'}`,
-        state.examPassResult.question.reason ? `说明：${state.examPassResult.question.reason}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-      state.examSessionStatus = `处理完成，当前结构：${structureLabel || '未识别'}，题目总数 ${state.examPassResult.questionsCount}`
-      await syncExamWorkingJsonToLocalFile().catch(() => {})
-    } catch (error) {
-      state.examSessionError = true
-      state.examSessionStatus = error instanceof Error ? error.message : '处理失败'
-    } finally {
-      state.examProcessing = false
-    }
-  }
-
-  async function runExamAuto() {
-    if (!ensureChapterArkApiKey()) {
-      return
-    }
-    if (!state.examSessionId) {
-      state.examAutoError = true
-      state.examAutoStatus = '请先初始化试卷会话'
-      return
-    }
-    const files = Array.isArray(state.examAutoFiles) ? state.examAutoFiles : []
-    if (!files.length) {
-      state.examAutoError = true
-      state.examAutoStatus = '请先选择图片文件夹'
-      return
-    }
-
-    resetExamAutoRuntimeState()
-    state.examAutoRunning = true
-    state.examAutoStopping = false
-    state.examAutoError = false
-    state.examAutoStatus = '试卷自动处理进行中...'
-    examAutoAbortController = new AbortController()
-    let successCount = 0
-    let failedCount = 0
-    let firstFailureMessage = ''
-
-    appendExamAutoLog(`开始自动处理，共 ${files.length} 页`)
-
-    try {
-      for (let index = 0; index < files.length; index += 1) {
-        const current = files[index]
-        const lookahead = files[index + 1] || null
-
-        if (state.examAutoStopping || examAutoAbortController.signal.aborted) {
-          appendExamAutoLog(`手动停止于 ${current.name}`)
-          state.examAutoSummary = {
-            phase: 'stopped',
-            currentIndex: index,
-            totalCount: files.length,
-            successCount,
-            failedCount,
-            currentFileName: current.name,
-          }
-          state.examAutoStatus = `已手动停止，停在 ${current.name}`
-          return
-        }
-
-        appendExamAutoLog(`处理中 ${index + 1}/${files.length}: ${current.name}`)
-        try {
-          const data = await requestExamProcessImage({
-            chapterArkHeaders: buildChapterArkHeaders(),
-            sessionId: state.examSessionId,
-            imageFile: current.file,
-            lookaheadFile: lookahead?.file || null,
-            signal: examAutoAbortController.signal,
-          })
-          successCount += 1
-          const structureLabel = buildExamStructureLabel(data)
-          state.examSessionCurrentMajor = String(data.currentMajorTitle || '')
-          state.examSessionCurrentMinor = String(data.currentMinorTitle || '')
-          const question = buildQuestionSummary(data.question, data.questionsCount ?? 0)
-          appendExamAutoLog(
-            `第 ${index + 1}/${files.length} 页完成: ${current.name} | 当前结构: ${structureLabel || '未识别'} | 新增 ${question.upsertedCount} | ${question.pending ? '待续页' : '已完成'}`,
-          )
-          state.examAutoEntries.push({
-            fileName: current.name,
-            status: 'success',
-            structureLabel,
-            question,
-          })
-          state.examAutoLive = {
-            phase: question.pending ? 'pending' : 'success',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            currentFileName: current.name,
-            successCount,
-            failedCount,
-            structureLabel,
-            question,
-          }
-          await syncExamWorkingJsonToLocalFile().catch(() => {})
-        } catch (error) {
-          if (state.examAutoStopping || isAbortRequestError(error) || examAutoAbortController.signal.aborted) {
-            appendExamAutoLog(`手动停止于 ${current.name}`)
-            state.examAutoSummary = {
-              phase: 'stopped',
-              currentIndex: index,
-              totalCount: files.length,
-              successCount,
-              failedCount,
-              currentFileName: current.name,
-            }
-            state.examAutoStatus = `已手动停止，停在 ${current.name}`
-            return
-          }
-
-          const message = error instanceof Error ? error.message : String(error)
-          if (!firstFailureMessage) {
-            firstFailureMessage = message
-          }
-          failedCount += 1
-          appendExamAutoLog(`第 ${index + 1}/${files.length} 页失败: ${current.name} | ${message}`)
-          state.examAutoEntries.push({
-            fileName: current.name,
-            status: 'failed',
-            error: message,
-          })
-          state.examAutoLive = {
-            phase: 'failed',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            currentFileName: current.name,
-            successCount,
-            failedCount,
-            error: message,
-          }
-
-          if (isFatalAutoRunErrorMessage(message)) {
-            throw error
-          }
-        }
-      }
-
-      state.examAutoSummary = {
-        phase: 'done',
-        currentIndex: files.length,
-        totalCount: files.length,
-        successCount,
-        failedCount,
-        currentFileName: '',
-        structureLabel: buildExamStructureLabel({
-          currentMajorTitle: state.examSessionCurrentMajor,
-          currentMinorTitle: state.examSessionCurrentMinor,
-        }),
-      }
-      state.examAutoStatus =
-        failedCount && firstFailureMessage
-          ? `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张。首个错误：${firstFailureMessage}`
-          : `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张`
-      appendExamAutoLog(`自动处理完成，成功 ${successCount} 页，失败 ${failedCount} 页`)
-    } catch (error) {
-      state.examAutoError = true
-      state.examAutoStatus = error instanceof Error ? error.message : '自动处理失败'
-    } finally {
-      state.examAutoRunning = false
-      state.examAutoStopping = false
-      examAutoAbortController = null
-    }
-  }
-
-  function stopExamAuto() {
-    if (!state.examAutoRunning || state.examAutoStopping) {
-      return
-    }
-    state.examAutoStopping = true
-    state.examAutoError = false
-    state.examAutoStatus = '正在请求停止自动处理...'
-    examAutoAbortController?.abort()
-  }
-
-  function resetExamAuto() {
-    if (state.examAutoRunning) {
-      return
-    }
-    resetExamAutoRuntimeState()
   }
 
   function onRepairImageChange(event) {
@@ -3770,6 +4182,15 @@ export function useQuestionBankWorkbench() {
     state.imageAttachFiles = []
     state.imageAttachError = false
     state.imageAttachStatus = '已清空当前待补充图片列表'
+  }
+
+  function removeImageAttachFile(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= state.imageAttachFiles.length) {
+      return
+    }
+    state.imageAttachFiles = state.imageAttachFiles.filter((_, currentIndex) => currentIndex !== index)
+    state.imageAttachError = false
+    state.imageAttachStatus = '已移除 1 张待补充图片'
   }
 
   function onImageAttachPaste(event) {
@@ -3821,6 +4242,33 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  function setMergeSourceMode(mode) {
+    state.mergeSourceMode = normalizeMergeSourceMode(mode)
+    state.mergeError = false
+    state.mergeStatus = ''
+    state.mergeResult = null
+  }
+
+  function toggleMergeWorkspaceSlot(slotRelativePath) {
+    const normalizedPath = String(slotRelativePath || '').trim()
+    if (!normalizedPath) {
+      return
+    }
+    const current = new Set(
+      state.mergeWorkspaceSlotPaths
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    )
+    if (current.has(normalizedPath)) {
+      state.mergeWorkspaceSlotPaths = state.mergeWorkspaceSlotPaths.filter(
+        (item) => String(item || '').trim() !== normalizedPath,
+      )
+    } else {
+      state.mergeWorkspaceSlotPaths = [...state.mergeWorkspaceSlotPaths, normalizedPath]
+    }
+    state.mergeError = false
+  }
+
   function removeMergeJsonFile(index) {
     state.mergeJsonFiles.splice(index, 1)
   }
@@ -3829,8 +4277,33 @@ export function useQuestionBankWorkbench() {
     state.mergeJsonFiles = []
   }
 
+  function clearMergeWorkspaceSlotSelections() {
+    state.mergeWorkspaceSlotPaths = []
+  }
+
   async function mergeJsonFiles() {
-    if (state.mergeJsonFiles.length < 2) {
+    const mergeSourceMode = normalizeMergeSourceMode(state.mergeSourceMode)
+    const selectedSlotPaths = [...new Set(
+      state.mergeWorkspaceSlotPaths
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    )]
+
+    let workspaceId = ''
+    if (mergeSourceMode === 'workspace') {
+      try {
+        workspaceId = requireCurrentWorkspace('请先选择当前工作区，再从 multi_chapter 槽位合并 JSON')
+      } catch (error) {
+        state.mergeError = true
+        state.mergeStatus = error instanceof Error ? error.message : '请先选择当前工作区'
+        return
+      }
+      if (selectedSlotPaths.length < 2) {
+        state.mergeError = true
+        state.mergeStatus = '请至少勾选 2 个 multi_chapter 章节槽位'
+        return
+      }
+    } else if (state.mergeJsonFiles.length < 2) {
       state.mergeError = true
       state.mergeStatus = '请至少选择 2 个 JSON 文件'
       return
@@ -3838,14 +4311,21 @@ export function useQuestionBankWorkbench() {
 
     state.mergeProcessing = true
     state.mergeError = false
-    state.mergeStatus = '合并处理中...'
+    state.mergeStatus = mergeSourceMode === 'workspace' ? '正在合并工作区章节槽位...' : '合并处理中...'
     state.mergeResult = null
 
     try {
       const formData = new FormData()
       formData.append('outputFileName', String(state.mergeOutputFileName || '').trim())
-      for (const file of state.mergeJsonFiles) {
-        formData.append('jsonFiles', file, file.name)
+      if (mergeSourceMode === 'workspace') {
+        formData.append('workspaceId', workspaceId)
+        for (const slotRelativePath of selectedSlotPaths) {
+          formData.append('slotRelativePaths', slotRelativePath)
+        }
+      } else {
+        for (const file of state.mergeJsonFiles) {
+          formData.append('jsonFiles', file, file.name)
+        }
       }
 
       const resp = await fetch('/api/textbook-json/merge', {
@@ -3865,8 +4345,23 @@ export function useQuestionBankWorkbench() {
         questionsCount: Number(data.questionsCount ?? 0),
         duplicateChapterCount: Number(data.duplicateChapterCount ?? 0),
         duplicateQuestionCount: Number(data.duplicateQuestionCount ?? 0),
+        persistedToWorkspace: data.persistedToWorkspace === true,
+        workspaceId: String(data.workspaceId || ''),
+        jsonAssetId: String(data.jsonAssetId || ''),
+        workspaceFilePath: String(data.workspaceFilePath || ''),
       }
-      state.mergeStatus = `合并完成，已输出到 merged_json：${state.mergeResult.mergedFileName || state.mergeResult.mergedFilePath}`
+      if (state.mergeResult.persistedToWorkspace) {
+        state.mergeStatus = `合并完成，已写入当前工作区主 JSON，可直接下载完整文件包`
+        await Promise.all([
+          refreshCurrentWorkspaceSummary({ workspaceId: state.mergeResult.workspaceId || workspaceId, silent: true }),
+          browseCurrentWorkspace(state.workspaceBrowser?.currentPath || '', {
+            workspaceId: state.mergeResult.workspaceId || workspaceId,
+            silent: true,
+          }).catch(() => null),
+        ])
+      } else {
+        state.mergeStatus = `合并完成，已输出到 merged_json：${state.mergeResult.mergedFileName || state.mergeResult.mergedFilePath}`
+      }
     } catch (error) {
       state.mergeError = true
       state.mergeStatus = error instanceof Error ? error.message : '合并失败'
@@ -4100,6 +4595,7 @@ export function useQuestionBankWorkbench() {
     state.repairProcessing = true
     state.repairError = false
     state.repairStatus = '定点修复处理中...'
+    state.repairRawText = ''
     state.repairResult = null
 
     try {
@@ -4127,13 +4623,13 @@ export function useQuestionBankWorkbench() {
       })
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
+        state.repairRawText = String(data.rawText || '')
         throw new Error(data.message || '定点修复失败')
       }
 
+      state.repairRawText = String(data.rawText || '')
       state.repairResult = {
         jsonFilePath: String(data.jsonFilePath || ''),
-        repairJsonPath: String(data.repairJsonPath || ''),
-        repairJsonFileName: String(data.repairJsonFileName || ''),
         chapterTitle: String(data.chapterTitle || ''),
         sectionTitle: String(data.sectionTitle || ''),
         questionId: String(data.questionId || ''),
@@ -4142,8 +4638,9 @@ export function useQuestionBankWorkbench() {
         insertIndex: Number(data.insertIndex ?? -1),
         questionsCount: Number(data.questionsCount ?? 0),
         reason: String(data.reason || ''),
+        rawText: String(data.rawText || ''),
       }
-      state.repairStatus = `修复完成，已输出到 repair_json：${state.repairResult.repairJsonFileName || state.repairResult.repairJsonPath}`
+      state.repairStatus = '修复完成，已写入当前工作区'
     } catch (error) {
       state.repairError = true
       state.repairStatus = error instanceof Error ? error.message : '定点修复失败'
@@ -4172,6 +4669,7 @@ export function useQuestionBankWorkbench() {
     const childNo = childNoText ? Number(childNoText) : null
     const questionId = String(state.imageAttachForm.questionId || '').trim()
     const childQuestionId = String(state.imageAttachForm.childQuestionId || '').trim()
+    const targetType = normalizeImageAttachTargetType(state.imageAttachForm.targetType)
 
     if (isExam) {
       if (!questionId) {
@@ -4217,6 +4715,7 @@ export function useQuestionBankWorkbench() {
         formData.append('sectionNo', String(sectionNo))
         formData.append('questionNo', String(questionNo))
       }
+      formData.append('targetType', targetType)
       if (childNoText) {
         formData.append('childNo', String(childNo))
       }
@@ -4237,18 +4736,17 @@ export function useQuestionBankWorkbench() {
       }
 
       state.imageAttachResult = {
-        repairJsonPath: String(data.repairJsonPath || ''),
-        repairJsonFileName: String(data.repairJsonFileName || ''),
         chapterTitle: String(data.chapterTitle || ''),
         sectionTitle: String(data.sectionTitle || ''),
         questionId: String(data.questionId || ''),
         childQuestionId: String(data.childQuestionId || ''),
         questionTitle: String(data.questionTitle || ''),
+        targetType: String(data.targetType || targetType),
         targetLabel: String(data.targetLabel || ''),
         mediaCount: Number(data.mediaCount ?? 0),
         mediaItems: Array.isArray(data.mediaItems) ? data.mediaItems : [],
       }
-      state.imageAttachStatus = `图片补充完成，已输出到 repair_json：${state.imageAttachResult.repairJsonFileName || state.imageAttachResult.repairJsonPath}`
+      state.imageAttachStatus = '图片补充完成，已写入当前工作区'
     } catch (error) {
       state.imageAttachError = true
       state.imageAttachStatus = error instanceof Error ? error.message : '图片补充失败'
@@ -4338,8 +4836,6 @@ export function useQuestionBankWorkbench() {
       }
 
       state.mathFormatRepairResult = {
-        repairJsonPath: String(data.repairJsonPath || ''),
-        repairJsonFileName: String(data.repairJsonFileName || ''),
         chapterTitle: String(data.chapterTitle || ''),
         sectionTitle: String(data.sectionTitle || ''),
         questionId: String(data.questionId || ''),
@@ -4352,7 +4848,7 @@ export function useQuestionBankWorkbench() {
         repairedText: String(data.repairedText || ''),
         reason: String(data.reason || ''),
       }
-      state.mathFormatRepairStatus = `公式修复完成，已输出到 repair_json：${state.mathFormatRepairResult.repairJsonFileName || state.mathFormatRepairResult.repairJsonPath}`
+      state.mathFormatRepairStatus = '公式修复完成，已写入当前工作区'
     } catch (error) {
       state.mathFormatRepairError = true
       state.mathFormatRepairStatus = error instanceof Error ? error.message : '大模型公式修复失败'
@@ -4365,474 +4861,11 @@ export function useQuestionBankWorkbench() {
     state.chapterImageFile = event.target.files?.[0] ?? null
   }
 
-  async function processChapterImage() {
-    if (!state.chapterSessionId) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = '请先初始化会话'
-      return
-    }
-    if (!state.chapterImageFile) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = '请先选择图片'
-      return
-    }
-    if (!ensureChapterArkApiKey()) {
-      return
-    }
-
-    const processingProfile = getChapterProcessingProfile()
-    const chapterArkHeaders = buildChapterArkHeaders()
-    state.chapterProcessing = true
-    state.chapterSessionError = false
-    state.chapterSessionStatus = '处理中...'
-
-    try {
-      const formData = new FormData()
-      formData.append('sessionId', state.chapterSessionId)
-      formData.append('image', state.chapterImageFile)
-      formData.append('currentChapterTitle', state.chapterSessionCurrentChapter)
-      formData.append('currentSectionTitle', state.chapterSessionCurrentSection)
-
-      const resp = await fetch(processingProfile.processImageEndpoint, {
-        method: 'POST',
-        headers: chapterArkHeaders,
-        body: formData,
-      })
-      const data = await parseApiResponse(resp)
-      if (!resp.ok) {
-        throw new Error(data.message || '处理失败')
-      }
-      state.chapterSessionCurrentChapter = String(data.currentChapterTitle || '')
-      state.chapterSessionCurrentSection = String(data.currentSectionTitle || '')
-      const question = data.question || {}
-      if (question.pending) {
-        state.chapterSessionStatus = `当前页处理完成，检测到跨页题 ${question.continueQuestionKey || ''}，等待下一页。当前小节: ${state.chapterSessionCurrentSection}，跨页队列: ${question.pendingPagesCount ?? '?'} 页`
-      } else {
-        state.chapterSessionStatus = `当前页处理完成并已入库。当前小节: ${state.chapterSessionCurrentSection}，新增题目: ${question.upsertedCount ?? 0}，总 questions: ${data.questionsCount}`
-      }
-      state.chapterPassLogs = JSON.stringify(
-        {
-          chapters: data.passLogs || [],
-          question,
-          prefixCacheExperiment: data.prefixCacheExperiment || null,
-        },
-        null,
-        2,
-      )
-      state.chapterPassResult = {
-        chapterTitle: state.chapterSessionCurrentChapter,
-        sectionTitle: state.chapterSessionCurrentSection,
-        modeLabel: processingProfile.modeLabel,
-        chaptersCount: Number(data.chaptersCount ?? 0),
-        questionsCount: Number(data.questionsCount ?? 0),
-        question: buildQuestionSummary(question, data.questionsCount ?? 0),
-        prefixCache: buildPrefixCacheSummary(data.prefixCacheExperiment),
-      }
-      await syncWorkingJsonToLocalFile().catch(() => {})
-    } catch (error) {
-      state.chapterSessionError = true
-      state.chapterSessionStatus = error instanceof Error ? error.message : '处理失败'
-    } finally {
-      state.chapterProcessing = false
-    }
-  }
-
-  async function runChapterAuto() {
-    if (!state.chapterSessionId) {
-      state.chapterAutoError = true
-      state.chapterAutoStatus = '请先初始化会话'
-      return
-    }
-    if (!state.chapterAutoFiles.length) {
-      state.chapterAutoError = true
-      state.chapterAutoStatus = '请先选择图片文件夹'
-      return
-    }
-    if (!ensureChapterArkApiKey()) {
-      return
-    }
-
-    const processingProfile = getChapterProcessingProfile()
-    const chapterArkHeaders = buildChapterArkHeaders()
-    const files = state.chapterAutoFiles
-    chapterAutoAbortController?.abort()
-    chapterAutoAbortController = new AbortController()
-    state.chapterAutoRunning = true
-    state.chapterAutoStopping = false
-    state.chapterAutoError = false
-    state.chapterAutoStatus = '自动处理中...'
-    state.chapterAutoLogs = ''
-    state.chapterAutoProgress = ''
-    state.chapterAutoEntries = []
-    state.chapterAutoSummary = {
-      totalCount: files.length,
-      completedCount: 0,
-      successCount: 0,
-      failedCount: 0,
-      currentIndex: 0,
-      currentFileName: '',
-      currentChapterTitle: state.chapterSessionCurrentChapter,
-      currentSectionTitle: state.chapterSessionCurrentSection,
-      modeLabel: processingProfile.modeLabel,
-      phase: '准备开始',
-    }
-    state.chapterAutoLive = {
-      phase: 'preparing',
-      title: '准备开始自动处理',
-      detail: `共 ${files.length} 页，当前从 ${state.chapterSessionCurrentSection} 开始`,
-      currentIndex: 0,
-      totalCount: files.length,
-      currentFileName: '',
-      successCount: 0,
-      failedCount: 0,
-      completedCount: 0,
-      currentSectionTitle: state.chapterSessionCurrentSection,
-      modeLabel: processingProfile.modeLabel,
-    }
-
-    let successCount = 0
-    let failedCount = 0
-    let firstFailureMessage = ''
-
-    const markChapterAutoStopped = (currentFileName = '') => {
-      const detail = currentFileName ? `已手动停止，当前停在 ${currentFileName}` : '已手动停止当前自动处理'
-      state.chapterAutoError = false
-      state.chapterAutoStatus = detail
-      state.chapterAutoSummary = {
-        totalCount: files.length,
-        completedCount: successCount + failedCount,
-        successCount,
-        failedCount,
-        currentIndex: successCount + failedCount,
-        currentFileName: currentFileName || state.chapterAutoSummary?.currentFileName || '',
-        currentChapterTitle: state.chapterSessionCurrentChapter,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-        modeLabel: processingProfile.modeLabel,
-        phase: '已手动停止',
-      }
-      state.chapterAutoLive = {
-        phase: 'stopped',
-        title: '自动处理已手动停止',
-        detail,
-        currentIndex: successCount + failedCount,
-        totalCount: files.length,
-        currentFileName: currentFileName || state.chapterAutoSummary?.currentFileName || '',
-        successCount,
-        failedCount,
-        completedCount: successCount + failedCount,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-        question: state.chapterAutoLive?.question || null,
-        prefixCache: state.chapterAutoLive?.prefixCache || null,
-        modeLabel: processingProfile.modeLabel,
-      }
-    }
-
-    try {
-      const startEvent = {
-        type: 'start',
-        totalCount: files.length,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-      }
-      appendChapterAutoLog(formatAutoProgressLine(startEvent))
-
-      for (let index = 0; index < files.length; index += 1) {
-        const current = files[index]
-        const lookahead = files[index + 1] || null
-
-        if (state.chapterAutoStopping || chapterAutoAbortController?.signal.aborted) {
-          appendChapterAutoLog(`手动停止于 ${current.name}`)
-          markChapterAutoStopped(current.name)
-          return
-        }
-
-        const progressEvent = {
-          type: 'progress',
-          currentIndex: index + 1,
-          totalCount: files.length,
-          fileName: current.name,
-        }
-        state.chapterAutoProgress = formatAutoProgressLine(progressEvent)
-        appendChapterAutoLog(state.chapterAutoProgress)
-        state.chapterAutoSummary = {
-          ...state.chapterAutoSummary,
-          currentIndex: index + 1,
-          currentFileName: current.name,
-          currentChapterTitle: state.chapterSessionCurrentChapter,
-          currentSectionTitle: state.chapterSessionCurrentSection,
-          phase: '处理中',
-        }
-        state.chapterAutoLive = {
-          phase: 'processing',
-          title: `正在处理第 ${index + 1} 页`,
-          detail: '已发送图片，等待结构化结果返回',
-          currentIndex: index + 1,
-          totalCount: files.length,
-          currentFileName: current.name,
-          successCount,
-          failedCount,
-          completedCount: successCount + failedCount,
-          currentSectionTitle: state.chapterSessionCurrentSection,
-          question: state.chapterAutoLive?.question || null,
-          prefixCache: state.chapterAutoLive?.prefixCache || null,
-        }
-        await nextTick()
-
-        try {
-          const formData = new FormData()
-          formData.append('sessionId', state.chapterSessionId)
-          formData.append('image', current.file, current.file.name)
-          formData.append('currentChapterTitle', state.chapterSessionCurrentChapter)
-          formData.append('currentSectionTitle', state.chapterSessionCurrentSection)
-          if (lookahead) {
-            formData.append('lookaheadImage', lookahead.file, lookahead.file.name)
-          }
-
-          const resp = await fetch(processingProfile.processImageEndpoint, {
-            method: 'POST',
-            headers: chapterArkHeaders,
-            body: formData,
-            signal: chapterAutoAbortController.signal,
-          })
-          const data = await parseApiResponse(resp)
-          if (!resp.ok) {
-            throw new Error(data.message || '自动处理失败')
-          }
-
-          successCount += 1
-          const question = data.question || {}
-          state.chapterSessionCurrentChapter = String(data.currentChapterTitle || state.chapterSessionCurrentChapter)
-          state.chapterSessionCurrentSection = String(data.currentSectionTitle || state.chapterSessionCurrentSection)
-          const resultEvent = {
-            type: 'result',
-            status: 'success',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            fileName: current.name,
-            currentSectionTitle: data.currentSectionTitle,
-            question: data.question,
-            prefixCacheExperiment: data.prefixCacheExperiment,
-          }
-          const message = formatAutoProgressLine(resultEvent)
-          state.chapterAutoProgress = message
-          appendChapterAutoLog(message)
-          const entry = createAutoEntry(resultEvent)
-          if (entry) {
-            state.chapterAutoEntries.push(entry)
-          }
-          state.chapterAutoSummary = {
-            ...state.chapterAutoSummary,
-            completedCount: successCount + failedCount,
-            successCount,
-            failedCount,
-            currentIndex: index + 1,
-            currentFileName: current.name,
-            currentChapterTitle: state.chapterSessionCurrentChapter,
-            currentSectionTitle: state.chapterSessionCurrentSection,
-            phase: question.pending ? '待下一页续接' : '本页已完成',
-          }
-          state.chapterAutoLive = {
-            phase: question.pending ? 'pending' : 'success',
-            title: question.pending ? `第 ${index + 1} 页进入跨页等待` : `第 ${index + 1} 页完成入库`,
-            detail: question.pending
-              ? `续题标记 ${question.continueQuestionKey || '无'}，当前队列 ${question.pendingPagesCount ?? 0} 页`
-              : `新增 ${question.upsertedCount ?? 0} 题，当前小节 ${state.chapterSessionCurrentSection || '未命名小节'}`,
-            currentIndex: index + 1,
-            totalCount: files.length,
-            currentFileName: current.name,
-            successCount,
-            failedCount,
-            completedCount: successCount + failedCount,
-            currentSectionTitle: state.chapterSessionCurrentSection,
-            question: buildQuestionSummary(question),
-            prefixCache: buildPrefixCacheSummary(data.prefixCacheExperiment),
-          }
-          await syncWorkingJsonToLocalFile().catch(() => {})
-        } catch (error) {
-          if (state.chapterAutoStopping || isAbortRequestError(error) || chapterAutoAbortController?.signal.aborted) {
-            appendChapterAutoLog(`手动停止于 ${current.name}`)
-            markChapterAutoStopped(current.name)
-            return
-          }
-
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          if (!firstFailureMessage) {
-            firstFailureMessage = errorMessage
-          }
-          failedCount += 1
-          const resultEvent = {
-            type: 'result',
-            status: 'failed',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            fileName: current.name,
-            error: errorMessage,
-          }
-          const message = formatAutoProgressLine(resultEvent)
-          state.chapterAutoProgress = message
-          appendChapterAutoLog(message)
-          const entry = createAutoEntry(resultEvent)
-          if (entry) {
-            state.chapterAutoEntries.push(entry)
-          }
-          state.chapterAutoSummary = {
-            ...state.chapterAutoSummary,
-            completedCount: successCount + failedCount,
-            successCount,
-            failedCount,
-            currentIndex: index + 1,
-            currentFileName: current.name,
-            currentChapterTitle: state.chapterSessionCurrentChapter,
-            currentSectionTitle: state.chapterSessionCurrentSection,
-            phase: '本页失败',
-          }
-          state.chapterAutoLive = {
-            phase: 'failed',
-            title: `第 ${index + 1} 页处理失败`,
-            detail: errorMessage,
-            currentIndex: index + 1,
-            totalCount: files.length,
-            currentFileName: current.name,
-            successCount,
-            failedCount,
-            completedCount: successCount + failedCount,
-            currentSectionTitle: state.chapterSessionCurrentSection,
-            question: state.chapterAutoLive?.question || null,
-            prefixCache: state.chapterAutoLive?.prefixCache || null,
-            modeLabel: processingProfile.modeLabel,
-          }
-
-          if (isFatalAutoRunErrorMessage(errorMessage)) {
-            state.chapterAutoError = true
-            state.chapterAutoStatus = `自动处理已中止：${errorMessage}`
-            state.chapterAutoSummary = {
-              totalCount: files.length,
-              completedCount: successCount + failedCount,
-              successCount,
-              failedCount,
-              currentIndex: index + 1,
-              currentFileName: current.name,
-              currentChapterTitle: state.chapterSessionCurrentChapter,
-              currentSectionTitle: state.chapterSessionCurrentSection,
-              modeLabel: processingProfile.modeLabel,
-              phase: '自动处理已中止',
-            }
-            state.chapterAutoLive = {
-              phase: 'failed',
-              title: '自动处理已中止',
-              detail: errorMessage,
-              currentIndex: index + 1,
-              totalCount: files.length,
-              currentFileName: current.name,
-              successCount,
-              failedCount,
-              completedCount: successCount + failedCount,
-              currentSectionTitle: state.chapterSessionCurrentSection,
-              question: state.chapterAutoLive?.question || null,
-              prefixCache: state.chapterAutoLive?.prefixCache || null,
-              modeLabel: processingProfile.modeLabel,
-            }
-
-            if (errorMessage.toLowerCase().includes('session not found') || errorMessage.toLowerCase().includes('please init first')) {
-              state.chapterSessionError = true
-              state.chapterSessionStatus = '当前章节会话已失效，请重新点击“初始化会话”后再跑目录。'
-            }
-            return
-          }
-        }
-      }
-
-      const doneEvent = {
-        type: 'done',
-        successCount,
-        failedCount,
-      }
-      appendChapterAutoLog(formatAutoProgressLine(doneEvent))
-      state.chapterAutoSummary = {
-        totalCount: files.length,
-        completedCount: files.length,
-        successCount,
-        failedCount,
-        currentIndex: files.length,
-        currentFileName: '',
-        currentChapterTitle: state.chapterSessionCurrentChapter,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-        modeLabel: processingProfile.modeLabel,
-        phase: '自动处理完成',
-      }
-      state.chapterAutoLive = {
-        phase: failedCount ? 'done-with-failure' : 'done',
-        title: '自动处理完成',
-        detail:
-          failedCount && firstFailureMessage
-            ? `成功 ${successCount} 页，失败 ${failedCount} 页。首个错误：${firstFailureMessage}`
-            : `成功 ${successCount} 页，失败 ${failedCount} 页`,
-        currentIndex: files.length,
-        totalCount: files.length,
-        currentFileName: '',
-        successCount,
-        failedCount,
-        completedCount: files.length,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-        question: state.chapterAutoLive?.question || null,
-        prefixCache: state.chapterAutoLive?.prefixCache || null,
-        modeLabel: processingProfile.modeLabel,
-      }
-      state.chapterAutoStatus =
-        failedCount && firstFailureMessage
-          ? `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张。首个错误：${firstFailureMessage}`
-          : `自动处理完成，成功 ${successCount} 张，失败 ${failedCount} 张`
-    } catch (error) {
-      if (state.chapterAutoStopping || isAbortRequestError(error) || chapterAutoAbortController?.signal.aborted) {
-        markChapterAutoStopped(state.chapterAutoSummary?.currentFileName || '')
-        return
-      }
-
-      state.chapterAutoError = true
-      state.chapterAutoStatus = error instanceof Error ? error.message : '自动处理失败'
-      state.chapterAutoLive = {
-        phase: 'failed',
-        title: '自动处理失败',
-        detail: state.chapterAutoStatus,
-        currentIndex: state.chapterAutoSummary?.currentIndex || 0,
-        totalCount: files.length,
-        currentFileName: state.chapterAutoSummary?.currentFileName || '',
-        successCount,
-        failedCount,
-        completedCount: successCount + failedCount,
-        currentSectionTitle: state.chapterSessionCurrentSection,
-        question: state.chapterAutoLive?.question || null,
-        prefixCache: state.chapterAutoLive?.prefixCache || null,
-        modeLabel: processingProfile.modeLabel,
-      }
-    } finally {
-      state.chapterAutoRunning = false
-      state.chapterAutoStopping = false
-      chapterAutoAbortController = null
-    }
-  }
-
-  function stopChapterAuto() {
-    if (!state.chapterAutoRunning || state.chapterAutoStopping) {
-      return
-    }
-    state.chapterAutoStopping = true
-    state.chapterAutoError = false
-    state.chapterAutoStatus = '正在请求停止自动处理...'
-    chapterAutoAbortController?.abort()
-  }
-
-  function resetChapterAuto() {
-    if (state.chapterAutoRunning) {
-      return
-    }
-    resetChapterAutoRuntimeState()
-  }
-
   function addChapterBatchTask() {
     state.chapterBatchTasks.push(createChapterBatchTask())
     state.chapterBatchError = false
     if (!state.chapterBatchStatus) {
-      state.chapterBatchStatus = '已添加章节任务，请为每一章选择 JSON、填写起始章节并选择图片文件夹'
+      state.chapterBatchStatus = '已添加章节任务，请为每一章选择工作区槽位、填写起始章节并上传图片'
     }
   }
 
@@ -4851,52 +4884,71 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  async function chooseChapterBatchTaskJson(taskId) {
+  function setChapterBatchTaskSlot(taskId, slotRelativePath) {
     const task = findChapterBatchTask(taskId)
     if (!task) {
       return
     }
 
-    try {
-      const { handle, file } = await pickJsonFileFromPicker()
-      const data = await uploadJsonFileToWorkspace(file, {
-        workspaceId: task.workspaceId,
-      })
-      task.serverJsonPath = String(data.workspaceFilePath || data.filePath || '')
-      task.jsonAssetId = String(data.jsonAssetId || '')
-      task.workspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
-      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
-      task.jsonLabel = file.name
-      task.jsonHandle = handle
+    const normalizedSlotPath = String(slotRelativePath || '').trim()
+    if (!normalizedSlotPath) {
+      task.workspaceId = String(state.currentWorkspaceId || '').trim()
+      task.slotName = ''
+      task.slotRelativePath = ''
+      task.slotJsonFileName = ''
+      task.slotJsonRelativePath = ''
+      task.slotImageCount = 0
       task.error = false
-      task.status = `已选择 JSON 文件：${file.name}`
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        return
-      }
-      task.error = true
-      task.status = error instanceof Error ? error.message : '选择 JSON 文件失败'
+      task.status = '请选择一个章节槽位'
+      return
     }
+
+    const slot = findMultiChapterSlot(normalizedSlotPath)
+    if (!slot) {
+      task.error = true
+      task.status = `未找到槽位：${normalizedSlotPath}`
+      return
+    }
+
+    applyMultiChapterSlotToTask(task, slot)
   }
 
-  async function chooseChapterBatchTaskFolder(taskId) {
+  async function uploadChapterBatchTaskImages(taskId, event) {
     const task = findChapterBatchTask(taskId)
+    const files = Array.from(event?.target?.files ?? [])
+    if (event?.target) {
+      event.target.value = ''
+    }
     if (!task) {
+      return
+    }
+    if (!files.length) {
+      return
+    }
+    if (!String(task.slotRelativePath || '').trim()) {
+      task.error = true
+      task.status = '请先为这个任务选择工作区槽位，再上传图片'
       return
     }
 
     try {
-      const { handle, images } = await pickImageFolderFromPicker()
-      task.imageFiles = images
-      task.folderLabel = handle.name
       task.error = false
-      task.status = `已选择文件夹：${handle.name}，共 ${images.length} 张图片`
+      task.status = `正在备份 ${files.length} 张图片到 ${task.slotRelativePath}...`
+      const data = await requestMultiChapterSlotImagesUpload({
+        workspaceId: task.workspaceId || state.currentWorkspaceId,
+        slotRelativePath: task.slotRelativePath,
+        files,
+      })
+      applyMultiChapterSlotToTask(task, data)
+      await Promise.all([
+        loadMultiChapterSlots({ workspaceId: task.workspaceId || state.currentWorkspaceId, silent: true }),
+        refreshCurrentWorkspaceSummary({ silent: true }),
+      ])
+      task.error = false
+      task.status = `已覆盖并备份 ${Number(data.imageCount || files.length)} 张图片到 ${task.slotRelativePath}`
     } catch (error) {
-      if (error?.name === 'AbortError') {
-        return
-      }
       task.error = true
-      task.status = error instanceof Error ? error.message : '选择文件夹失败'
+      task.status = error instanceof Error ? error.message : '上传章节图片失败'
     }
   }
 
@@ -4905,12 +4957,11 @@ export function useQuestionBankWorkbench() {
       return
     }
 
-    const files = Array.isArray(task.imageFiles) ? task.imageFiles : []
     const abortController = new AbortController()
     chapterBatchAbortControllers.set(task.id, abortController)
     resetChapterBatchTaskRuntime(task)
     task.running = true
-    task.totalCount = files.length
+    task.totalCount = Number(task.slotImageCount || 0)
     task.phase = '初始化中'
     task.status = '初始化章节会话中...'
 
@@ -4926,9 +4977,8 @@ export function useQuestionBankWorkbench() {
 
     try {
       const initData = await requestChapterSessionInit({
-        workspaceId: task.workspaceId,
-        jsonAssetId: task.jsonAssetId,
-        jsonFilePath: task.serverJsonPath,
+        workspaceId: task.workspaceId || state.currentWorkspaceId,
+        slotRelativePath: task.slotRelativePath,
         currentChapterTitle: task.initChapter,
         currentSectionTitle: task.initSection,
       })
@@ -4937,112 +4987,75 @@ export function useQuestionBankWorkbench() {
       task.currentSection = String(initData.currentSectionTitle || '')
       task.phase = '会话已初始化'
       task.status = `初始化成功，chapters: ${initData.chaptersCount}，questions: ${initData.questionsCount || 0}`
-      await syncChapterBatchTaskToLocalFile(task).catch(() => {})
-
-      const startEvent = {
-        type: 'start',
-        totalCount: files.length,
+      await requestChapterAutoRunStream({
+        processingProfile,
+        chapterArkHeaders,
+        sessionId: task.sessionId,
+        workspaceId: task.workspaceId || state.currentWorkspaceId,
+        slotRelativePath: task.slotRelativePath,
+        currentChapterTitle: task.currentChapter,
         currentSectionTitle: task.currentSection,
-      }
-      appendChapterBatchTaskLog(task, formatAutoProgressLine(startEvent))
-
-      for (let index = 0; index < files.length; index += 1) {
-        const current = files[index]
-        const lookahead = files[index + 1] || null
-
-        if (state.chapterBatchStopping || abortController.signal.aborted) {
-          appendChapterBatchTaskLog(task, `手动停止于 ${current.name}`)
-          markStopped(current.name)
-          return
-        }
-
-        const progressEvent = {
-          type: 'progress',
-          currentIndex: index + 1,
-          totalCount: files.length,
-          fileName: current.name,
-        }
-        task.currentIndex = index + 1
-        task.currentFileName = current.name
-        task.phase = '处理中'
-        task.status = formatAutoProgressLine(progressEvent)
-        appendChapterBatchTaskLog(task, task.status)
-        await nextTick()
-
-        try {
-          const data = await requestChapterProcessImage({
-            processingProfile,
-            chapterArkHeaders,
-            sessionId: task.sessionId,
-            imageFile: current.file,
-            lookaheadFile: lookahead?.file || null,
-            currentChapterTitle: task.currentChapter,
-            currentSectionTitle: task.currentSection,
-            signal: abortController.signal,
-          })
-
-          const question = data.question || {}
-          task.successCount += 1
-          task.completedCount = task.successCount + task.failedCount
-          task.currentChapter = String(data.currentChapterTitle || task.currentChapter)
-          task.currentSection = String(data.currentSectionTitle || task.currentSection)
-          task.lastQuestion = buildQuestionSummary(question)
-          task.lastPrefixCache = buildPrefixCacheSummary(data.prefixCacheExperiment)
-          task.phase = question.pending ? '待下一页' : '本页已完成'
-          const resultEvent = {
-            type: 'result',
-            status: 'success',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            fileName: current.name,
-            currentSectionTitle: data.currentSectionTitle,
-            question: data.question,
-            prefixCacheExperiment: data.prefixCacheExperiment,
-          }
-          task.status = formatAutoProgressLine(resultEvent)
-          appendChapterBatchTaskLog(task, task.status)
-          await syncChapterBatchTaskToLocalFile(task).catch(() => {})
-        } catch (error) {
-          if (state.chapterBatchStopping || isAbortRequestError(error) || abortController.signal.aborted) {
-            appendChapterBatchTaskLog(task, `手动停止于 ${current.name}`)
-            markStopped(current.name)
+        signal: abortController.signal,
+        onEvent: async (event) => {
+          if (!event || typeof event !== 'object') {
             return
           }
-
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          if (!firstFailureMessage) {
-            firstFailureMessage = errorMessage
-          }
-          task.failedCount += 1
-          task.completedCount = task.successCount + task.failedCount
-          task.phase = '本页失败'
-          task.error = true
-          const resultEvent = {
-            type: 'result',
-            status: 'failed',
-            currentIndex: index + 1,
-            totalCount: files.length,
-            fileName: current.name,
-            error: errorMessage,
-          }
-          task.status = formatAutoProgressLine(resultEvent)
-          appendChapterBatchTaskLog(task, task.status)
-
-          if (isFatalAutoRunErrorMessage(errorMessage)) {
-            task.running = false
-            task.phase = '处理中止'
-            task.status = `章节任务已中止：${errorMessage}`
+          if (event.type === 'start') {
+            task.totalCount = Number(event.totalCount || task.totalCount || 0)
+            task.phase = '处理中'
+            appendChapterBatchTaskLog(task, formatAutoProgressLine(event))
             return
           }
-        }
-      }
+          if (event.type === 'progress') {
+            task.currentIndex = Number(event.currentIndex || task.currentIndex || 0)
+            task.currentFileName = String(event.fileName || task.currentFileName || '')
+            task.phase = '处理中'
+            task.status = formatAutoProgressLine(event)
+            appendChapterBatchTaskLog(task, task.status)
+            await nextTick()
+            return
+          }
+          if (event.type === 'result') {
+            task.currentIndex = Number(event.currentIndex || task.currentIndex || 0)
+            task.currentFileName = String(event.fileName || task.currentFileName || '')
+            if (event.status === 'success') {
+              const question = event.question || {}
+              task.successCount += 1
+              task.completedCount = task.successCount + task.failedCount
+              task.currentChapter = String(event.currentChapterTitle || task.currentChapter)
+              task.currentSection = String(event.currentSectionTitle || task.currentSection)
+              task.lastQuestion = buildQuestionSummary(question)
+              task.lastPrefixCache = buildPrefixCacheSummary(event.prefixCacheExperiment)
+              task.phase = question.pending ? '待下一页' : '本页已完成'
+            } else {
+              const errorMessage = String(event.error || '章节任务失败')
+              if (!firstFailureMessage) {
+                firstFailureMessage = errorMessage
+              }
+              task.failedCount += 1
+              task.completedCount = task.successCount + task.failedCount
+              task.phase = '本页失败'
+              task.error = true
+              if (isFatalAutoRunErrorMessage(errorMessage)) {
+                task.phase = '处理中止'
+              }
+            }
+            task.status = formatAutoProgressLine(event)
+            appendChapterBatchTaskLog(task, task.status)
+            return
+          }
+          if (event.type === 'done') {
+            task.totalCount = Number(event.totalCount || task.totalCount || 0)
+            task.successCount = Number(event.successCount || task.successCount || 0)
+            task.failedCount = Number(event.failedCount || task.failedCount || 0)
+            task.completedCount = task.successCount + task.failedCount
+            task.currentChapter = String(event.currentChapterTitle || task.currentChapter)
+            task.currentSection = String(event.currentSectionTitle || task.currentSection)
+            appendChapterBatchTaskLog(task, formatAutoProgressLine(event))
+          }
+        },
+      })
 
-      const doneEvent = {
-        type: 'done',
-        successCount: task.successCount,
-        failedCount: task.failedCount,
-      }
-      appendChapterBatchTaskLog(task, formatAutoProgressLine(doneEvent))
       task.running = false
       task.completed = true
       task.phase = task.failedCount ? '完成（含失败）' : '已完成'
@@ -5082,7 +5095,7 @@ export function useQuestionBankWorkbench() {
     const invalidTask = configuredTasks.find((task) => !isChapterBatchTaskReady(task))
     if (invalidTask) {
       state.chapterBatchError = true
-      state.chapterBatchStatus = `请先补全任务：${getChapterBatchTaskLabel(invalidTask)}。每一章都需要 JSON、当前章、当前小节和图片文件夹`
+      state.chapterBatchStatus = `请先补全任务：${getChapterBatchTaskLabel(invalidTask)}。每一章都需要工作区槽位、当前章、当前小节和已备份图片`
       return
     }
 
@@ -5239,11 +5252,10 @@ export function useQuestionBankWorkbench() {
     state.statusText = '上传并转换中...'
 
     try {
+      const workspaceId = requireCurrentWorkspace('请先在工作区页面手动创建并选定一个工作区，再上传 PDF')
       const formData = new FormData()
       formData.append('folderName', state.folderName)
-      if (state.currentWorkspaceId) {
-        formData.append('workspaceId', state.currentWorkspaceId)
-      }
+      formData.append('workspaceId', workspaceId)
       state.selectedPdfFiles.forEach((item, index) => {
         formData.append(`pdf_${index}`, item.file, item.file.name)
       })
@@ -5271,6 +5283,43 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  const examSessionFlow = createExamSessionFlow({
+    state,
+    getPayloadSourceMeta,
+    readWorkspaceJsonText,
+    buildManagedJsonBody,
+    parseApiResponse,
+    buildChapterArkHeaders,
+    ensureChapterArkApiKey,
+    resetExamAutoRuntimeState,
+    buildQuestionSummary,
+    buildExamStructureLabel,
+    appendExamAutoLog,
+    isAbortRequestError,
+    syncExamWorkingJsonToLocalFile,
+    pickImageFolderFromPicker,
+  })
+
+  const chapterSessionFlow = createChapterSessionFlow({
+    state,
+    nextTick,
+    parseApiResponse,
+    buildManagedJsonBody,
+    buildChapterArkHeaders,
+    ensureChapterArkApiKey,
+    getChapterProcessingProfile,
+    resetChapterAutoRuntimeState,
+    buildQuestionSummary,
+    buildPrefixCacheSummary,
+    createAutoEntry,
+    formatAutoProgressLine,
+    appendChapterAutoLog,
+    isAbortRequestError,
+    isFatalAutoRunErrorMessage,
+    syncWorkingJsonToLocalFile,
+    pickImageFolderFromPicker,
+  })
+
   const actions = {
     addExamSectionTask,
     addChapterBatchTask,
@@ -5278,29 +5327,37 @@ export function useQuestionBankWorkbench() {
     addChapterManualSection,
     appendExamSectionFromImages,
     appendExamSectionFromLibrary,
-    chooseAutoImageFolder,
-    chooseChapterBatchTaskFolder,
-    chooseChapterBatchTaskJson,
-    chooseExamAutoImageFolder,
+    chooseAutoImageFolder: chapterSessionFlow.chooseAutoImageFolder,
+    chooseExamAutoImageFolder: examSessionFlow.chooseExamAutoImageFolder,
     chooseExamJsonSessionFile,
     chooseJsonSessionFile,
-    chooseVisualizerJsonFile,
     onDbImportFilesChange,
     removeDbImportFile,
     clearDbImportFiles,
     clearCurrentWorkspaceSummary,
+    clearWorkspaceBrowser,
     loadQuestionBankDbSummary,
+    loadWorkspaceList,
+    loadMultiChapterSlots,
     cleanupCurrentWorkspaceDerivedFiles,
     importQuestionBankDbJsonFiles,
+    createWorkspace: createWorkspaceAction,
+    createMultiChapterSlotsFromTextbookForm,
     deleteCurrentWorkspace,
+    deleteWorkspaceById,
     fillAssistantPrompt,
     clearQuestionBankAssistantChat,
     clearChapterManualSectionImages,
     clearExamSectionImages,
     confirmExamSection,
     downloadCurrentExamJson,
+    downloadCurrentWorkspaceUploads,
+    downloadWorkspaceBrowserEntry,
     downloadCurrentVisualizerJson,
     downloadCurrentWorkingJson,
+    browseCurrentWorkspace,
+    browseVisualizerWorkspace,
+    openWorkspaceBrowserEntry,
     refreshCurrentWorkspaceSummary,
     sendQuestionBankAssistantMessage,
     finalizeExamSections,
@@ -5308,28 +5365,41 @@ export function useQuestionBankWorkbench() {
     generateTextbookJson,
     saveExamJson,
     saveTextbookJson,
-    initExamSession,
-    initChapterSession,
-    onVisualizerJsonChange,
-    onVisualizerUploadsFolderChange,
+    initExamSession: examSessionFlow.initExamSession,
+    initChapterSession: chapterSessionFlow.initChapterSession,
+    onVisualizerJsonFileChange,
+    onVisualizerBundleFolderChange,
+    importVisualizerBundle,
+    clearVisualizerWorkspaceJsonFile,
+    switchVisualizerWorkspace,
+    useCurrentVisualizerWorkspacePathForVisualizer,
+    useCurrentWorkspaceBrowserPathForVisualizer,
+    useDefaultWorkspaceUploadsForVisualizer,
+    clearVisualizerWorkspaceFolder,
     onVisualizerRepairImageChange,
     clearVisualizerRepairImages,
+    removeVisualizerRepairImage,
     attachImagesFromVisualizer,
     generateAnswerFromVisualizer,
-    reloadVisualizerJsonFile,
     repairQuestionFromVisualizer,
     repairMathFormatFromVisualizer,
     updateQuestionTypeFromVisualizer,
+    setMergeSourceMode,
     onMergeJsonFilesChange,
+    toggleMergeWorkspaceSlot,
     removeMergeJsonFile,
     clearMergeJsonFiles,
+    clearMergeWorkspaceSlotSelections,
     mergeJsonFiles,
     loadExamQuestionTypeOptions,
     onImageAttachFilesChange,
     onImageAttachPaste,
     onChapterManualSectionImagesChange,
+    onExamAutoFilesChange: examSessionFlow.onExamAutoFilesChange,
     onExamSectionImagesChange,
+    clearExamAutoFiles: examSessionFlow.clearExamAutoFiles,
     clearImageAttachFiles,
+    removeImageAttachFile,
     attachImagesToQuestionJson,
     onRepairImageChange,
     repairQuestionInJson,
@@ -5341,26 +5411,29 @@ export function useQuestionBankWorkbench() {
     removeChapterManualSection,
     removeExamSectionTask,
     removeExamSectionQuestion,
-    processExamImage,
+    processExamImage: examSessionFlow.processExamImage,
     reopenExamSection,
     resetChapterBatch,
     resetChapterManualBatch,
-    resetExamAuto,
+    resetExamAuto: examSessionFlow.resetExamAuto,
     runChapterBatch,
     runChapterManualBatch,
-    runExamAuto,
+    runExamAuto: examSessionFlow.runExamAuto,
     searchExamSectionLibrary,
     setChapterBatchConcurrency,
+    setChapterBatchTaskSlot,
     setChapterProcessingMode,
     setChapterRunMode,
     setChapterSingleMode,
-    processChapterImage,
-    runChapterAuto,
-    stopExamAuto,
+    processChapterImage: chapterSessionFlow.processChapterImage,
+    runChapterAuto: chapterSessionFlow.runChapterAuto,
+    stopExamAuto: examSessionFlow.stopExamAuto,
     stopChapterBatch,
     stopChapterManualBatch,
-    stopChapterAuto,
-    resetChapterAuto,
+    stopChapterAuto: chapterSessionFlow.stopChapterAuto,
+    switchCurrentWorkspace,
+    uploadChapterBatchTaskImages,
+    resetChapterAuto: chapterSessionFlow.resetChapterAuto,
     moveExamSectionQuestion,
     toggleExamSectionRecord,
     onFileChange,

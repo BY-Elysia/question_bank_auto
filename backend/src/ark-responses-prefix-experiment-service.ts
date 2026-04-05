@@ -322,10 +322,12 @@ function isLikelyInvalidPreviousResponse(error: unknown) {
   }
   const raw = String(error.raw || '').toLowerCase()
   return (
-    (error.status === 400 || error.status === 404) &&
+    (error.status === 400 || error.status === 403 || error.status === 404) &&
     (raw.includes('previous_response_id') ||
       (raw.includes('response') && raw.includes('not found')) ||
       raw.includes('does not exist') ||
+      raw.includes('accessdenied') ||
+      raw.includes('forbidden') ||
       raw.includes('expired'))
   )
 }

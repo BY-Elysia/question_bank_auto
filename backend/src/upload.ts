@@ -28,6 +28,29 @@ export async function readUploadedFileText(file: Express.Multer.File, encoding: 
   return buffer.toString(encoding)
 }
 
+function looksLikeLatin1Mojibake(value: string) {
+  return /[\u00C0-\u00FF]/.test(value) && !/[\u4E00-\u9FFF]/.test(value)
+}
+
+export function normalizeUploadedOriginalName(name: string) {
+  const raw = String(name || '').trim()
+  if (!raw) {
+    return ''
+  }
+  if (!looksLikeLatin1Mojibake(raw)) {
+    return raw
+  }
+
+  const decoded = Buffer.from(raw, 'latin1').toString('utf8').replace(/\0/g, '').trim()
+  if (!decoded) {
+    return raw
+  }
+  if (/[\u4E00-\u9FFF]/.test(decoded) || !/[\uFFFD]/.test(decoded)) {
+    return decoded
+  }
+  return raw
+}
+
 function collectUploadedFiles(req: Request) {
   const files: Express.Multer.File[] = []
   if (req.file) {

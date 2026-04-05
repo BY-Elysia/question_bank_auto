@@ -23,7 +23,7 @@
             <button
               type="button"
               class="ghost-button"
-              :disabled="state.workspaceSummaryLoading || state.workspaceCleanupRunning || state.workspaceDeleteRunning"
+              :disabled="state.workspaceSummaryLoading || state.workspaceDownloadRunning || state.workspaceCleanupRunning || state.workspaceDeleteRunning"
               @click="actions.refreshCurrentWorkspaceSummary"
             >
               {{ state.workspaceSummaryLoading ? '刷新中...' : '刷新空间' }}
@@ -31,7 +31,15 @@
             <button
               type="button"
               class="ghost-button"
-              :disabled="state.workspaceCleanupRunning || state.workspaceDeleteRunning"
+              :disabled="state.workspaceDownloadRunning || state.workspaceCleanupRunning || state.workspaceDeleteRunning"
+              @click="actions.downloadCurrentWorkspaceUploads"
+            >
+              {{ state.workspaceDownloadRunning ? '打包中...' : '下载交付包' }}
+            </button>
+            <button
+              type="button"
+              class="ghost-button"
+              :disabled="state.workspaceDownloadRunning || state.workspaceCleanupRunning || state.workspaceDeleteRunning"
               @click="actions.cleanupCurrentWorkspaceDerivedFiles"
             >
               {{ state.workspaceCleanupRunning ? '清理中...' : '清理中间产物' }}
@@ -39,7 +47,7 @@
             <button
               type="button"
               class="ghost-button workspace-nav__danger"
-              :disabled="state.workspaceDeleteRunning"
+              :disabled="state.workspaceDownloadRunning || state.workspaceDeleteRunning"
               @click="actions.deleteCurrentWorkspace"
             >
               {{ state.workspaceDeleteRunning ? '删除中...' : '删除当前工作区' }}
