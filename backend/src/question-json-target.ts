@@ -18,6 +18,36 @@ export function findQuestionNode(payload: TextbookJsonPayload, questionId: strin
   ) as JsonNode | null
 }
 
+function normalizeQuestionTitleForMatch(value: unknown) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+export function findQuestionNodeByTitle(payload: TextbookJsonPayload, questionTitle: string) {
+  const normalizedTitle = normalizeQuestionTitleForMatch(questionTitle)
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const compactTitle = normalizedTitle.replace(/\s+/g, '')
+  const questions = Array.isArray(payload.questions) ? payload.questions.filter(isObject) : []
+  const matches = questions.filter((item) => {
+    const itemTitle = normalizeQuestionTitleForMatch(item.title)
+    return itemTitle === normalizedTitle || itemTitle.replace(/\s+/g, '') === compactTitle
+  })
+
+  if (matches.length > 1) {
+    const ids = matches
+      .map((item) => (typeof item.questionId === 'string' ? item.questionId.trim() : ''))
+      .filter(Boolean)
+      .join(', ')
+    throw new Error(`questionTitle "${normalizedTitle}" matched multiple questions${ids ? `: ${ids}` : ''}`)
+  }
+
+  return (matches[0] || null) as JsonNode | null
+}
+
 export function findChildNode(
   questionNode: JsonNode,
   params: {
@@ -103,25 +133,47 @@ export function resolveChapterTitles(payload: TextbookJsonPayload, chapterId: st
 
 export function resolveQuestionTarget(params: {
   payload: TextbookJsonPayload
-  questionId: string
+  questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
 }) {
   const {
     payload,
-    questionId,
+    questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
   } = params
 
-  const normalizedQuestionId = String(questionId || '').trim()
-  if (!normalizedQuestionId) {
-    throw new Error('questionId is required')
+  let normalizedQuestionId = String(questionId || '').trim()
+  const normalizedQuestionTitle = normalizeQuestionTitleForMatch(questionTitle)
+  if (!normalizedQuestionId && !normalizedQuestionTitle) {
+    throw new Error('questionId or questionTitle is required')
   }
 
-  const questionNode = findQuestionNode(payload, normalizedQuestionId)
+  let questionNode = normalizedQuestionId ? findQuestionNode(payload, normalizedQuestionId) : null
+  if (!questionNode && normalizedQuestionTitle) {
+    questionNode = findQuestionNodeByTitle(payload, normalizedQuestionTitle)
+    normalizedQuestionId =
+      questionNode && typeof questionNode.questionId === 'string' && questionNode.questionId.trim()
+        ? questionNode.questionId.trim()
+        : normalizedQuestionId
+  }
   if (!questionNode) {
-    throw new Error(`questionId ${normalizedQuestionId} not found in JSON`)
+    if (normalizedQuestionId) {
+      throw new Error(`questionId ${normalizedQuestionId} not found in JSON`)
+    }
+    throw new Error(`questionTitle "${normalizedQuestionTitle}" not found in JSON`)
+  }
+  if (!normalizedQuestionId) {
+    normalizedQuestionId =
+      typeof questionNode.questionId === 'string' && questionNode.questionId.trim()
+        ? questionNode.questionId.trim()
+        : ''
+  }
+  if (!normalizedQuestionId) {
+    throw new Error(`questionTitle "${normalizedQuestionTitle}" has no questionId`)
   }
 
   const chapterId =
@@ -133,7 +185,7 @@ export function resolveQuestionTarget(params: {
   }
 
   const titles = resolveChapterTitles(payload, chapterId)
-  const questionTitle =
+  const resolvedQuestionTitle =
     typeof questionNode.title === 'string' && questionNode.title.trim()
       ? questionNode.title.trim()
       : normalizedQuestionId
@@ -160,6 +212,6 @@ export function resolveQuestionTarget(params: {
     chapterId,
     chapterTitle: titles.chapterTitle,
     sectionTitle: titles.sectionTitle,
-    questionTitle,
+    questionTitle: resolvedQuestionTitle,
   }
 }

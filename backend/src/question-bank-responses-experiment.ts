@@ -12,7 +12,7 @@ import {
   requestArkResponsesPrefixCompletion,
 } from './ark-responses-prefix-experiment-service'
 import {
-  buildCanonicalQuestionTitle,
+  buildQuestionDisplayTitle,
   getPayloadAnswerHandlingMode,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
@@ -68,8 +68,8 @@ type CombinedExtractWithPrefixCacheResult = CombinedExtractResult & {
 const EXPERIMENT_MODEL_KEY = String(process.env.ARK_RESPONSES_MODEL || ARK_MODEL).trim()
   || ARK_MODEL
 
-const BOUNDARY_PREFIX_CACHE_KEY = `question_bank_boundary_prefix_v1:${EXPERIMENT_MODEL_KEY}`
-const EXTRACT_PREFIX_CACHE_KEY = `question_bank_extract_prefix_v1:${EXPERIMENT_MODEL_KEY}`
+const BOUNDARY_PREFIX_CACHE_KEY = `question_bank_boundary_prefix_v4:${EXPERIMENT_MODEL_KEY}`
+const EXTRACT_PREFIX_CACHE_KEY = `question_bank_extract_prefix_v6:${EXPERIMENT_MODEL_KEY}`
 
 function getEffectiveArkApiKey() {
   return getArkApiKeyOverride() || ARK_API_KEY
@@ -110,6 +110,137 @@ function resolveContinueQuestionKey(continueQuestionKey: string | null) {
   return ''
 }
 
+function readQuestionKeyField(raw: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = raw[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function normalizeQuestionKeyForCompare(value: string | null) {
+  return normalizeDigits(String(value || ''))
+    .split('|')
+    .map((part) => normalizeTitle(part))
+    .filter(Boolean)
+    .join('|')
+}
+
+function extractSectionTitleFromContinueQuestionKey(value: string | null) {
+  const parts = String(value || '')
+    .split('|')
+    .map((part) => normalizeTitle(part))
+    .filter(Boolean)
+  return parts.length >= 3 ? parts[1] : ''
+}
+
+function shouldAcceptLookaheadContinueQuestionKey(params: {
+  lookaheadTailQuestionKey: string | null
+  boundaryQueueTailQuestionKey: string | null
+  lookaheadContinueKey: string | null
+  boundaryContinueKey: string | null
+  boundaryReason: string
+  currentSectionTitle: string
+}) {
+  const boundaryQueueTailQuestionKey = resolveContinueQuestionKey(params.boundaryQueueTailQuestionKey)
+  const lookaheadTailQuestionKey = resolveContinueQuestionKey(params.lookaheadTailQuestionKey)
+  if (boundaryQueueTailQuestionKey && !lookaheadTailQuestionKey) {
+    return {
+      accepted: false,
+      reason: 'Lookahead did not return the formal queue tail; ignoring lookahead to avoid preview-page leakage.',
+    }
+  }
+
+  if (
+    boundaryQueueTailQuestionKey
+    && lookaheadTailQuestionKey
+    && normalizeQuestionKeyForCompare(boundaryQueueTailQuestionKey) !== normalizeQuestionKeyForCompare(lookaheadTailQuestionKey)
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `Lookahead formal queue tail "${lookaheadTailQuestionKey}" does not match boundary tail "${boundaryQueueTailQuestionKey}"; retrying because the preview image must not decide the formal queue tail.`,
+    }
+  }
+
+  const lookaheadContinueKey = resolveContinueQuestionKey(params.lookaheadContinueKey)
+  if (!lookaheadContinueKey) {
+    return { accepted: true, reason: '' }
+  }
+
+  if (
+    boundaryQueueTailQuestionKey
+    && normalizeQuestionKeyForCompare(lookaheadContinueKey) !== normalizeQuestionKeyForCompare(boundaryQueueTailQuestionKey)
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `Lookahead continue key "${lookaheadContinueKey}" is not the boundary-confirmed formal queue tail "${boundaryQueueTailQuestionKey}"; ignoring lookahead.`,
+    }
+  }
+
+  const lookaheadQuestionNo = Number(extractTopQuestionNoFromKey(lookaheadContinueKey) || 0)
+  const boundaryQuestionNos = extractQuestionNosFromBoundaryReason(params.boundaryReason)
+  const maxBoundaryQuestionNo = boundaryQuestionNos.length ? Math.max(...boundaryQuestionNos) : 0
+  const boundaryContinueQuestionNo = Number(extractTopQuestionNoFromKey(params.boundaryContinueKey || '') || 0)
+  if (
+    lookaheadQuestionNo > 0
+    && maxBoundaryQuestionNo > 0
+    && lookaheadQuestionNo > maxBoundaryQuestionNo
+    && lookaheadQuestionNo !== boundaryContinueQuestionNo
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `Lookahead continue key points to question ${lookaheadQuestionNo}, but the current queue boundary only confirmed up to question ${maxBoundaryQuestionNo}; ignoring lookahead to avoid treating a preview-page later question as the current queue tail.`,
+    }
+  }
+
+  const lookaheadSectionTitle = extractSectionTitleFromContinueQuestionKey(lookaheadContinueKey)
+  if (!lookaheadSectionTitle) {
+    return { accepted: true, reason: '' }
+  }
+
+  const currentSectionTitle = normalizeTitle(params.currentSectionTitle)
+  if (normalizeTitle(lookaheadSectionTitle) === currentSectionTitle) {
+    return { accepted: true, reason: '' }
+  }
+
+  const boundarySectionTitle = extractSectionTitleFromContinueQuestionKey(params.boundaryContinueKey)
+  if (boundarySectionTitle && normalizeTitle(boundarySectionTitle) === normalizeTitle(lookaheadSectionTitle)) {
+    return { accepted: true, reason: '' }
+  }
+
+  return {
+    accepted: false,
+    reason:
+      `Lookahead continue key points to section "${lookaheadSectionTitle}", but the current queue boundary did not confirm that section; ignoring lookahead to avoid next-page section leakage.`,
+  }
+}
+
+function extractQuestionNosFromBoundaryReason(value: string) {
+  const normalized = normalizeDigits(String(value || ''))
+  const nums: number[] = []
+  const patterns = [
+    /\u7b2c\s*([\d\s\u3001,，和及至到\-~～]+)\s*\u9898/g,
+    /绗琝s*([\d\s\u3001,，和及至到\-~～]+)\s*棰?/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const raw = match[1] || ''
+      for (const numMatch of raw.matchAll(/\d+/g)) {
+        const num = Number(numMatch[0])
+        if (Number.isFinite(num) && num > 0) {
+          nums.push(num)
+        }
+      }
+    }
+  }
+  return [...new Set(nums)]
+}
+
 function extractDistinctQuestionNos(value: string) {
   const matches = [...normalizeDigits(String(value || '')).matchAll(/第\s*(\d+)\s*题/g)]
   return [...new Set(matches.map((match) => Number(match[1])).filter((num) => Number.isFinite(num) && num > 0))]
@@ -118,7 +249,7 @@ function extractDistinctQuestionNos(value: string) {
 function topQuestionNosFromItems(items: QuestionItem[]) {
   return [...new Set(
     items
-      .map((item) => Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0))
+      .map((item) => Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0))
       .filter((num) => Number.isFinite(num) && num > 0),
   )].sort((a, b) => a - b)
 }
@@ -196,16 +327,32 @@ function detectBoundaryReasonScopeMismatch(params: {
   }
 }
 
+function matchesContinueKey(item: QuestionItem, continueKey: string) {
+  const normalizedKey = normalizeDigits(String(continueKey || '')).replace(/\s+/g, '')
+  if (!normalizedKey) return false
+  const continueNo = extractTopQuestionNoFromKey(continueKey) || extractQuestionNoFromText(continueKey)
+  const itemNo = extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title)
+  if (continueNo && itemNo && continueNo === itemNo) {
+    return true
+  }
+  const compactTitle = normalizeDigits(item.title || '').replace(/\s+/g, '')
+  return Boolean(compactTitle && compactTitle.includes(normalizedKey))
+}
+
 function shouldClearTrailingPendingAfterExtraction(items: QuestionItem[], continueKey: string | null) {
   if (!continueKey || !items.length) {
     return false
+  }
+  const matchedIndex = items.findIndex((item) => matchesContinueKey(item, continueKey))
+  if (matchedIndex !== -1) {
+    return matchedIndex === items.length - 1
   }
   const continueNo = Number(extractTopQuestionNoFromKey(continueKey) || 0)
   if (!continueNo) {
     return false
   }
   const topNos = items
-    .map((item) => Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0))
+    .map((item) => Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0))
     .filter((value) => Number.isFinite(value) && value > 0)
   if (!topNos.length) {
     return false
@@ -222,8 +369,15 @@ function excludePendingQuestionItems(items: QuestionItem[], continueKey: string)
   }
   const normalizedKey = normalizeDigits(continueKey).replace(/\s+/g, '')
   const continueNo = Number(extractQuestionNoFromText(continueKey) || 0)
+  const matchedIndex = items.findIndex((item) => matchesContinueKey(item, continueKey))
+  if (matchedIndex !== -1) {
+    return {
+      filtered: items.slice(0, matchedIndex),
+      droppedCount: Math.max(0, items.length - matchedIndex),
+    }
+  }
   const filtered = items.filter((item) => {
-    const itemNo = Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0)
+    const itemNo = Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0)
     if (continueNo && itemNo && itemNo >= continueNo) {
       return false
     }
@@ -304,7 +458,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
     if (item.nodeType === 'GROUP') {
       return {
         ...item,
-        title: buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo) || item.title,
+        title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo) || item.title,
         children: item.children.map((child) => {
           const childSubQuestionNo =
             extractSubQuestionNoFromQuestionId(child.questionId) ||
@@ -313,7 +467,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
           return {
             ...child,
             title:
-              buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo, childSubQuestionNo) ||
+              buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, childSubQuestionNo) ||
               (child as QuestionGroupChild).title,
           }
         }),
@@ -321,7 +475,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
     }
     return {
       ...item,
-      title: buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo, subQuestionNo) || item.title,
+      title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, subQuestionNo) || item.title,
     } as QuestionItem
   })
 }
@@ -398,6 +552,12 @@ async function appendPendingReviewLogs(sessionId: string, logs: Array<Record<str
 
 function buildBoundarySharedInstruction() {
   return [
+    'Hard rule: the boundary assistant only sees formal queue images. It never sees a preview image and must not infer anything from a future preview page.',
+    'Hard rule: queueTailQuestionKey is the last top-level question that actually appears in the formal queue images, in reading order. Return it whenever identifiable, even when it is complete.',
+    'Hard rule: category headings such as "一、填空题", "二、选择题", "三、判断题", "四、计算题/证明题/解答题" are only section/type labels, not top-level questions.',
+    'Hard rule: each Arabic-numbered item under those category headings is its own top-level question. queueTailQuestionKey must point to the last numbered item, not to the category heading.',
+    'Hard rule: if the formal queue images show a section/chapter switch, queueTailQuestionKey must use the real section/chapter of the tail question from the images; backend current section is only cursor context.',
+    'Hard rule: continueQuestionKey is non-null only when queueTailQuestionKey itself needs a following page; when non-null it must be exactly the same locator as queueTailQuestionKey.',
     '你是教材页边界检测器。你只做跨页边界判断，不处理章节/小节切换，也不生成题目 JSON 内容。',
     '下面动态输入会在每次请求中单独提供：当前章标题、当前小节标题、当前小节 chapterId、处理模式、当前处理起点题号、跨页续题标记、跨页补充上下文，以及按顺序传入的图片。',
     '要求:',
@@ -419,6 +579,7 @@ function buildBoundarySharedInstruction() {
     '{',
     '  "question": {',
     '    "needNextPage": true/false,',
+    '    "queueTailQuestionKey": "string or null",',
     '    "continueQuestionKey": "string or null",',
     '    "hasExtractableQuestions": true/false,',
     '    "reason": "string"',
@@ -449,6 +610,8 @@ function buildBoundaryDynamicInstruction(params: {
   } = params
 
   return [
+    'Dynamic rule: the backend chapter/section below is only cursor context. The boundary result must follow what is actually visible in the formal queue images.',
+    'Dynamic rule: queueTailQuestionKey must come only from the formal queue images attached to this request; no preview image is part of this request.',
     '下面是本轮动态上下文，请基于这些上下文和随后附带的图片做判断。',
     `- 当前章标题: ${currentChapterTitle}`,
     `- 当前小节标题: ${currentSectionTitle}`,
@@ -472,6 +635,21 @@ function buildExtractSharedInstruction(
   fixedChapterSection = false,
 ) {
   return [
+    'Hard rule: backend current chapter/section/chapterId is only cursor context. Each question must use the chapter/section actually visible in the formal queue images.',
+    'Hard rule: if the formal queue shows a section switch, questions before the switch keep the old section and questions after the switch use the new section.',
+    'Hard rule: switchSectionTitle only tells backend that a section switch appeared in the formal queue; it must not rewrite questions before the switch.',
+    'Hard rule: extraction does not receive preview pages, so never infer a section switch from a future page.',
+    ...(answerHandlingMode === 'generate_brief'
+      ? [
+          'Hard rule for generated answers: standardAnswer.text must be a worked solution with necessary steps, not a brief final answer.',
+          'Hard rule for generated answers: for calculation, integral, limit, algebra, geometry, or coordinate-transform problems, include the setup, region/range analysis, substitutions or transformations, key formulas, intermediate equations, and final result.',
+          'Hard rule for generated answers: for proof problems, include the logical chain: assumptions, theorem/inequality/definition used, key derivation, and conclusion.',
+          'Hard rule for generated answers: for fill-in questions, still show the reasoning or calculation that determines the fill value unless the question is purely definitional.',
+          'Hard rule for generated answers: for SINGLE_CHOICE and MULTI_CHOICE, put only the selected option ids in standardAnswer.text (for example "B" or "A,C"), put the worked reasoning in standardAnswer.explanation, and keep the option list in options rather than appending it to prompt.text.',
+          'Hard rule for generated answers: outside choice questions, do not output only a number or a final formula. A response like "π" or just one final expression is incomplete.',
+          'Hard rule for generated answers: be concise only by avoiding extra methods and background; never omit necessary derivation steps.',
+        ]
+      : []),
     '你是教材结构化提取器，一次同时输出 chapter 与 question 两部分 JSON。',
     '下面动态输入会在每次请求中单独提供：当前章标题、当前小节标题、当前小节 chapterId、afterSwitchMode、处理模式、本轮提取范围 start/end key、可选 retryHint，以及按顺序传入的图片。',
     '章节规则:',
@@ -661,7 +839,7 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
 
   const result = await requestArkResponsesPrefixCompletion({
     key: BOUNDARY_PREFIX_CACHE_KEY,
-    fixedResponseId: String(process.env.ARK_BOUNDARY_PREFIX_RESPONSE_ID || '').trim(),
+    fixedResponseId: String(process.env.ARK_BOUNDARY_PREFIX_RESPONSE_ID_V4 || '').trim(),
     sharedInput: [
       { role: 'system', content: '你只输出合法 JSON。' },
       { role: 'user', content: sharedInstruction },
@@ -683,14 +861,19 @@ async function detectChapterBoundaryAndPendingByDoubaoWithPrefixCache(params: {
 
   const questionRaw =
     output.question && typeof output.question === 'object' ? (output.question as Record<string, unknown>) : {}
+  const queueTailQuestionKey = readQuestionKeyField(questionRaw, [
+    'queueTailQuestionKey',
+    'currentQueueTailQuestionKey',
+    'tailQuestionKey',
+    'lastQuestionKey',
+  ])
+  const continueQuestionKey = readQuestionKeyField(questionRaw, ['continueQuestionKey'])
 
   return {
     question: {
       needNextPage: Boolean(questionRaw.needNextPage),
-      continueQuestionKey:
-        typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
-          ? questionRaw.continueQuestionKey.trim()
-          : null,
+      queueTailQuestionKey,
+      continueQuestionKey,
       hasExtractableQuestions:
         questionRaw.hasExtractableQuestions === true || questionRaw.hasExtractableQuestion === true,
       reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
@@ -758,7 +941,7 @@ async function detectChapterAndQuestionsByDoubaoWithPrefixCache(params: {
 
   const result = await requestArkResponsesPrefixCompletion({
     key: EXTRACT_PREFIX_CACHE_KEY,
-    fixedResponseId: String(process.env.ARK_EXTRACT_PREFIX_RESPONSE_ID || '').trim(),
+    fixedResponseId: String(process.env.ARK_EXTRACT_PREFIX_RESPONSE_ID_V6 || '').trim(),
     sharedInput: [
       { role: 'system', content: '你只输出合法 JSON。' },
       { role: 'user', content: sharedInstruction },
@@ -864,7 +1047,9 @@ async function detectLastQuestionContinuationWithLookaheadByDoubaoStrict(params:
   currentChapterTitle: string
   currentSectionTitle: string
   currentSectionChapterId: string
+  boundaryQueueTailQuestionKey: string | null
   lookaheadImageLabel?: string | null
+  retryHint?: string | null
 }): Promise<LastQuestionLookaheadResult> {
   const {
     queueImageDataUrls,
@@ -872,10 +1057,19 @@ async function detectLastQuestionContinuationWithLookaheadByDoubaoStrict(params:
     currentChapterTitle,
     currentSectionTitle,
     currentSectionChapterId,
+    boundaryQueueTailQuestionKey,
     lookaheadImageLabel = null,
+    retryHint = null,
   } = params
 
   const instruction = [
+    'Hard rule: the preview image is NOT part of the formal queue. Never use a question number or section title that appears only in the preview image as the formal queue tail.',
+    'Hard rule: first identify queueTailQuestionKey from the formal queue images only, then separately check whether the preview image continues that exact question.',
+    'Hard rule: category headings such as "一、填空题", "二、选择题", "三、判断题", "四、计算题/证明题/解答题" are only section/type labels, not top-level questions.',
+    'Hard rule: each Arabic-numbered item under those category headings is its own top-level question. If the formal queue tail is under a category heading, queueTailQuestionKey must point to that numbered item.',
+    `Hard rule: boundary assistant queueTailQuestionKey is "${boundaryQueueTailQuestionKey || 'null'}". If your formal-queue-only queueTailQuestionKey differs, return your queueTailQuestionKey, set continueQuestionKey to null, and explain the mismatch.`,
+    'Hard rule: continueQuestionKey may be non-null only when it is exactly the same locator as queueTailQuestionKey and the preview page continues that same question.',
+    retryHint ? `Retry instruction: ${retryHint}` : '',
     '你是预读续题判断器。',
     '你只负责判断正式队列中的最后一道顶层大题，是否继续到了下一页预读图。',
     '你不判断 hasExtractableQuestions，也不判断当前处理起点题是否完整。',
@@ -898,6 +1092,7 @@ async function detectLastQuestionContinuationWithLookaheadByDoubaoStrict(params:
     '严格输出 JSON：',
     '{',
     '  "question": {',
+    '    "queueTailQuestionKey": "string or null",',
     '    "continueQuestionKey": "string or null",',
     '    "reason": "string"',
     '  }',
@@ -946,12 +1141,17 @@ async function detectLastQuestionContinuationWithLookaheadByDoubaoStrict(params:
 
   const questionRaw =
     output.question && typeof output.question === 'object' ? (output.question as Record<string, unknown>) : {}
+  const queueTailQuestionKey = readQuestionKeyField(questionRaw, [
+    'queueTailQuestionKey',
+    'currentQueueTailQuestionKey',
+    'tailQuestionKey',
+    'lastQuestionKey',
+  ])
+  const continueQuestionKey = readQuestionKeyField(questionRaw, ['continueQuestionKey'])
 
   return {
-    continueQuestionKey:
-      typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
-        ? questionRaw.continueQuestionKey.trim()
-        : null,
+    queueTailQuestionKey,
+    continueQuestionKey,
     reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
     rawText: text,
   }
@@ -978,7 +1178,7 @@ export async function appendChapterSegmentFromImagesWithResponsesPrefixCache(par
   const chapter = ensureTopChapter(payload, normalizedChapterTitle)
   const section = ensureSectionChapter(payload, chapter.chapterId, normalizedSectionTitle)
   const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
-  const questionSelectionMode = answerHandlingMode === 'generate_brief' ? 'all_visible' : 'complete_only'
+  const questionSelectionMode = answerHandlingMode === 'extract_visible' ? 'complete_only' : 'all_visible'
   const mode: 'single_page' | 'cross_page_merge' = imageDataUrls.length > 1 ? 'cross_page_merge' : 'single_page'
 
   const extractDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
@@ -1153,7 +1353,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
   const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
 
-  if (answerHandlingMode === 'generate_brief') {
+  if (answerHandlingMode !== 'extract_visible') {
     const extractDetect = await detectChapterAndQuestionsByDoubaoWithPrefixCache({
       imageDataUrls: [imageDataUrl],
       currentChapterTitle: activeChapterTitle,
@@ -1189,6 +1389,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       .map((item) =>
         normalizeQuestionItem(item, section.chapterId, sectionTitle, {
           answerHandlingMode,
+          forceFallbackChapterId: false,
         }),
       )
       .filter(Boolean) as QuestionItem[]
@@ -1409,27 +1610,77 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
   const boundaryPrefixCacheDebug = boundaryDetect.prefixCacheDebug
   const extractPrefixCacheRuns: PrefixCacheDebugInfo[] = []
   const boundaryContinueKey = resolveContinueQuestionKey(boundaryDetect.question.continueQuestionKey)
+  const boundaryQueueTailQuestionKey =
+    resolveContinueQuestionKey(boundaryDetect.question.queueTailQuestionKey) || boundaryContinueKey || null
   let effectiveBoundaryContinueKey: string | null = boundaryContinueKey || null
   let lookaheadContinueQuestionKey: string | null = null
+  let lookaheadQueueTailQuestionKey: string | null = null
   let boundaryLookaheadReason = ''
   let boundaryLookaheadRawText = ''
-  if (lookaheadImageDataUrl) {
+  if (lookaheadImageDataUrl && boundaryQueueTailQuestionKey) {
     try {
-      const lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubaoStrict({
+      let lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubaoStrict({
         queueImageDataUrls: questionImageDataUrls,
         lookaheadImageDataUrl,
         currentChapterTitle: activeChapterTitle,
         currentSectionTitle: activeSectionTitle,
         currentSectionChapterId: activeSectionChapterId,
+        boundaryQueueTailQuestionKey,
         lookaheadImageLabel: lookaheadImageLabel || null,
       })
       boundaryLookaheadReason = lookaheadDetect.reason || ''
       boundaryLookaheadRawText = lookaheadDetect.rawText || ''
-      lookaheadContinueQuestionKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
-      effectiveBoundaryContinueKey = lookaheadContinueQuestionKey
+      lookaheadQueueTailQuestionKey = resolveContinueQuestionKey(lookaheadDetect.queueTailQuestionKey) || null
+      let candidateLookaheadContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+      let lookaheadDecision = shouldAcceptLookaheadContinueQuestionKey({
+        lookaheadTailQuestionKey: lookaheadQueueTailQuestionKey,
+        boundaryQueueTailQuestionKey,
+        lookaheadContinueKey: candidateLookaheadContinueKey,
+        boundaryContinueKey,
+        boundaryReason: boundaryDetect.question.reason,
+        currentSectionTitle: activeSectionTitle,
+      })
+      if (!lookaheadDecision.accepted) {
+        const retryDetect = await detectLastQuestionContinuationWithLookaheadByDoubaoStrict({
+          queueImageDataUrls: questionImageDataUrls,
+          lookaheadImageDataUrl,
+          currentChapterTitle: activeChapterTitle,
+          currentSectionTitle: activeSectionTitle,
+          currentSectionChapterId: activeSectionChapterId,
+          boundaryQueueTailQuestionKey,
+          lookaheadImageLabel: lookaheadImageLabel || null,
+          retryHint:
+            `${lookaheadDecision.reason} Re-evaluate queueTailQuestionKey using only the formal queue images; it should match the boundary assistant tail. The preview image may only answer whether that exact tail continues; it must not introduce a later question number or a new section.`,
+        })
+        lookaheadDetect = retryDetect
+        lookaheadQueueTailQuestionKey = resolveContinueQuestionKey(lookaheadDetect.queueTailQuestionKey) || null
+        candidateLookaheadContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+        boundaryLookaheadReason = [boundaryLookaheadReason, `retry: ${lookaheadDetect.reason || ''}`]
+          .filter(Boolean)
+          .join(' | ')
+        boundaryLookaheadRawText = lookaheadDetect.rawText || boundaryLookaheadRawText
+        lookaheadDecision = shouldAcceptLookaheadContinueQuestionKey({
+          lookaheadTailQuestionKey: lookaheadQueueTailQuestionKey,
+          boundaryQueueTailQuestionKey,
+          lookaheadContinueKey: candidateLookaheadContinueKey,
+          boundaryContinueKey,
+          boundaryReason: boundaryDetect.question.reason,
+          currentSectionTitle: activeSectionTitle,
+        })
+      }
+      if (lookaheadDecision.accepted) {
+        lookaheadContinueQuestionKey = candidateLookaheadContinueKey
+        effectiveBoundaryContinueKey = lookaheadContinueQuestionKey
+      } else {
+        lookaheadContinueQuestionKey = null
+        effectiveBoundaryContinueKey = boundaryContinueKey || null
+        boundaryLookaheadReason = [boundaryLookaheadReason, lookaheadDecision.reason].filter(Boolean).join(' | ')
+      }
     } catch (error) {
       boundaryLookaheadReason = error instanceof Error ? `预读判断失败: ${error.message}` : `预读判断失败: ${String(error)}`
     }
+  } else if (lookaheadImageDataUrl) {
+    boundaryLookaheadReason = 'Boundary assistant did not return a formal queue tail; skipped lookahead.'
   }
   let pendingFiltered = { filtered: [] as QuestionItem[], droppedCount: 0 }
   let normalizedQuestions: QuestionItem[] = []
@@ -1555,6 +1806,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       .map((item) =>
         normalizeQuestionItem(item, section.chapterId, sectionTitle, {
           answerHandlingMode,
+          forceFallbackChapterId: false,
         }),
       )
       .filter(Boolean) as QuestionItem[]
@@ -1611,6 +1863,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
@@ -1680,6 +1933,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
@@ -1699,7 +1953,11 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       }
     }
 
-    let integrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions)
+    const integrityCheckOptions = {
+      expectAnswer: true,
+      allowBlankCodeAnswer: false,
+    }
+    let integrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions, integrityCheckOptions)
     if (!rangeMismatchBlocked && integrityIssue) {
       integrityFixRetried = true
       try {
@@ -1721,10 +1979,11 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
-        const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized)
+        const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized, integrityCheckOptions)
         integrityRetryReason = integrityRetryDetect.question.reason || ''
         if (integrityRetryNormalized.length && !retriedIssue) {
           normalizedQuestions = integrityRetryNormalized
@@ -1742,7 +2001,7 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       }
     }
 
-    const unresolvedIntegrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions)
+    const unresolvedIntegrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions, integrityCheckOptions)
     if (unresolvedIntegrityIssue) {
       pendingFiltered = {
         filtered: normalizedQuestions.slice(0, unresolvedIntegrityIssue.index),
@@ -1861,7 +2120,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
       pendingPageLabels,
       boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
       boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+      boundaryQueueTailQuestionKey,
       boundaryContinueQuestionKey: boundaryContinueKey || null,
+      lookaheadQueueTailQuestionKey,
       lookaheadContinueQuestionKey,
       effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
       boundaryLookaheadLabel: lookaheadImageLabel || null,
@@ -1912,7 +2173,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+        boundaryQueueTailQuestionKey,
         boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadQueueTailQuestionKey,
         lookaheadContinueQuestionKey,
         effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,
@@ -1951,7 +2214,9 @@ export async function processChapterSessionImageWithResponsesPrefixCache(params:
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+        boundaryQueueTailQuestionKey,
         boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadQueueTailQuestionKey,
         lookaheadContinueQuestionKey,
         effectiveContinueQuestionKey: effectiveBoundaryContinueKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,

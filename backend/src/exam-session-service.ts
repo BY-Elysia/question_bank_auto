@@ -41,6 +41,17 @@ type ExamStructureContext = {
   chapterId: string
 }
 
+export type DetectedExamSection = {
+  majorTitle: string
+  minorTitle: string
+  chapterId: string
+  structureLabel: string
+  startIndex: number
+  endIndex: number
+  startLabel: string
+  endLabel: string
+}
+
 function normalizeDigits(value: string) {
   return String(value || '').replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 65248))
 }
@@ -125,6 +136,14 @@ function ensureExamMajorChapter(payload: TextbookJsonPayload, titleInput: string
     return Math.max(max, numeric)
   }, 0)
   const parsedMajorNo = extractExamMajorNo(title)
+  if (parsedMajorNo > 0) {
+    const sameId = payload.chapters.find(
+      (item) => item.parentId === null && String(item.chapterId || '').trim() === `ch_${parsedMajorNo}`,
+    )
+    if (sameId) {
+      return sameId
+    }
+  }
   const majorNo = parsedMajorNo > 0 ? parsedMajorNo : maxIdNum + 1
 
   const created = {
@@ -155,6 +174,12 @@ function ensureExamMinorChapter(payload: TextbookJsonPayload, parentChapterId: s
     return Math.max(max, numeric)
   }, 0)
   const minorNo = extractExamMinorNo(title, parentMajorNo) || maxMinorNo + 1
+  const sameId = payload.chapters.find(
+    (item) => item.parentId === parentChapterId && String(item.chapterId || '').trim() === `ch_${parentMajorNo}_${minorNo}`,
+  )
+  if (sameId) {
+    return sameId
+  }
 
   const created = {
     chapterId: `ch_${parentMajorNo}_${minorNo}`,
@@ -192,8 +217,42 @@ function ensureExamStructureContext(
   } as ExamStructureContext
 }
 
+function buildExamStructureContextFromChapterId(payload: TextbookJsonPayload, chapterIdInput: string) {
+  const chapterId = String(chapterIdInput || '').trim()
+  if (!chapterId) {
+    return null
+  }
+
+  const chapter = payload.chapters.find((item) => String(item.chapterId || '').trim() === chapterId)
+  if (!chapter) {
+    return null
+  }
+
+  if (chapter.parentId) {
+    const parent = payload.chapters.find((item) => String(item.chapterId || '').trim() === String(chapter.parentId || '').trim())
+    if (!parent) {
+      return null
+    }
+    return {
+      majorTitle: normalizeTitle(parent.title),
+      minorTitle: normalizeTitle(chapter.title),
+      chapterId: chapter.chapterId,
+    } as ExamStructureContext
+  }
+
+  return {
+    majorTitle: normalizeTitle(chapter.title),
+    minorTitle: '',
+    chapterId: chapter.chapterId,
+  } as ExamStructureContext
+}
+
 function buildExamStructureLabel(majorTitle: string, minorTitle: string) {
   return [normalizeTitle(majorTitle), normalizeTitle(minorTitle)].filter(Boolean).join(' / ') || '未识别结构'
+}
+
+function sameExamStructure(left: Pick<DetectedExamSection, 'chapterId'> | null, right: Pick<DetectedExamSection, 'chapterId'> | null) {
+  return Boolean(left && right && left.chapterId === right.chapterId)
 }
 
 function buildExamCrossPageContext(params: {
@@ -265,6 +324,7 @@ async function detectExamStructureAndPendingByDoubao(params: {
   processingStartQuestionKey?: string | null
   pendingContinueQuestionKey: string | null
   crossPageContext?: string
+  isDocumentEnd?: boolean
 }) {
   const {
     imageDataUrls,
@@ -278,6 +338,7 @@ async function detectExamStructureAndPendingByDoubao(params: {
     processingStartQuestionKey = null,
     pendingContinueQuestionKey,
     crossPageContext = '',
+    isDocumentEnd = false,
   } = params
 
   if (mode === 'cross_page_merge' && (imageDataUrls.length < 2 || imageDataUrls.length > MAX_PENDING_QUEUE_PAGES)) {
@@ -296,6 +357,7 @@ async function detectExamStructureAndPendingByDoubao(params: {
     `- 处理模式: ${mode}`,
     `- 当前处理起点题号: ${processingStartQuestionKey || 'null'}`,
     `- 跨页续题标记: ${pendingContinueQuestionKey || 'null'}`,
+    `- 是否文档最后一页: ${isDocumentEnd ? 'true' : 'false'}`,
     crossPageContext ? `跨页补充上下文: ${crossPageContext}` : '',
     '规则:',
     '1) 试卷结构最多两层：顶层大题区，例如“一、填空题”；二级小结构，例如“1.1”。',
@@ -308,6 +370,9 @@ async function detectExamStructureAndPendingByDoubao(params: {
     hasAnswer
       ? '8) 有答案时，长题若只露出半个答案或某个小问答案明显未结束，仍判为跨页未完。'
       : '8) 无答案时，不要因为 standardAnswer 为空就判定题目未完；只根据题干与小问是否完整显示判断。',
+    isDocumentEnd
+      ? '9) 如果这是文档最后一页，没有下一页可等待；除非当前页末尾题目在图片里确实被截断或明显未闭合，否则不要返回 needNextPage=true。'
+      : '',
     '严格输出 JSON（不要 markdown，不要解释）：',
     '{',
     '  "structure": {',
@@ -350,6 +415,88 @@ async function detectExamStructureAndPendingByDoubao(params: {
       reason: typeof questionNode.reason === 'string' ? questionNode.reason : '',
       rawText,
     } as QuestionBoundaryResult,
+  }
+}
+
+async function detectExamStructureSegmentsByDoubao(params: {
+  imageDataUrls: string[]
+  examTitle: string
+  examType: string
+  hasAnswer: boolean
+  currentMajorTitle: string
+  currentMinorTitle: string
+  currentStructureChapterId: string
+  isDocumentStart?: boolean
+  isDocumentEnd?: boolean
+}) {
+  const {
+    imageDataUrls,
+    examTitle,
+    examType,
+    hasAnswer,
+    currentMajorTitle,
+    currentMinorTitle,
+    currentStructureChapterId,
+    isDocumentStart = false,
+    isDocumentEnd = false,
+  } = params
+
+  const instruction = [
+    '你是试卷板块识别器。你的任务不是抽题，而是识别当前页按阅读顺序出现的所有结构片段。',
+    '如果页面顶部是在延续上一页的当前板块，而本页稍后又切换到了新的板块，也要把“延续的旧板块”作为第一项输出。',
+    '上下文:',
+    `- 试卷标题: ${examTitle}`,
+    `- 试卷类型: ${examType}`,
+    `- 是否有答案: ${hasAnswer ? 'true' : 'false'}`,
+    `- 当前沿用的大结构标题: ${currentMajorTitle || 'null'}`,
+    `- 当前沿用的小结构标题: ${currentMinorTitle || 'null'}`,
+    `- 当前沿用的 chapterId: ${currentStructureChapterId || 'null'}`,
+    `- 是否第一页: ${isDocumentStart ? 'true' : 'false'}`,
+    `- 是否最后一页: ${isDocumentEnd ? 'true' : 'false'}`,
+    '规则:',
+    '1) 输出当前页中实际生效的结构片段 structures，按阅读顺序排列。',
+    '2) 如果本页顶部明显是在延续上一页的当前板块，即使本页没有再次印出该板块标题，也要把它作为第一项输出，并标记 carryOver=true。',
+    '3) 如果本页中先是旧板块的尾部，后面出现新的大题区或二级结构，必须同时输出旧板块和新板块，不能只输出最后一个。',
+    '4) 顶层结构是“一、二、三……”这类大题区；二级结构是“1.1 / (一)”这类小结构。没有小结构时 minorTitle 返回 null。',
+    '5) 如果整页都属于同一个板块，也要输出 1 个 structures 项。',
+    '6) 不要输出题目内容，不要输出 needNextPage，不要输出 question 信息。',
+    '严格输出 JSON（不要 markdown，不要解释）：',
+    '{',
+    '  "structures": [',
+    '    {',
+    '      "majorTitle": "string",',
+    '      "minorTitle": "string or null",',
+    '      "carryOver": true/false,',
+    '      "reason": "string"',
+    '    }',
+    '  ]',
+    '}',
+  ].join('\n')
+
+  const { output, rawText } = await requestExamJsonObject({
+    instruction,
+    imageDataUrls,
+  })
+
+  const rawStructures = Array.isArray(output.structures) ? output.structures : []
+  const structures = rawStructures
+    .map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
+      if (!row) {
+        return null
+      }
+      return {
+        majorTitle: normalizeTitle(String(row.majorTitle || '')),
+        minorTitle: normalizeTitle(String(row.minorTitle || '')),
+        carryOver: row.carryOver === true,
+        reason: String(row.reason || '').trim(),
+      }
+    })
+    .filter((item): item is { majorTitle: string; minorTitle: string; carryOver: boolean; reason: string } => Boolean(item?.majorTitle))
+
+  return {
+    structures,
+    rawText,
   }
 }
 
@@ -416,6 +563,7 @@ async function detectExamStructureAndQuestionsByDoubao(params: {
   mode: 'single_page' | 'cross_page_merge'
   processingStartQuestionKey?: string | null
   extractEndBeforeQuestionKey?: string | null
+  isDocumentEnd?: boolean
 }) {
   const {
     imageDataUrls,
@@ -428,6 +576,7 @@ async function detectExamStructureAndQuestionsByDoubao(params: {
     mode,
     processingStartQuestionKey = null,
     extractEndBeforeQuestionKey = null,
+    isDocumentEnd = false,
   } = params
 
   const instruction = [
@@ -440,6 +589,7 @@ async function detectExamStructureAndQuestionsByDoubao(params: {
     `- 当前小结构标题: ${currentMinorTitle || 'null'}`,
     `- 当前结构 chapterId: ${currentStructureChapterId || 'null'}`,
     `- 处理模式: ${mode}`,
+    `- 是否文档最后一页: ${isDocumentEnd ? 'true' : 'false'}`,
     '本轮提取范围（严格遵守）:',
     `{ "startQuestionKey": ${JSON.stringify(processingStartQuestionKey || null)}, "endBeforeQuestionKey": ${JSON.stringify(extractEndBeforeQuestionKey || null)} }`,
     '结构规则:',
@@ -457,6 +607,9 @@ async function detectExamStructureAndQuestionsByDoubao(params: {
     hasAnswer
       ? '6) 有答案时，standardAnswer.text 必须尽量贴近图片原文，不得补写图片中不可见的答案。'
       : '6) 本次文档无答案，所有 standardAnswer 字段必须保留但内容置空。',
+    isDocumentEnd
+      ? '文档已经到最后一页。最后一道题只要在图片里完整闭合就必须输出；只有真实截断、明显未闭合的尾题才允许丢弃，不能再等待下一页。'
+      : '',
     ...buildSharedQuestionContentRuleLines(7),
     ...buildSharedQuestionStructureInstructionLines(hasAnswer),
     '严格输出 JSON（不要 markdown，不要解释）：',
@@ -500,19 +653,67 @@ async function detectExamStructureAndQuestionsByDoubao(params: {
 }
 
 function resolveExamQuestionStructureContext(params: {
+  payload: TextbookJsonPayload
   rawQuestion: Record<string, unknown>
   currentContext: ExamStructureContext | null
-  latestContext: ExamStructureContext
+  latestContext: ExamStructureContext | null
 }) {
-  const { rawQuestion, currentContext, latestContext } = params
+  const { payload, rawQuestion, currentContext, latestContext } = params
   const rawChapterId = String(rawQuestion.chapterId || '').trim()
-  if (!rawChapterId) {
-    return currentContext || latestContext
+  if (rawChapterId) {
+    const payloadContext = buildExamStructureContextFromChapterId(payload, rawChapterId)
+    if (payloadContext) {
+      return payloadContext
+    }
+    if (currentContext && rawChapterId === currentContext.chapterId) {
+      return currentContext
+    }
+    if (latestContext && rawChapterId === latestContext.chapterId) {
+      return latestContext
+    }
   }
-  if (currentContext && rawChapterId === currentContext.chapterId) {
-    return currentContext
+  return currentContext || latestContext
+}
+
+function normalizeExamQuestionsForUpsert(params: {
+  payload: TextbookJsonPayload
+  rawQuestions: unknown[]
+  currentContext: ExamStructureContext | null
+  latestContext: ExamStructureContext | null
+  fallbackMajorTitle: string
+  fallbackMinorTitle: string
+  expectAnswer: boolean
+}) {
+  const fallbackContext =
+    params.latestContext ||
+    params.currentContext ||
+    (params.fallbackMajorTitle
+      ? ensureExamStructureContext(params.payload, params.fallbackMajorTitle, params.fallbackMinorTitle)
+      : null)
+
+  if (!fallbackContext) {
+    return [] as QuestionItem[]
   }
-  return latestContext
+
+  return (Array.isArray(params.rawQuestions) ? params.rawQuestions : [])
+    .map((item) => {
+      const rawQuestion = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
+      if (!rawQuestion) {
+        return null
+      }
+      const targetContext =
+        resolveExamQuestionStructureContext({
+          payload: params.payload,
+          rawQuestion,
+          currentContext: params.currentContext,
+          latestContext: params.latestContext,
+        }) || fallbackContext
+      const scopeTitle = targetContext.minorTitle || targetContext.majorTitle
+      return normalizeQuestionItem(rawQuestion, targetContext.chapterId, scopeTitle, {
+        expectAnswer: params.expectAnswer,
+      })
+    })
+    .filter(Boolean) as QuestionItem[]
 }
 
 function summarizeExamQuestionResult(
@@ -558,12 +759,14 @@ export async function processExamSessionImage(params: {
   imageLabel?: string
   lookaheadImageDataUrl?: string
   lookaheadImageLabel?: string
+  isFinalSource?: boolean
 }) {
   const {
     sessionId,
     imageDataUrl,
     imageLabel = '',
     lookaheadImageDataUrl = '',
+    isFinalSource = false,
   } = params
 
   const session = await getExamSession(sessionId)
@@ -622,6 +825,7 @@ export async function processExamSessionImage(params: {
       pendingPagesCount: pendingPageDataUrls.length,
       pendingPageLabels,
     }),
+    isDocumentEnd: isFinalSource,
   })
 
   let effectiveContinueQuestionKey = boundaryDetect.question.continueQuestionKey
@@ -667,14 +871,15 @@ export async function processExamSessionImage(params: {
       imageDataUrls: questionImageDataUrls,
       examTitle: session.examTitle,
       examType: session.examType,
-      hasAnswer: session.hasAnswer,
-      currentMajorTitle: questionSession.currentMajorTitle,
-      currentMinorTitle: questionSession.currentMinorTitle,
-      currentStructureChapterId: questionSession.currentStructureChapterId,
-      mode,
-      processingStartQuestionKey,
-      extractEndBeforeQuestionKey: effectiveContinueQuestionKey || null,
-    })
+        hasAnswer: session.hasAnswer,
+        currentMajorTitle: questionSession.currentMajorTitle,
+        currentMinorTitle: questionSession.currentMinorTitle,
+        currentStructureChapterId: questionSession.currentStructureChapterId,
+        mode,
+        processingStartQuestionKey,
+        extractEndBeforeQuestionKey: effectiveContinueQuestionKey || null,
+        isDocumentEnd: isFinalSource,
+      })
 
     extractReason = extractDetect.question.reason || ''
     extractRawText = extractDetect.question.rawText || extractRawText
@@ -684,26 +889,15 @@ export async function processExamSessionImage(params: {
       latestContext = ensureExamStructureContext(payload, extractMajorTitle, extractMinorTitle)
     }
 
-    normalizedQuestions = (Array.isArray(extractDetect.question.questionsToUpsert)
-      ? extractDetect.question.questionsToUpsert
-      : []
-    )
-      .map((item) => {
-        const rawQuestion = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
-        if (!rawQuestion) {
-          return null
-        }
-        const targetContext = resolveExamQuestionStructureContext({
-          rawQuestion,
-          currentContext,
-          latestContext: latestContext || currentContext || ensureExamStructureContext(payload, boundaryMajorTitle, boundaryMinorTitle),
-        })
-        const scopeTitle = targetContext.minorTitle || targetContext.majorTitle
-        return normalizeQuestionItem(rawQuestion, targetContext.chapterId, scopeTitle, {
-          expectAnswer: session.hasAnswer,
-        })
-      })
-      .filter(Boolean) as QuestionItem[]
+    normalizedQuestions = normalizeExamQuestionsForUpsert({
+      payload,
+      rawQuestions: extractDetect.question.questionsToUpsert,
+      currentContext,
+      latestContext,
+      fallbackMajorTitle: extractMajorTitle || boundaryMajorTitle,
+      fallbackMinorTitle: extractMinorTitle || boundaryMinorTitle,
+      expectAnswer: session.hasAnswer,
+    })
 
     const integrityIssue = detectQuestionIntegrityIssue(normalizedQuestions, {
       expectAnswer: session.hasAnswer,
@@ -715,6 +909,69 @@ export async function processExamSessionImage(params: {
     }
   }
 
+  let documentEndRecoveryReason = ''
+  if (isFinalSource && (effectiveContinueQuestionKey || !boundaryDetect.question.hasExtractableQuestions || pendingPageDataUrls.length)) {
+    try {
+      const finalExtractDetect = await detectExamStructureAndQuestionsByDoubao({
+        imageDataUrls: questionImageDataUrls,
+        examTitle: session.examTitle,
+        examType: session.examType,
+        hasAnswer: session.hasAnswer,
+        currentMajorTitle: questionSession.currentMajorTitle,
+        currentMinorTitle: questionSession.currentMinorTitle,
+        currentStructureChapterId: questionSession.currentStructureChapterId,
+        mode,
+        processingStartQuestionKey,
+        extractEndBeforeQuestionKey: null,
+        isDocumentEnd: true,
+      })
+
+      const finalMajorTitle = finalExtractDetect.structure.majorTitle || boundaryMajorTitle
+      const finalMinorTitle = finalExtractDetect.structure.minorTitle || boundaryMinorTitle
+      let finalLatestContext = latestContext
+      if (finalMajorTitle) {
+        finalLatestContext = ensureExamStructureContext(payload, finalMajorTitle, finalMinorTitle)
+      }
+
+      let finalNormalizedQuestions = normalizeExamQuestionsForUpsert({
+        payload,
+        rawQuestions: finalExtractDetect.question.questionsToUpsert,
+        currentContext,
+        latestContext: finalLatestContext,
+        fallbackMajorTitle: finalMajorTitle || boundaryMajorTitle,
+        fallbackMinorTitle: finalMinorTitle || boundaryMinorTitle,
+        expectAnswer: session.hasAnswer,
+      })
+
+      const finalIntegrityIssue = detectQuestionIntegrityIssue(finalNormalizedQuestions, {
+        expectAnswer: session.hasAnswer,
+      })
+      if (finalIntegrityIssue) {
+        finalNormalizedQuestions = finalNormalizedQuestions.slice(0, finalIntegrityIssue.index)
+        pendingReason = `${finalIntegrityIssue.reason} 已到文档末尾，已丢弃未闭合尾题并保留前面完整题目。`
+      } else if (finalExtractDetect.question.reason) {
+        pendingReason = finalExtractDetect.question.reason
+      }
+
+      if (finalNormalizedQuestions.length >= normalizedQuestions.length) {
+        normalizedQuestions = finalNormalizedQuestions
+        latestContext = finalLatestContext
+        extractReason = finalExtractDetect.question.reason || extractReason
+        extractRawText = finalExtractDetect.question.rawText || extractRawText
+      }
+
+      effectiveContinueQuestionKey = null
+    } catch (error) {
+      documentEndRecoveryReason = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  if (isFinalSource && documentEndRecoveryReason) {
+    extractReason = [extractReason, `文档末页收尾回退失败: ${documentEndRecoveryReason}`]
+      .filter(Boolean)
+      .join(' | ')
+  }
+
   if (normalizedQuestions.length) {
     upsertQuestionsById(payload, normalizedQuestions)
   }
@@ -724,7 +981,9 @@ export async function processExamSessionImage(params: {
   let nextProcessingStartQuestionKey: string | null = null
   let pending = false
 
-  if (!boundaryDetect.question.hasExtractableQuestions) {
+  if (isFinalSource) {
+    pending = false
+  } else if (!boundaryDetect.question.hasExtractableQuestions) {
     pending = true
     nextPendingPageDataUrls = [...questionImageDataUrls].slice(-MAX_PENDING_QUEUE_PAGES)
     nextPendingPageLabels = [...questionImageLabels].slice(-MAX_PENDING_QUEUE_PAGES)
@@ -841,5 +1100,96 @@ export async function initExamSession(params: {
     currentStructureChapterId: '',
     chaptersCount: payload.chapters.length,
     questionsCount: Array.isArray(payload.questions) ? payload.questions.length : 0,
+  }
+}
+
+export async function detectExamSectionsFromImages(params: {
+  jsonFilePath: string
+  imageDataUrls: string[]
+  imageLabels?: string[]
+}) {
+  const imageDataUrls = Array.isArray(params.imageDataUrls) ? params.imageDataUrls : []
+  if (!imageDataUrls.length) {
+    throw new Error('imageDataUrls is required')
+  }
+
+  const payload = await loadTextbookJson(params.jsonFilePath)
+  const meta = getPayloadSourceMeta(payload)
+  if (meta.documentType !== 'exam' || !payload.exam) {
+    throw new Error(`JSON is not an exam payload: ${params.jsonFilePath}`)
+  }
+
+  const previewPayload: TextbookJsonPayload = {
+    ...payload,
+    chapters: Array.isArray(payload.chapters) ? [...payload.chapters] : [],
+    questions: Array.isArray(payload.questions) ? [...payload.questions] : [],
+  }
+
+  const sections: DetectedExamSection[] = []
+  const logs: string[] = []
+  let currentMajorTitle = ''
+  let currentMinorTitle = ''
+  let currentStructureChapterId = ''
+
+  for (let index = 0; index < imageDataUrls.length; index += 1) {
+    const label = String(params.imageLabels?.[index] || `${index + 1}.jpg`).trim() || `${index + 1}.jpg`
+    const detected = await detectExamStructureSegmentsByDoubao({
+      imageDataUrls: [imageDataUrls[index]],
+      examTitle: meta.title,
+      examType: payload.exam.examType,
+      hasAnswer: payload.exam.hasAnswer,
+      currentMajorTitle,
+      currentMinorTitle,
+      currentStructureChapterId,
+      isDocumentStart: index === 0,
+      isDocumentEnd: index === imageDataUrls.length - 1,
+    })
+    const pageStructures = detected.structures.length
+      ? detected.structures
+      : currentMajorTitle
+        ? [{ majorTitle: currentMajorTitle, minorTitle: currentMinorTitle, carryOver: true, reason: 'fallback-current-context' }]
+        : []
+
+    logs.push(
+      pageStructures.length
+        ? `第 ${index + 1} 页(${label}) 板块识别: ${pageStructures.map((item) => `${buildExamStructureLabel(item.majorTitle, item.minorTitle)}${item.carryOver ? ' [续接]' : ''}`).join(' -> ')}`
+        : `第 ${index + 1} 页(${label}) 板块识别: 未识别到结构`,
+    )
+
+    for (const pageStructure of pageStructures) {
+      const context = ensureExamStructureContext(previewPayload, pageStructure.majorTitle, pageStructure.minorTitle || '')
+      const nextSection: DetectedExamSection = {
+        majorTitle: context.majorTitle,
+        minorTitle: context.minorTitle,
+        chapterId: context.chapterId,
+        structureLabel: buildExamStructureLabel(context.majorTitle, context.minorTitle),
+        startIndex: index + 1,
+        endIndex: index + 1,
+        startLabel: label,
+        endLabel: label,
+      }
+
+      const previousSection = sections.length ? sections[sections.length - 1] : null
+      if (!sameExamStructure(previousSection, nextSection)) {
+        sections.push(nextSection)
+      } else if (previousSection) {
+        previousSection.endIndex = index + 1
+        previousSection.endLabel = label
+      }
+
+      currentMajorTitle = context.majorTitle
+      currentMinorTitle = context.minorTitle
+      currentStructureChapterId = context.chapterId
+    }
+  }
+
+  return {
+    jsonFilePath: params.jsonFilePath,
+    examTitle: meta.title,
+    examType: payload.exam.examType,
+    hasAnswer: payload.exam.hasAnswer,
+    totalCount: imageDataUrls.length,
+    sections,
+    logs,
   }
 }

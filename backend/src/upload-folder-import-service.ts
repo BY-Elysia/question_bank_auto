@@ -63,7 +63,7 @@ function toPublicUploadUrl(relativePath: string) {
 }
 
 function toWorkspaceUploadUrl(workspaceId: string, relativePath: string) {
-  return `/workspace-assets/${workspaceId}/uploads/source_uploads/${normalizeSlashes(relativePath).replace(/^\/+/, '')}`
+  return `/workspace-assets/${workspaceId}/output_images/source_uploads/${normalizeSlashes(relativePath).replace(/^\/+/, '')}`
 }
 
 function toWorkspaceAssetUrl(workspaceId: string, relativePath: string) {
@@ -159,7 +159,7 @@ function extractUploadRelativePathFromUrl(rawUrl: string) {
   if (clean.startsWith('uploads/')) {
     return clean.replace(/^uploads\//, '')
   }
-  const workspaceUploadsMatch = clean.match(/^\/workspace-assets\/[^/]+\/uploads\/source_uploads\/(.+)$/i)
+  const workspaceUploadsMatch = clean.match(/^\/workspace-assets\/[^/]+\/(?:uploads|output_images)\/source_uploads\/(.+)$/i)
   if (workspaceUploadsMatch?.[1]) {
     return workspaceUploadsMatch[1]
   }
@@ -291,7 +291,7 @@ export async function importUploadsFolderIntoServer(params: {
     baseNameMap = workspaceFolderFiles.baseNameMap
   } else {
     const targetRoot = normalizedWorkspaceId
-      ? path.join(getWorkspaceDir(normalizedWorkspaceId), 'uploads', 'source_uploads')
+      ? path.join(getWorkspaceDir(normalizedWorkspaceId), 'output_images', 'source_uploads')
       : UPLOAD_DIR
     if (normalizedWorkspaceId) {
       await ensureWorkspace({ workspaceId: normalizedWorkspaceId })

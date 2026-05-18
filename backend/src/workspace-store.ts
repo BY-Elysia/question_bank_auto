@@ -4,6 +4,7 @@ import { WORKSPACES_DIR } from './config'
 import { batchId, normalizeJsonFileName, sanitizeFileName } from './question-bank-service'
 
 export type WorkspaceAssetType = 'json' | 'pdf' | 'image_batch'
+export type WorkspaceKind = 'textbook' | 'exam'
 
 type WorkspaceAssetRecord = {
   assetId: string
@@ -18,6 +19,7 @@ type WorkspaceAssetRecord = {
 type WorkspaceManifest = {
   workspaceId: string
   name: string
+  kind?: WorkspaceKind
   createdAt: string
   updatedAt: string
   assets: WorkspaceAssetRecord[]
@@ -26,6 +28,7 @@ type WorkspaceManifest = {
 export type WorkspaceListItem = {
   workspaceId: string
   name: string
+  kind: WorkspaceKind
   createdAt: string
   updatedAt: string
   assetCount: number
@@ -61,7 +64,9 @@ const MANIFEST_FILE_NAME = 'workspace.json'
 const PRIMARY_JSON_ASSET_ID = 'json_main'
 const PRIMARY_JSON_RELATIVE_PATH = 'output_json/main.json'
 const MULTI_CHAPTER_ROOT_DIR = 'multi_chapter'
-const SUMMARY_DIRS = ['output_json', 'uploads', 'output_images', 'read_results', MULTI_CHAPTER_ROOT_DIR] as const
+const COMMON_SUMMARY_DIRS = ['output_json', 'uploads', 'output_images', 'source_files'] as const
+const TEXTBOOK_SUMMARY_DIRS = [...COMMON_SUMMARY_DIRS, MULTI_CHAPTER_ROOT_DIR] as const
+const EXAM_SUMMARY_DIRS = COMMON_SUMMARY_DIRS
 
 function nowIso() {
   return new Date().toISOString()
@@ -72,7 +77,28 @@ function buildWorkspaceId() {
 }
 
 function normalizeWorkspaceName(name: string) {
-  return sanitizeFileName(String(name || '').trim()) || 'workspace'
+  return String(name || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || 'workspace'
+}
+
+function isPlaceholderWorkspaceName(name: string) {
+  const normalized = String(name || '').trim()
+  return !normalized || normalized === 'workspace' || /^_+$/.test(normalized)
+}
+
+function normalizeWorkspaceKind(value: unknown, fallback: WorkspaceKind = 'textbook'): WorkspaceKind {
+  return String(value || '').trim().toLowerCase() === 'exam' ? 'exam' : fallback
+}
+
+function getWorkspaceKind(manifest: WorkspaceManifest | null | undefined): WorkspaceKind {
+  return normalizeWorkspaceKind(manifest?.kind, 'textbook')
+}
+
+function getWorkspaceSummaryDirs(kind: WorkspaceKind) {
+  return kind === 'exam' ? EXAM_SUMMARY_DIRS : TEXTBOOK_SUMMARY_DIRS
 }
 
 export function getWorkspaceDir(workspaceId: string) {
@@ -177,12 +203,14 @@ async function walkDirectoryUsage(targetPath: string): Promise<{ totalBytes: num
   }
 }
 
-async function ensureWorkspaceStructure(workspaceId: string) {
+async function ensureWorkspaceStructure(workspaceId: string, kindInput?: WorkspaceKind) {
   const workspaceDir = getWorkspaceDir(workspaceId)
-  await fsp.mkdir(path.join(workspaceDir, 'uploads'), { recursive: true })
-  await fsp.mkdir(path.join(workspaceDir, 'output_images'), { recursive: true })
   await fsp.mkdir(path.join(workspaceDir, 'output_json'), { recursive: true })
-  await fsp.mkdir(path.join(workspaceDir, 'read_results'), { recursive: true })
+  await fsp.mkdir(path.join(workspaceDir, 'output_images'), { recursive: true })
+  await fsp.mkdir(path.join(workspaceDir, 'uploads', 'question_media'), { recursive: true })
+  if (kindInput === 'textbook') {
+    await fsp.mkdir(path.join(workspaceDir, MULTI_CHAPTER_ROOT_DIR), { recursive: true })
+  }
   return workspaceDir
 }
 
@@ -193,7 +221,7 @@ async function loadWorkspaceManifest(workspaceId: string) {
 }
 
 async function saveWorkspaceManifest(manifest: WorkspaceManifest) {
-  await ensureWorkspaceStructure(manifest.workspaceId)
+  await ensureWorkspaceStructure(manifest.workspaceId, getWorkspaceKind(manifest))
   const manifestPath = getWorkspaceManifestPath(manifest.workspaceId)
   await fsp.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 }
@@ -210,21 +238,38 @@ async function getExistingWorkspace(workspaceId: string) {
     throw new Error(`workspace ${normalizedWorkspaceId} not found`)
   }
 
-  await ensureWorkspaceStructure(normalizedWorkspaceId)
+  const manifest = await loadWorkspaceManifest(normalizedWorkspaceId)
+  await ensureWorkspaceStructure(normalizedWorkspaceId, getWorkspaceKind(manifest))
   return {
     workspaceId: normalizedWorkspaceId,
     workspaceDir: getWorkspaceDir(normalizedWorkspaceId),
-    manifest: await loadWorkspaceManifest(normalizedWorkspaceId),
+    manifest,
   }
 }
 
-export async function ensureWorkspace(params?: { workspaceId?: string, name?: string }) {
+export async function ensureWorkspace(params?: { workspaceId?: string, name?: string, kind?: WorkspaceKind }) {
   const workspaceId = String(params?.workspaceId || '').trim() || buildWorkspaceId()
   const manifestPath = getWorkspaceManifestPath(workspaceId)
   const existing = await fsp.stat(manifestPath).catch(() => null)
   if (existing?.isFile()) {
     const manifest = await loadWorkspaceManifest(workspaceId)
-    await ensureWorkspaceStructure(workspaceId)
+    const nextKind = params?.kind ? normalizeWorkspaceKind(params.kind) : getWorkspaceKind(manifest)
+    const requestedName = String(params?.name || '').trim()
+    const normalizedRequestedName = requestedName ? normalizeWorkspaceName(requestedName) : ''
+    const shouldRefreshName =
+      Boolean(normalizedRequestedName)
+      && isPlaceholderWorkspaceName(manifest.name)
+      && manifest.name !== normalizedRequestedName
+    if (!manifest.kind || (params?.kind && manifest.kind !== nextKind) || shouldRefreshName) {
+      manifest.kind = nextKind
+      if (shouldRefreshName) {
+        manifest.name = normalizedRequestedName
+      }
+      manifest.updatedAt = nowIso()
+      await saveWorkspaceManifest(manifest)
+    } else {
+      await ensureWorkspaceStructure(workspaceId, nextKind)
+    }
     return {
       workspaceId,
       workspaceDir: getWorkspaceDir(workspaceId),
@@ -236,6 +281,7 @@ export async function ensureWorkspace(params?: { workspaceId?: string, name?: st
   const manifest: WorkspaceManifest = {
     workspaceId,
     name: normalizeWorkspaceName(params?.name || workspaceId),
+    kind: normalizeWorkspaceKind(params?.kind),
     createdAt,
     updatedAt: createdAt,
     assets: [],
@@ -255,8 +301,9 @@ export async function getWorkspaceSummary(workspaceId: string) {
   }
 
   const { manifest, workspaceDir } = await getExistingWorkspace(normalizedWorkspaceId)
+  const kind = getWorkspaceKind(manifest)
   const topLevelStats = await Promise.all(
-    SUMMARY_DIRS.map(async (dirName) => {
+    getWorkspaceSummaryDirs(kind).map(async (dirName) => {
       const absolutePath = path.join(workspaceDir, dirName)
       const usage = await walkDirectoryUsage(absolutePath)
       return {
@@ -272,6 +319,7 @@ export async function getWorkspaceSummary(workspaceId: string) {
   return {
     workspaceId: manifest.workspaceId,
     name: manifest.name,
+    kind,
     createdAt: manifest.createdAt,
     updatedAt: manifest.updatedAt,
     assetCount: Array.isArray(manifest.assets) ? manifest.assets.length : 0,
@@ -301,6 +349,7 @@ export async function listWorkspaces() {
           return {
             workspaceId: summary.workspaceId,
             name: summary.name,
+            kind: summary.kind,
             createdAt: summary.createdAt,
             updatedAt: summary.updatedAt,
             assetCount: summary.assetCount,
@@ -320,9 +369,11 @@ export async function listWorkspaces() {
 
 export async function createWorkspace(params?: {
   name?: string
+  kind?: WorkspaceKind
 }) {
   const workspace = await ensureWorkspace({
     name: params?.name,
+    kind: params?.kind,
   })
   return await getWorkspaceSummary(workspace.workspaceId)
 }
@@ -462,7 +513,8 @@ export async function cleanupWorkspaceDerivedFiles(params: {
   const before = await getWorkspaceSummary(workspaceId)
   const workspaceDir = getWorkspaceDir(workspaceId)
   await clearDirectoryContents(path.join(workspaceDir, 'output_images'))
-  await clearDirectoryContents(path.join(workspaceDir, 'read_results'))
+  await fsp.rm(path.join(workspaceDir, 'read_results'), { recursive: true, force: true }).catch(() => undefined)
+  await fsp.rm(path.join(workspaceDir, 'uploads', 'source_uploads'), { recursive: true, force: true }).catch(() => undefined)
   const after = await getWorkspaceSummary(workspaceId)
 
   return {
@@ -487,7 +539,10 @@ export async function rebuildMultiChapterSlots(params: {
     throw new Error('slotCount must be a positive integer')
   }
 
-  await getExistingWorkspace(workspaceId)
+  const workspace = await getExistingWorkspace(workspaceId)
+  if (getWorkspaceKind(workspace.manifest) !== 'textbook') {
+    throw new Error('multi chapter slots are only available in textbook workspaces')
+  }
   const rootDir = getMultiChapterRootDir(workspaceId)
   await fsp.rm(rootDir, { recursive: true, force: true }).catch(() => undefined)
   await fsp.mkdir(rootDir, { recursive: true })
@@ -517,7 +572,10 @@ export async function resolveMultiChapterSlot(params: {
   if (!workspaceId) {
     throw new Error('workspaceId is required')
   }
-  await getExistingWorkspace(workspaceId)
+  const workspace = await getExistingWorkspace(workspaceId)
+  if (getWorkspaceKind(workspace.manifest) !== 'textbook') {
+    throw new Error('multi chapter slots are only available in textbook workspaces')
+  }
 
   const relativePathInput = getWorkspaceRelativePath(params.slotRelativePath || '')
   let slotName = String(params.slotName || '').trim()
@@ -570,7 +628,10 @@ export async function listMultiChapterSlots(workspaceId: string) {
   if (!normalizedWorkspaceId) {
     throw new Error('workspaceId is required')
   }
-  await getExistingWorkspace(normalizedWorkspaceId)
+  const workspace = await getExistingWorkspace(normalizedWorkspaceId)
+  if (getWorkspaceKind(workspace.manifest) !== 'textbook') {
+    return []
+  }
   const rootDir = getMultiChapterRootDir(normalizedWorkspaceId)
   await fsp.mkdir(rootDir, { recursive: true })
   const entries = await fsp.readdir(rootDir, { withFileTypes: true }).catch(() => [])
@@ -793,12 +854,14 @@ export async function writeWorkspaceJsonAsset(params: {
   text: string
   assetId?: string
   workspaceName?: string
+  workspaceKind?: WorkspaceKind
   assetType?: Extract<WorkspaceAssetType, 'json'>
   relativeDir?: string
 }) {
   const workspace = await ensureWorkspace({
     workspaceId: params.workspaceId,
     name: params.workspaceName,
+    kind: params.workspaceKind,
   })
   const assetType = params.assetType || 'json'
   const fileName = normalizeJsonFileName(params.fileName || 'textbook.json')
@@ -827,6 +890,7 @@ export async function writeWorkspaceBinaryAsset(params: {
   sourceFilePath?: string
   assetId?: string
   workspaceName?: string
+  workspaceKind?: WorkspaceKind
   type: Extract<WorkspaceAssetType, 'pdf'>
   relativeDir?: string
   meta?: Record<string, unknown>
@@ -834,9 +898,10 @@ export async function writeWorkspaceBinaryAsset(params: {
   const workspace = await ensureWorkspace({
     workspaceId: params.workspaceId,
     name: params.workspaceName,
+    kind: params.workspaceKind,
   })
   const fileName = sanitizeFileName(params.fileName) || `${params.type}_${batchId()}`
-  const relativeDir = getWorkspaceRelativePath(params.relativeDir || 'uploads')
+  const relativeDir = getWorkspaceRelativePath(params.relativeDir || 'source_files')
   const relativePath = path.posix.join(relativeDir, fileName)
   const filePath = path.join(workspace.workspaceDir, relativePath)
   await fsp.mkdir(path.dirname(filePath), { recursive: true })

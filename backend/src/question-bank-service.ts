@@ -38,6 +38,7 @@ import type {
   QuestionGroupChild,
   QuestionItem,
   QuestionLeaf,
+  QuestionOption,
   QuestionRubricItem,
   QuestionSessionState,
   QuestionTextBlock,
@@ -375,12 +376,12 @@ const QUESTION_TYPE_OPTIONS = [
   {
     value: 'SINGLE_CHOICE',
     label: '单选题',
-    aliases: ['单选题'],
+    aliases: ['单选题', '单项选择题', '选择题'],
   },
   {
     value: 'MULTI_CHOICE',
     label: '多选题',
-    aliases: ['多选题'],
+    aliases: ['多选题', '多项选择题', '不定项选择题'],
   },
   {
     value: 'JUDGE',
@@ -398,7 +399,17 @@ function normalizeQuestionType(value: unknown) {
   if (upper === 'PROGRAMMING' || upper === 'CODE') {
     return 'CODE'
   }
-  return upper
+  if (QUESTION_TYPE_OPTIONS.some((option) => option.value === upper)) {
+    return upper
+  }
+  if (/编程|程序|代码/.test(raw)) return 'CODE'
+  if (/多项|多选|不定项/.test(raw)) return 'MULTI_CHOICE'
+  if (/单项|单选|选择/.test(raw)) return 'SINGLE_CHOICE'
+  if (/判断/.test(raw)) return 'JUDGE'
+  if (/证明/.test(raw)) return 'PROOF'
+  if (/计算|解答|求解|求/.test(raw)) return 'CALCULATION'
+  if (/填空|简答|问答/.test(raw)) return 'SHORT_ANSWER'
+  return 'SHORT_ANSWER'
 }
 
 function normalizeChapterId(value: unknown, fallbackChapterId: string) {
@@ -448,12 +459,27 @@ function normalizeMediaItems(media: Array<Record<string, unknown>>, questionId: 
   const idSuffix = questionId.replace(/^q_/, '')
   return media.map((item, index) => {
     const caption = typeof item.caption === 'string' ? item.caption : ''
+    const rawUrl = typeof item.url === 'string' ? item.url.trim() : ''
     const urlSuffix = index === 0 ? '' : `_${index + 1}`
+    const preservedUrl =
+      rawUrl.startsWith('/workspace-assets/')
+      || rawUrl.startsWith('/uploads/')
+      || rawUrl.startsWith('data:')
+        ? rawUrl
+        : ''
     return {
       type: 'image',
-      url: `https://${idSuffix}${urlSuffix}.png`,
+      url: preservedUrl || `https://${idSuffix}${urlSuffix}.png`,
       caption,
-      orderNo: index + 1,
+      orderNo: Number.isFinite(Number(item.orderNo)) && Number(item.orderNo) > 0 ? Number(item.orderNo) : index + 1,
+      ...(Number.isFinite(Number(item.sourcePageIndex)) && Number(item.sourcePageIndex) > 0
+        ? { sourcePageIndex: Number(item.sourcePageIndex) }
+        : {}),
+      ...(Number.isFinite(Number(item.x1)) ? { x1: Number(item.x1) } : {}),
+      ...(Number.isFinite(Number(item.y1)) ? { y1: Number(item.y1) } : {}),
+      ...(Number.isFinite(Number(item.x2)) ? { x2: Number(item.x2) } : {}),
+      ...(Number.isFinite(Number(item.y2)) ? { y2: Number(item.y2) } : {}),
+      ...(item.crop && typeof item.crop === 'object' ? { crop: item.crop } : {}),
     } as Record<string, unknown>
   })
 }
@@ -477,6 +503,204 @@ function toTextBlock(
   return { text, media }
 }
 
+function isChoiceQuestionType(questionType: string) {
+  return questionType === 'SINGLE_CHOICE' || questionType === 'MULTI_CHOICE'
+}
+
+function normalizeChoiceOptionId(value: unknown) {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^[\[\(（【]\s*/, '')
+    .replace(/\s*[\]\)）】]$/, '')
+  return /^[A-Z]$/.test(normalized) ? normalized : ''
+}
+
+function normalizeExplicitChoiceOptions(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as QuestionOption[]
+  }
+
+  const options: QuestionOption[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+    const row = item as Record<string, unknown>
+    const id = normalizeChoiceOptionId(row.id)
+    const text = String(row.text || '').trim()
+    if (!id || !text || seen.has(id)) {
+      continue
+    }
+    seen.add(id)
+    options.push({ id, text })
+  }
+  return options
+}
+
+function parseEmbeddedChoiceOptions(promptText: string) {
+  const lines = String(promptText || '').split(/\r?\n/)
+  const optionPattern =
+    /^\s*(?:[\[\(（【]\s*([A-Za-z])\s*[\]\)）】]|([A-Za-z])\s*[.．、:：\)）])\s*(.+?)\s*$/
+  const options: QuestionOption[] = []
+  let firstOptionIndex = -1
+  let currentOption: QuestionOption | null = null
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const match = line.match(optionPattern)
+    if (match) {
+      const id = normalizeChoiceOptionId(match[1] || match[2])
+      const text = String(match[3] || '').trim()
+      if (id && text) {
+        if (firstOptionIndex < 0) {
+          firstOptionIndex = index
+        }
+        currentOption = { id, text }
+        options.push(currentOption)
+        continue
+      }
+    }
+
+    if (currentOption && index > firstOptionIndex) {
+      const continuation = line.trim()
+      if (continuation) {
+        currentOption.text = `${currentOption.text}\n${continuation}`
+      }
+    }
+  }
+
+  const uniqueOptions = options.filter(
+    (option, index) => options.findIndex((candidate) => candidate.id === option.id) === index,
+  )
+  if (firstOptionIndex < 0 || uniqueOptions.length < 2) {
+    return {
+      promptText,
+      options: [] as QuestionOption[],
+    }
+  }
+
+  return {
+    promptText: lines.slice(0, firstOptionIndex).join('\n').trimEnd(),
+    options: uniqueOptions,
+  }
+}
+
+function normalizeChoicePromptAndOptions(
+  rawOptions: unknown,
+  prompt: QuestionTextBlock,
+) {
+  const explicitOptions = normalizeExplicitChoiceOptions(rawOptions)
+  const parsed = parseEmbeddedChoiceOptions(prompt.text)
+  return {
+    prompt: {
+      ...prompt,
+      text: parsed.options.length ? parsed.promptText : prompt.text,
+    },
+    options: explicitOptions.length ? explicitOptions : parsed.options,
+  }
+}
+
+function splitChoiceOptionIds(value: string) {
+  return String(value || '')
+    .split(/[\s,，、/]+/)
+    .map(normalizeChoiceOptionId)
+    .filter(Boolean)
+}
+
+function parseChoiceAnswerText(value: string) {
+  const text = String(value || '').trim()
+  if (!text) {
+    return {
+      optionIds: [] as string[],
+      answerText: '',
+      explanation: '',
+    }
+  }
+
+  const directMatch = text.match(
+    /^(?:答案|正确答案)\s*[:：]?\s*([\[\(（【]?[A-Za-z][\]\)）】]?(?:\s*[,，、/]\s*[\[\(（【]?[A-Za-z][\]\)）】]?)*)\s*(?:\r?\n|$)/i,
+  )
+  const plainMatch =
+    directMatch ||
+    text.match(
+      /^([\[\(（【]?[A-Za-z][\]\)）】]?(?:\s*[,，、/]\s*[\[\(（【]?[A-Za-z][\]\)）】]?)*)\s*(?:\r?\n|$)/i,
+    )
+  const firstLineMatch = plainMatch?.[0] || ''
+  const optionIdsFromFirstLine = splitChoiceOptionIds(plainMatch?.[1] || '')
+  const tail = firstLineMatch ? text.slice(firstLineMatch.length).trim() : ''
+  const tailWithoutLabel = tail.replace(/^(?:解析|解答|说明)\s*[:：]?\s*/i, '').trim()
+
+  if (optionIdsFromFirstLine.length) {
+    return {
+      optionIds: optionIdsFromFirstLine,
+      answerText: optionIdsFromFirstLine.join(','),
+      explanation: tailWithoutLabel,
+    }
+  }
+
+  const inlineMatch = text.match(
+    /(?:正确答案|答案)\s*(?:为|是)?\s*[:：]?\s*(?:[*_]{0,2})?[\[\(（【]?\s*([A-Za-z])\s*[\]\)）】]?(?:[*_]{0,2})?/i,
+  )
+  const inlineIds = splitChoiceOptionIds(inlineMatch?.[1] || '')
+  return {
+    optionIds: inlineIds,
+    answerText: inlineIds.join(','),
+    explanation: inlineIds.length ? text : '',
+  }
+}
+
+function normalizeCorrectOptionIds(
+  rawValue: unknown,
+  fallbackOptionIds: string[],
+  questionType: string,
+  forceEmpty: boolean,
+) {
+  if (forceEmpty) {
+    return [] as string[]
+  }
+
+  const sourceValues = Array.isArray(rawValue)
+    ? rawValue
+    : typeof rawValue === 'string'
+      ? rawValue.split(/[\s,，、/]+/)
+      : []
+  const normalized = sourceValues
+    .map(normalizeChoiceOptionId)
+    .filter((item, index, rows) => Boolean(item) && rows.indexOf(item) === index)
+  const candidateIds = normalized.length ? normalized : fallbackOptionIds
+  return questionType === 'SINGLE_CHOICE' ? candidateIds.slice(0, 1) : candidateIds
+}
+
+function normalizeChoiceStandardAnswer(
+  rawValue: unknown,
+  fallbackBlock: QuestionTextBlock,
+  questionType: string,
+  correctOptionIds: string[],
+  forceEmpty: boolean,
+) {
+  if (forceEmpty) {
+    return fallbackBlock
+  }
+
+  const raw = rawValue && typeof rawValue === 'object' ? (rawValue as Record<string, unknown>) : {}
+  const parsed = parseChoiceAnswerText(fallbackBlock.text)
+  const normalizedIds = correctOptionIds.length ? correctOptionIds : parsed.optionIds
+  const answerText =
+    questionType === 'SINGLE_CHOICE'
+      ? normalizedIds[0] || parsed.answerText || fallbackBlock.text.trim()
+      : normalizedIds.join(',') || parsed.answerText || fallbackBlock.text.trim()
+  const explicitExplanation = typeof raw.explanation === 'string' ? raw.explanation.trim() : ''
+  const explanation = explicitExplanation || parsed.explanation
+
+  return {
+    text: answerText,
+    media: fallbackBlock.media,
+    ...(explanation ? { explanation } : {}),
+  }
+}
+
 function normalizeQuestionId(value: unknown, chapterId: string, questionNo: string, childNo?: string) {
   const chapterSuffix = chapterSuffixFromChapterId(chapterId)
   const mainNo = questionNo || '0'
@@ -490,7 +714,12 @@ function normalizeQuestionId(value: unknown, chapterId: string, questionNo: stri
       .replace(/[^\d_]/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_+|_+$/g, '')
-    if (body) return `q_${body}`
+    if (body) {
+      const bodyTokens = body.split('_').filter(Boolean)
+      const expectedTokens = chapterSuffix.split('_').filter(Boolean)
+      const hasMatchingChapterPrefix = expectedTokens.every((token, index) => bodyTokens[index] === token)
+      return hasMatchingChapterPrefix ? `q_${body}` : `q_${chapterSuffix}_${mainNo}`
+    }
   }
   return `q_${chapterSuffix}_${mainNo}`
 }
@@ -528,15 +757,135 @@ function resolveContinueQuestionKey(continueQuestionKey: string | null) {
   return ''
 }
 
+function readQuestionKeyField(raw: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = raw[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+function normalizeQuestionKeyForCompare(value: string | null) {
+  return normalizeDigits(String(value || ''))
+    .split('|')
+    .map((part) => normalizeTitle(part))
+    .filter(Boolean)
+    .join('|')
+}
+
+function extractSectionTitleFromContinueQuestionKey(value: string | null) {
+  const parts = String(value || '')
+    .split('|')
+    .map((part) => normalizeTitle(part))
+    .filter(Boolean)
+  return parts.length >= 3 ? parts[1] : ''
+}
+
+function shouldAcceptLookaheadContinueQuestionKey(params: {
+  lookaheadTailQuestionKey: string | null
+  boundaryQueueTailQuestionKey: string | null
+  lookaheadContinueKey: string | null
+  boundaryContinueKey: string | null
+  boundaryReason: string
+  currentSectionTitle: string
+}) {
+  const boundaryQueueTailQuestionKey = resolveContinueQuestionKey(params.boundaryQueueTailQuestionKey)
+  const lookaheadTailQuestionKey = resolveContinueQuestionKey(params.lookaheadTailQuestionKey)
+  if (boundaryQueueTailQuestionKey && !lookaheadTailQuestionKey) {
+    return {
+      accepted: false,
+      reason: `预读助手没有返回正式队列尾题；忽略预读结果，避免预读页污染当前队列。`,
+    }
+  }
+
+  if (
+    boundaryQueueTailQuestionKey
+    && lookaheadTailQuestionKey
+    && normalizeQuestionKeyForCompare(boundaryQueueTailQuestionKey) !== normalizeQuestionKeyForCompare(lookaheadTailQuestionKey)
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `预读助手复核出的正式队列尾题为“${lookaheadTailQuestionKey}”，但边界助手尾题为“${boundaryQueueTailQuestionKey}”；需要重判，预读页不能参与确定正式队列尾题。`,
+    }
+  }
+
+  const lookaheadContinueKey = resolveContinueQuestionKey(params.lookaheadContinueKey)
+  if (!lookaheadContinueKey) {
+    return { accepted: true, reason: '' }
+  }
+
+  if (
+    boundaryQueueTailQuestionKey
+    && normalizeQuestionKeyForCompare(lookaheadContinueKey) !== normalizeQuestionKeyForCompare(boundaryQueueTailQuestionKey)
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `预读续题指向“${lookaheadContinueKey}”，但它不是边界助手确认的正式队列尾题“${boundaryQueueTailQuestionKey}”；忽略预读结果。`,
+    }
+  }
+
+  const lookaheadQuestionNo = Number(extractQuestionNoFromText(lookaheadContinueKey) || 0)
+  const boundaryQuestionNos = extractDistinctQuestionNos(params.boundaryReason)
+  const maxBoundaryQuestionNo = boundaryQuestionNos.length ? Math.max(...boundaryQuestionNos) : 0
+  const boundaryContinueQuestionNo = Number(extractQuestionNoFromText(params.boundaryContinueKey || '') || 0)
+  if (
+    lookaheadQuestionNo > 0
+    && maxBoundaryQuestionNo > 0
+    && lookaheadQuestionNo > maxBoundaryQuestionNo
+    && lookaheadQuestionNo !== boundaryContinueQuestionNo
+  ) {
+    return {
+      accepted: false,
+      reason:
+        `预读续题指向第${lookaheadQuestionNo}题，但当前队列边界只确认到第${maxBoundaryQuestionNo}题；忽略预读结果，避免把预读页中的后续题当成当前队列最后题。`,
+    }
+  }
+
+  const lookaheadSectionTitle = extractSectionTitleFromContinueQuestionKey(lookaheadContinueKey)
+  if (!lookaheadSectionTitle) {
+    return { accepted: true, reason: '' }
+  }
+
+  const currentSectionTitle = normalizeTitle(params.currentSectionTitle)
+  if (normalizeTitle(lookaheadSectionTitle) === currentSectionTitle) {
+    return { accepted: true, reason: '' }
+  }
+
+  const boundarySectionTitle = extractSectionTitleFromContinueQuestionKey(params.boundaryContinueKey)
+  if (boundarySectionTitle && normalizeTitle(boundarySectionTitle) === normalizeTitle(lookaheadSectionTitle)) {
+    return { accepted: true, reason: '' }
+  }
+
+  return {
+    accepted: false,
+    reason:
+      `预读续题指向小节“${lookaheadSectionTitle}”，但当前队列边界判断未确认该小节；忽略预读结果，避免下一页小节提前污染当前页。`,
+  }
+}
+
 function extractDistinctQuestionNos(value: string) {
-  const matches = [...normalizeDigits(String(value || '')).matchAll(/第\s*(\d+)\s*题/g)]
-  return [...new Set(matches.map((match) => Number(match[1])).filter((num) => Number.isFinite(num) && num > 0))]
+  const normalized = normalizeDigits(String(value || ''))
+  const nums: number[] = []
+  for (const match of normalized.matchAll(/第\s*([\d\s、,，和及至到\-~～]+)\s*题/g)) {
+    const raw = match[1] || ''
+    for (const numMatch of raw.matchAll(/\d+/g)) {
+      const num = Number(numMatch[0])
+      if (Number.isFinite(num) && num > 0) {
+        nums.push(num)
+      }
+    }
+  }
+  return [...new Set(nums)]
 }
 
 function topQuestionNosFromItems(items: QuestionItem[]) {
   return [...new Set(
     items
-      .map((item) => Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0))
+      .map((item) => Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0))
       .filter((num) => Number.isFinite(num) && num > 0),
   )].sort((a, b) => a - b)
 }
@@ -621,8 +970,15 @@ function excludePendingQuestionItems(items: QuestionItem[], continueKey: string)
   }
   const normalizedKey = normalizeDigits(continueKey).replace(/\s+/g, '')
   const continueNo = Number(extractQuestionNoFromText(continueKey) || 0)
+  const matchedIndex = items.findIndex((item) => matchesContinueKey(item, continueKey))
+  if (matchedIndex !== -1) {
+    return {
+      filtered: items.slice(0, matchedIndex),
+      droppedCount: Math.max(0, items.length - matchedIndex),
+    }
+  }
   const filtered = items.filter((item) => {
-    const itemNo = Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0)
+    const itemNo = Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0)
     if (continueNo && itemNo && itemNo >= continueNo) {
       return false
     }
@@ -650,7 +1006,7 @@ function filterQuestionItemsByRange(params: {
     return { filtered: items, droppedCount: 0 }
   }
   const filtered = items.filter((item) => {
-    const itemNo = Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0)
+    const itemNo = Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0)
     if (!itemNo) return false
     if (startNo && itemNo < startNo) return false
     if (endNo && itemNo >= endNo) return false
@@ -820,7 +1176,7 @@ function matchesContinueKey(item: QuestionItem, continueKey: string) {
   const normalizedKey = normalizeDigits(String(continueKey || '')).replace(/\s+/g, '')
   if (!normalizedKey) return false
   const continueNo = extractQuestionNoFromText(continueKey)
-  const itemNo = extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId)
+  const itemNo = extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title)
   if (continueNo && itemNo && continueNo === itemNo) {
     return true
   }
@@ -837,7 +1193,7 @@ function shouldClearTrailingPendingAfterExtraction(items: QuestionItem[], contin
     return false
   }
   const topNos = items
-    .map((item) => Number(extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId) || 0))
+    .map((item) => Number(extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title) || 0))
     .filter((value) => Number.isFinite(value) && value > 0)
   if (!topNos.length) {
     return false
@@ -891,7 +1247,8 @@ function sameQuestionKey(a: string | null | undefined, b: string | null | undefi
 }
 
 function questionDisplayKey(item: QuestionItem) {
-  const questionNo = extractQuestionNoFromText(item.title) || extractQuestionNoFromId(item.questionId)
+  if (item.title) return item.title
+  const questionNo = extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title)
   return questionNo ? `第${questionNo}题` : item.title || item.questionId
 }
 
@@ -958,15 +1315,23 @@ function buildSharedQuestionContentRuleLines(
   const lines = [
     'GROUP 类型如有公共题干，必须写入 stem.text；不能漏掉，也不能把公共题干塞进 children.prompt，不能把小题的题目写入stem.text。',
     'GROUP.children 的 prompt.text 不要保留“(1)”“（2）”这类前缀编号；编号只用于 orderNo/子题顺序。',
+    '只有同一顶层题号下出现 (1)/(2)/①/② 等子问并共享同一题干时，才允许使用 GROUP。',
+    '“一、填空题”“二、选择题”“三、判断题”“四、计算题/证明题/解答题”等只作为栏目标题或题型说明，不作为题目节点，不要把栏目标题提取成 GROUP。',
+    '栏目标题下面的“1.、2.、3.”等每一个编号题都必须作为独立顶层大题提取；即使它们同属填空题、选择题等栏目，也不能合并到同一个 GROUP 里。',
+    '如果某个编号题自身又包含 (1)/(2)/①/② 等小问，并且共享该编号题的公共题干，才把这个编号题做成 GROUP；GROUP 的 children 只能来自该编号题内部的小问。',
+    'questionId 的主编号按当前小节所有顶层题出现顺序连续递增，不因“填空题/选择题/计算题”等栏目切换而重置。',
+    'title 可以保留栏目名和栏目内显示题号用于区分；例如整节第9道顶层题是“计算题”栏目里的第2题，则 questionId 可为 q_12_8_9，但 title 应写成“总习题十二 计算题 第2题”。',
     'GROUP/长题只有在整道顶层大题已经闭合时才允许输出；如果后续小问仍未出现、仍在续页、或只完整看到了前几个小问，整道题都不得输出。',
     '长题必须完整覆盖所有可见小问；禁止只输出前几个和最后一个，中间大量缺失。',
     mode === 'generate_brief'
       ? '如果某道长题的小问序号明显断档，就不要把这道题误判成已经完整收齐的小问结构。'
       : '如果某道长题的小问序号明显断档、或最后一个答案只写了一半，就不要把这道题当成完整题输出。',
     `如果本次可见范围里有完整题号与题干，${resultFieldName} 不得为空。`,
-    '题号按图片上显示的题号。',
+    'title 中的栏目内题号按图片显示；questionId 中的主编号按当前小节顶层题全局顺序连续编号。',
     'questionId 必须以 q_ 开头，格式示例: q_9_3_1, q_9_3_1_2。',
     'chapterId 必须以 ch_ 开头，questionId 与 chapterId 前缀不可混用。',
+    '若题型是 SINGLE_CHOICE 或 MULTI_CHOICE，prompt.text 只保留题干本身；A/B/C/D 选项必须拆到 options 数组中，不能继续拼在 prompt.text 末尾。',
+    '当同一页跨到新小节时，切换后的题必须使用新小节的 chapterId 和对应 questionId 前缀，不能继续沿用旧小节。',
     '不确定字符用【待校对】替代，禁止猜测。',
   ]
 
@@ -974,7 +1339,10 @@ function buildSharedQuestionContentRuleLines(
     lines.push(
       'prompt.text 必须逐字贴近图片原文，不得总结改写，不得补充题干。',
       '本次文档无现成答案，standardAnswer.text 需要根据题目自行生成，不要伪装成图片原文。',
-      '生成答案时只保留必要结论、关键步骤或核心理由，内容必须适量；不要写成长篇讲义、题外拓展、多个解法对比。',
+      '生成答案必须包含必要解题步骤：计算题要写出关键计算过程，证明题要写出关键论证链条，不能只给结论或省略关键推导。',
+      '若题型是 SINGLE_CHOICE 或 MULTI_CHOICE，prompt.text 只写题干，不得把 A/B/C/D 选项行混入 prompt.text；选项必须逐项写入 options。',
+      '若题型是 SINGLE_CHOICE 或 MULTI_CHOICE，standardAnswer.text 只写正确选项字母，如 "B" 或 "A,C"；解析过程必须写入 standardAnswer.explanation，禁止写成“答案：B\\n解析：...”或把解析混入 standardAnswer.text。',
+      '答案应是完整可校对的标准答案；不要写题外拓展、方法总结、多个解法对比或长篇讲义。',
       '若题目要求编程、写代码、设计算法实现或输出程序，standardAnswer.text="" 且 standardAnswer.media=[].',
     )
   } else if (mode === 'leave_empty') {
@@ -1001,14 +1369,20 @@ function buildSharedQuestionStructureInstructionLines(
   const lines = [
     '题目对象必须是 LEAF 或 GROUP 两种之一。',
     'questionType 只能取: PROOF, CALCULATION, CODE, SHORT_ANSWER, SINGLE_CHOICE, MULTI_CHOICE, JUDGE。',
-    'questionType 映射规则: 含“编程/程序/代码”=>CODE；含“证明”=>PROOF；含“求/解/计算”=>CALCULATION；明确单选=>SINGLE_CHOICE；明确多选=>MULTI_CHOICE；明确判断=>JUDGE；无法判断=>SHORT_ANSWER。',
+    'questionType 映射规则: 填空题=>SHORT_ANSWER；选择题/单项选择题=>SINGLE_CHOICE；多项选择题=>MULTI_CHOICE；判断题=>JUDGE；含“编程/程序/代码”=>CODE；含“证明”=>PROOF；含“求/解/计算”=>CALCULATION；无法判断=>SHORT_ANSWER。',
     'LEAF 必填字段:',
     '- questionId, chapterId, nodeType("LEAF"), questionType, title, prompt, standardAnswer, defaultScore, rubric',
     'GROUP 必填字段:',
     '- questionId, chapterId, nodeType("GROUP"), questionType, title, stem, children',
     'GROUP.children 每项必填字段:',
     '- questionId, orderNo(从1递增), questionType, chapterId(与父题一致), prompt, standardAnswer, defaultScore, rubric',
-    'TextBlock 结构固定为: { "text": "string", "media": [] }',
+    'prompt / stem / 普通题 standardAnswer 的 TextBlock 结构固定为: { "text": "string", "media": [] }',
+    '选择题字段规则:',
+    '- SINGLE_CHOICE / MULTI_CHOICE 还必须包含 options、correctOptionIds、allowPartial。',
+    '- options 结构固定为: [{ "id": "A", "text": "string" }, { "id": "B", "text": "string" }, ...]；选项文字不得再写回 prompt.text。',
+    '- SINGLE_CHOICE 的 correctOptionIds 必须且只能有 1 个选项 id，allowPartial 固定为 false。',
+    '- MULTI_CHOICE 的 correctOptionIds 必须写全部正确选项 id；未明确允许部分得分时 allowPartial=false。',
+    '- 选择题 standardAnswer.text 只写正确选项字母；若需要解析，写入 standardAnswer.explanation，示例: { "text": "B", "media": [], "explanation": "..." }。',
     'TextBlock.text 必须使用 Markdown 文本，保持原顺序和原换行。',
     '公式写法: 行内公式使用 $...$；独立成行公式使用 $$...$$。',
     '公式必须转成 LaTeX，使用Katex语法，不得改成口语描述。',
@@ -1025,7 +1399,7 @@ function buildSharedQuestionStructureInstructionLines(
   ]
   lines.push(
     mode === 'generate_brief'
-      ? '本次文档无现成答案，standardAnswer 必须基于题目自行生成简洁适量的标准答案，并继续遵守 Markdown/LaTeX/TextBlock 结构；若题目是编程/写代码题，则 standardAnswer.text="" 且 standardAnswer.media=[].'
+      ? '本次文档无现成答案，standardAnswer 必须基于题目自行生成包含必要解题步骤的标准答案，并继续遵守 Markdown/LaTeX/TextBlock 结构；不能只给结论或省略关键推导。若题目是编程/写代码题，则 standardAnswer.text="" 且 standardAnswer.media=[].'
       : mode === 'leave_empty'
         ? '本次文档不提供答案，所有 standardAnswer 字段必须保留，但统一返回 standardAnswer.text="" 且 standardAnswer.media=[].'
         : '若图片中未给出标准答案: standardAnswer.text="" 且 standardAnswer.media=[].',
@@ -1071,6 +1445,60 @@ function buildCanonicalQuestionTitle(sectionTitle: string, mainQuestionNo: strin
   return parts.join(' ').trim()
 }
 
+const QUESTION_TITLE_CATEGORY_LABELS = [
+  '单项选择题',
+  '多项选择题',
+  '不定项选择题',
+  '填空题',
+  '选择题',
+  '判断题',
+  '计算题',
+  '证明题',
+  '解答题',
+  '应用题',
+  '综合题',
+  '简答题',
+  '作图题',
+  '问答题',
+  '讨论题',
+]
+
+function extractQuestionTitleCategory(value: string) {
+  const title = normalizeTitle(value)
+  if (!title) return null
+  for (const label of QUESTION_TITLE_CATEGORY_LABELS) {
+    const index = title.indexOf(label)
+    if (index === -1) continue
+    const tail = title.slice(index + label.length)
+    const questionNo = tail.match(/第\s*(\d+)\s*题/)?.[1] || ''
+    if (!questionNo) continue
+    return { label, questionNo }
+  }
+  return null
+}
+
+function buildQuestionDisplayTitle(
+  sectionTitle: string,
+  sourceTitle: string,
+  mainQuestionNo: string,
+  subQuestionNo?: string,
+) {
+  const category = extractQuestionTitleCategory(sourceTitle)
+  if (category) {
+    const parts: string[] = []
+    const section = normalizeTitle(sectionTitle)
+    if (section) {
+      parts.push(section)
+    }
+    parts.push(category.label, `第${category.questionNo}题`)
+    if (subQuestionNo && String(subQuestionNo).trim()) {
+      parts.push(`第${String(subQuestionNo).trim()}小题`)
+    }
+    return parts.join(' ').trim()
+  }
+  return buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo, subQuestionNo)
+}
+
 function extractSubQuestionNoFromQuestionId(questionId: string) {
   const normalized = normalizeDigits(String(questionId || ''))
   const match = normalized.match(/^q_(\d+)_(\d+)_(\d+)_(\d+)$/)
@@ -1085,7 +1513,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
     if (item.nodeType === 'GROUP') {
       return {
         ...item,
-        title: buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo) || item.title,
+        title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo) || item.title,
         children: item.children.map((child) => {
           const childSubQuestionNo =
             extractSubQuestionNoFromQuestionId(child.questionId) ||
@@ -1094,7 +1522,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
           return {
             ...child,
             title:
-              buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo, childSubQuestionNo) ||
+              buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, childSubQuestionNo) ||
               (child as QuestionGroupChild).title,
           }
         }),
@@ -1102,7 +1530,7 @@ function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, it
     }
     return {
       ...item,
-      title: buildCanonicalQuestionTitle(sectionTitle, mainQuestionNo, subQuestionNo) || item.title,
+      title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, subQuestionNo) || item.title,
     } as QuestionItem
   })
 }
@@ -1132,18 +1560,19 @@ function normalizeQuestionItem(
       ? normalizeChapterId(source.chapterId, fallbackChapterId)
       : fallbackChapterId
   const title = String(source.title || '').trim()
-  const questionType = normalizeQuestionType(source.questionType)
-  const mainQuestionNo =
-    extractQuestionNoFromText(title) || extractQuestionNoFromId(String(source.questionId || '').trim()) || '0'
-  const questionId = normalizeQuestionId(source.questionId, chapterId, mainQuestionNo)
   const promptText =
     source.prompt && typeof source.prompt === 'object'
       ? String((source.prompt as Record<string, unknown>).text || '')
       : ''
+  const questionType = normalizeQuestionType(source.questionType)
+  const mainQuestionNo =
+    extractQuestionNoFromId(String(source.questionId || '').trim()) || extractQuestionNoFromText(title) || '0'
+  const questionId = normalizeQuestionId(source.questionId, chapterId, mainQuestionNo)
   const leafSubQuestionNo = extractQuestionNoFromPrompt(promptText)
   const canonicalTitle =
-    buildCanonicalQuestionTitle(
+    buildQuestionDisplayTitle(
       fallbackSectionTitle,
+      title,
       mainQuestionNo,
       nodeType === 'LEAF' ? leafSubQuestionNo : '',
     ) || title
@@ -1162,14 +1591,47 @@ function normalizeQuestionItem(
               : '') as string,
           ) || String(orderNo)
         const childQuestionId = normalizeQuestionId(row.questionId, chapterId, mainQuestionNo, childNo)
+        const childQuestionType = normalizeQuestionType(row.questionType)
+        const childPrompt = toTextBlock(row.prompt, childQuestionId, false)
+        const childChoice = isChoiceQuestionType(childQuestionType)
+          ? normalizeChoicePromptAndOptions(row.options, childPrompt)
+          : { prompt: childPrompt, options: [] as QuestionOption[] }
+        const childAnswerBlock = toTextBlock(row.standardAnswer, childQuestionId, true, forceEmptyAnswer)
+        const childParsedChoiceAnswer = isChoiceQuestionType(childQuestionType)
+          ? parseChoiceAnswerText(childAnswerBlock.text)
+          : { optionIds: [] as string[] }
+        const childCorrectOptionIds = isChoiceQuestionType(childQuestionType)
+          ? normalizeCorrectOptionIds(
+              row.correctOptionIds,
+              childParsedChoiceAnswer.optionIds,
+              childQuestionType,
+              forceEmptyAnswer,
+            )
+          : []
+        const childStandardAnswer = isChoiceQuestionType(childQuestionType)
+          ? normalizeChoiceStandardAnswer(
+              row.standardAnswer,
+              childAnswerBlock,
+              childQuestionType,
+              childCorrectOptionIds,
+              forceEmptyAnswer,
+            )
+          : childAnswerBlock
         return {
           questionId: childQuestionId,
-          title: buildCanonicalQuestionTitle(fallbackSectionTitle, mainQuestionNo, childNo),
+          title: buildQuestionDisplayTitle(fallbackSectionTitle, title, mainQuestionNo, childNo),
           orderNo,
-          questionType: normalizeQuestionType(row.questionType),
+          questionType: childQuestionType,
           chapterId: chapterId,
-          prompt: toTextBlock(row.prompt, childQuestionId, false),
-          standardAnswer: toTextBlock(row.standardAnswer, childQuestionId, true, forceEmptyAnswer),
+          prompt: childChoice.prompt,
+          standardAnswer: childStandardAnswer,
+          ...(isChoiceQuestionType(childQuestionType)
+            ? {
+                options: childChoice.options,
+                correctOptionIds: childCorrectOptionIds,
+                allowPartial: childQuestionType === 'SINGLE_CHOICE' ? false : row.allowPartial === true,
+              }
+            : {}),
           defaultScore: Number(row.defaultScore) || 10,
           rubric: toRubric(row.rubric),
         } as QuestionGroupChild
@@ -1201,14 +1663,45 @@ function normalizeQuestionItem(
       prompt.text = promptFromTitle
     }
   }
+  const leafChoice = isChoiceQuestionType(questionType)
+    ? normalizeChoicePromptAndOptions(source.options, prompt)
+    : { prompt, options: [] as QuestionOption[] }
+  const answerBlock = toTextBlock(source.standardAnswer, questionId, true, forceEmptyAnswer)
+  const parsedChoiceAnswer = isChoiceQuestionType(questionType)
+    ? parseChoiceAnswerText(answerBlock.text)
+    : { optionIds: [] as string[] }
+  const correctOptionIds = isChoiceQuestionType(questionType)
+    ? normalizeCorrectOptionIds(
+        source.correctOptionIds,
+        parsedChoiceAnswer.optionIds,
+        questionType,
+        forceEmptyAnswer,
+      )
+    : []
+  const standardAnswer = isChoiceQuestionType(questionType)
+    ? normalizeChoiceStandardAnswer(
+        source.standardAnswer,
+        answerBlock,
+        questionType,
+        correctOptionIds,
+        forceEmptyAnswer,
+      )
+    : answerBlock
   return {
     questionId,
     chapterId,
     nodeType: 'LEAF',
     questionType,
     title: canonicalTitle,
-    prompt,
-    standardAnswer: toTextBlock(source.standardAnswer, questionId, true, forceEmptyAnswer),
+    prompt: leafChoice.prompt,
+    standardAnswer,
+    ...(isChoiceQuestionType(questionType)
+      ? {
+          options: leafChoice.options,
+          correctOptionIds,
+          allowPartial: questionType === 'SINGLE_CHOICE' ? false : source.allowPartial === true,
+        }
+      : {}),
     defaultScore: Number(source.defaultScore) || 10,
     rubric: toRubric(source.rubric),
   }
@@ -1341,6 +1834,10 @@ function getPayloadSourceMeta(payload: TextbookJsonPayload) {
       publisher: '',
       examType: String(exam?.examType || '').trim(),
       hasAnswer: exam?.hasAnswer !== false,
+      answerHandlingMode: resolveAnswerHandlingMode(
+        exam && typeof exam === 'object' ? (exam as Record<string, unknown>).answerHandlingMode as AnswerHandlingMode | undefined : undefined,
+        exam?.hasAnswer !== false ? 'extract_visible' : 'leave_empty',
+      ),
       rawMeta: exam,
     }
   }
@@ -1354,16 +1851,17 @@ function getPayloadSourceMeta(payload: TextbookJsonPayload) {
     publisher: String(textbook?.publisher || '').trim(),
     examType: '',
     hasAnswer: textbook?.hasAnswer !== false,
+    answerHandlingMode: resolveAnswerHandlingMode(
+      textbook && typeof textbook === 'object' ? (textbook as Record<string, unknown>).answerHandlingMode as AnswerHandlingMode | undefined : undefined,
+      textbook?.hasAnswer !== false ? 'extract_visible' : 'generate_brief',
+    ),
     rawMeta: textbook,
   }
 }
 
 function getPayloadAnswerHandlingMode(payload: TextbookJsonPayload): AnswerHandlingMode {
   const sourceMeta = getPayloadSourceMeta(payload)
-  if (sourceMeta.documentType === 'exam') {
-    return sourceMeta.hasAnswer ? 'extract_visible' : 'leave_empty'
-  }
-  return sourceMeta.hasAnswer ? 'extract_visible' : 'generate_brief'
+  return sourceMeta.answerHandlingMode
 }
 
 function payloadExpectsAnswer(payload: TextbookJsonPayload) {
@@ -1384,6 +1882,9 @@ function isValidTextbookPayload(payload: unknown) {
     if (typeof exam.subject !== 'string') return false
     if (!['quiz', 'midterm', 'final'].includes(String(exam.examType || '').trim())) return false
     if (typeof exam.hasAnswer !== 'boolean') return false
+    if (exam.answerHandlingMode !== undefined && !['extract_visible', 'leave_empty', 'generate_brief'].includes(String(exam.answerHandlingMode || '').trim())) {
+      return false
+    }
   } else {
     if (!data.textbook || typeof data.textbook !== 'object') return false
     const textbook = data.textbook as Record<string, unknown>
@@ -1392,6 +1893,9 @@ function isValidTextbookPayload(payload: unknown) {
     if (typeof textbook.publisher !== 'string') return false
     if (typeof textbook.subject !== 'string') return false
     if (textbook.hasAnswer !== undefined && typeof textbook.hasAnswer !== 'boolean') return false
+    if (textbook.answerHandlingMode !== undefined && !['extract_visible', 'leave_empty', 'generate_brief'].includes(String(textbook.answerHandlingMode || '').trim())) {
+      return false
+    }
   }
   if (!Array.isArray(data.chapters)) return false
   if (!Array.isArray(data.questions)) return false
@@ -1767,7 +2271,7 @@ async function detectChapterBoundaryAndPendingByDoubao(params: {
   }
 
   const instruction = [
-    '你是教材页边界检测器。你只做跨页边界判断，不处理章节/小节切换，也不生成题目 JSON 内容。',
+    '你是教材页边界检测器。你只看本次传入的正式队列图片，不知道也不能推测预读页；你只做边界判断，不生成题目 JSON 内容。',
     '上下文:',
     `- 当前章标题: ${currentChapterTitle}`,
     `- 当前小节标题: ${currentSectionTitle}`,
@@ -1783,20 +2287,24 @@ async function detectChapterBoundaryAndPendingByDoubao(params: {
     '3) hasExtractableQuestions 判断的是：从起点开始，到当前队列最后一页为止，是否已经出现至少一道完整可导入的顶层大题。',
     '3.5) 对 GROUP/长题，只有整道顶层大题的所有小问和答案链都闭合后，才算“完整可导入”；前几个小问完整但后续小问未结束时，整道题仍算未完成。',
     '4) needNextPage 只判断“当前处理起点题号”对应那道题是否还需要下一页；不要用最后一题替代它。',
-    '5) continueQuestionKey 只判断“当前输入图片队列中，按阅读顺序实际出现的最后一道顶层大题”是谁；它不是当前章的最后一题，不是当前小节的最后一题，也不是当前处理起点那道题，除非这道题确实就是整组图片里最后出现的那一道题。',
-    '6) 如果最后一页发生了小节或章节切换，必须先根据图片实际内容判断切换后最后出现的顶层大题是谁，再决定 continueQuestionKey；不能因为起点题来自旧小节，就把旧小节那道题误当成整组图片里的最后一题。',
-    '7) 如果这道“整组图片里最后出现的顶层大题”还要续到下一页，则 continueQuestionKey 返回它；否则返回 null。',
-    '8) continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。若最后一页切到新小节，则用新小节标题。',
+    '5) queueTailQuestionKey 表示“当前正式队列图片中，按阅读顺序最后实际出现的顶层大题”。只要能识别，必须返回；它不是当前章的最后一题、不是当前小节的最后一题、也不是当前处理起点，除非它确实就是正式队列最后出现的题。',
+    '6) 如果正式队列图片里发生了小节或章节切换，必须根据图片实际内容判断切换后最后出现的顶层大题是谁，并让 queueTailQuestionKey 使用这道尾题真实所属的小节；不能因为后端游标来自旧小节，就把旧小节题误当成正式队列尾题。',
+    '7) continueQuestionKey 只判断 queueTailQuestionKey 这道正式队列尾题是否还要续到后续页；若它需要后续页，则 continueQuestionKey 返回与 queueTailQuestionKey 完全相同的定位；否则返回 null。',
+    '8) queueTailQuestionKey 和 continueQuestionKey 不能是 q/ch id，也不能是小题号；格式必须是“章标题 | 小节标题 | 第几题”。',
+    '8.1) “一、填空题”“二、选择题”“三、判断题”“四、计算题/证明题/解答题”等只是栏目标题或题型说明，不是顶层大题。',
+    '8.2) 栏目标题下面的“1.、2.、3.”等编号题，每一道都是独立顶层大题；如果正式队列尾部停在某个栏目内的第4个编号题，queueTailQuestionKey 应返回这道第4题的定位，不要返回栏目标题。',
+    '8.3) 从“填空题”切到“选择题”只是栏目变化，不等同于章节/小节切换；queueTailQuestionKey 仍按最后实际出现的编号题定位。',
     '9) 对长题必须核对小问链和答案链是否真正闭合；不能只看页面末尾像是结束了就返回不跨页。',
     '10) hasExtractableQuestions=true 与 needNextPage=true 可以同时成立；这表示起点题还没补完，但当前队列里已经有别的完整题可导入。',
-    '11) 例1：起点=第2题，当前队列里第2题补完，后面第3题完整，整组图片里最后出现的顶层大题是第4题且它跨页 => hasExtractableQuestions=true, needNextPage=false, continueQuestionKey=第4题。',
-    '12) 例2：起点=第6题，当前队列里第6题补完，后面第7题完整，且整组图片里最后出现的顶层大题也已结束 => hasExtractableQuestions=true, needNextPage=false, continueQuestionKey=null。',
-    '13) 例3：上半仍是习题8.1第8题，下半已切到习题8.2第1题，且整组图片最后出现的顶层大题是习题8.2第1题，则 continueQuestionKey 必须是“第八章 不定积分 | 习题8.2 | 第1题”，绝不能继续返回习题8.1第8题。',
+    '11) 例1：起点=第2题，当前队列里第2题补完，后面第3题完整，正式队列最后出现的顶层大题是第4题且它跨页 => hasExtractableQuestions=true, needNextPage=false, queueTailQuestionKey=第4题, continueQuestionKey=第4题。',
+    '12) 例2：起点=第6题，当前队列里第6题补完，后面第7题完整，且正式队列最后出现的顶层大题也已结束 => hasExtractableQuestions=true, needNextPage=false, queueTailQuestionKey=第7题, continueQuestionKey=null。',
+    '13) 例3：正式队列上半仍是习题8.1第8题，下半已切到习题8.2第1题，且正式队列最后出现的顶层大题是习题8.2第1题，则 queueTailQuestionKey 必须是“第八章 不定积分 | 习题8.2 | 第1题”；如果它不跨页，continueQuestionKey 返回 null。',
     '14) 只有在你有清晰证据证明起点题已经闭合时，needNextPage 才能为 false。',
     '严格输出 JSON（不要 markdown，不要解释）：',
     '{',
     '  "question": {',
     '    "needNextPage": true/false,',
+    '    "queueTailQuestionKey": "string or null",',
     '    "continueQuestionKey": "string or null",',
     '    "hasExtractableQuestions": true/false,',
     '    "reason": "string"',
@@ -1855,14 +2363,19 @@ async function detectChapterBoundaryAndPendingByDoubao(params: {
 
   const questionRaw =
     output.question && typeof output.question === 'object' ? (output.question as Record<string, unknown>) : {}
+  const queueTailQuestionKey = readQuestionKeyField(questionRaw, [
+    'queueTailQuestionKey',
+    'currentQueueTailQuestionKey',
+    'tailQuestionKey',
+    'lastQuestionKey',
+  ])
+  const continueQuestionKey = readQuestionKeyField(questionRaw, ['continueQuestionKey'])
 
   return {
     question: {
       needNextPage: Boolean(questionRaw.needNextPage),
-      continueQuestionKey:
-        typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
-          ? questionRaw.continueQuestionKey.trim()
-          : null,
+      queueTailQuestionKey,
+      continueQuestionKey,
       hasExtractableQuestions:
         questionRaw.hasExtractableQuestions === true || questionRaw.hasExtractableQuestion === true,
       reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
@@ -1930,13 +2443,14 @@ async function detectChapterAndQuestionsByDoubao(params: {
           '3) chapter.chapterTitle、chapter.sectionTitle、chapter.switchSectionTitle 一律返回 null。',
         ]
       : [
-          '1) 默认按当前章标题和当前小节标题编号。',
-          '2) 章节/小节切换只按输入队列的最后一页判断；前面的页只用于补题。',
-          '3) 最后一页未出现新章节/小节标题，则 chapterTitle/sectionTitle 返回 null。',
-          '4) 最后一页上半仍属当前小节、下半才切到新小节时，切换前题目保持当前小节编号，切换后题目改用新小节编号，并返回 switchSectionTitle。',
-          '5) 最后一页中途切到新章节或新小节时，切换点之后题目改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
-          '6) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
-          '7) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
+          '1) 后端传入的当前章标题、当前小节标题和 chapterId 只是处理游标/默认上下文，不是题目归属的最终依据；每道题的真实归属以正式队列图片中实际出现的章节/小节标题和位置为准。',
+          '2) 本助手只接收正式队列图片，不接收预读页；不得推测下一页会切到哪个小节。',
+          '3) 如果正式队列图片里没有实际出现新章节/小节标题，则 chapterTitle/sectionTitle/switchSectionTitle 返回 null，并按当前游标归属。',
+          '4) 如果正式队列图片中途切到新章节或新小节，切换点之前的题保持旧章/旧小节，切换点之后的题必须改用新章/新小节编号，并如实写入 chapter 字段，供后端更新 chapters 树。',
+          '5) switchSectionTitle 只表示正式队列里已经实际出现小节切换，用来通知后端更新游标；它不是给切换前题目强行改小节的依据。',
+          '6) 每道题都必须写入它实际所属小节的 chapterId；切换前题目用当前小节 chapterId，切换后题目用新小节 chapterId。',
+          '7) chapter.chapterTitle 只能填写纯章标题，例如“第九章 定积分”；chapter.sectionTitle 和 switchSectionTitle 只能填写纯小节标题，例如“习题9.1”。',
+          '8) chapter 字段中严禁输出“章标题 | 小节标题”这类组合串；这种组合格式只允许用于题目定位字段，不允许用于章节树字段。',
         ]),
     '题目规则:',
     questionSelectionMode === 'all_visible'
@@ -2112,7 +2626,9 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
   currentChapterTitle: string
   currentSectionTitle: string
   currentSectionChapterId: string
+  boundaryQueueTailQuestionKey: string | null
   lookaheadImageLabel?: string | null
+  retryHint?: string | null
 }): Promise<LastQuestionLookaheadResult> {
   const {
     queueImageDataUrls,
@@ -2120,31 +2636,38 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
     currentChapterTitle,
     currentSectionTitle,
     currentSectionChapterId,
+    boundaryQueueTailQuestionKey,
     lookaheadImageLabel = null,
+    retryHint = null,
   } = params
 
   const instruction = [
-    '你是最后一题续页确认器。你只判断“当前队列最后一页中的最后一道顶层大题”是否继续到下一页预读图，不判断 hasExtractableQuestions，也不判断起点题是否完整。',
+    '你是最后一题续页确认器。你会看到前N张正式队列图片和最后1张预读图；正式队列事实只能来自前N张图，预读图只用于判断正式队列尾题是否延续。',
     `- 当前章标题: ${currentChapterTitle}`,
     `- 当前小节标题: ${currentSectionTitle}`,
     `- 当前小节 chapterId: ${currentSectionChapterId}`,
+    `- 边界助手识别的正式队列尾题: ${boundaryQueueTailQuestionKey || 'null'}`,
     `- 预读页: ${lookaheadImageLabel || 'next_page_preview'}`,
     '规则:',
     '1) 前N张图才是当前队列；最后1张图只是下一页预读图，不属于当前队列，绝不能把预读图中的任何内容算进当前队列的完整性。',
-    '2) 你必须先只根据前N张队列图片，识别“当前队列里按阅读顺序最后出现的那一道顶层大题”是谁；严禁把最后这张预读图里的题号算进当前队列。',
-    '3) 这道“当前队列最后一题”不是当前章/小节的最后一题，也不是起点题，除非它确实就是前N张队列图片里最后出现的题。',
-    '4) 如果当前队列最后一页发生了小节或章节切换，必须只按当前队列图片里的切换后内容识别最后一道顶层大题；不能把切换前旧小节的题误当成最后一题。',
-    '5) 在确定了“当前队列最后一题”之后，才允许查看最后1张预读图，并且只判断这道题是否继续到了下一页；不得用预读图去补齐当前队列、也不得据此把当前队列判成完整。',
-    '6) 如果预读图页首仍在继续这道“当前队列最后一题”，则 continueQuestionKey 返回该题完整定位“章标题 | 小节标题 | 第几题”。',
-    '7) 如果当前队列最后一题的后续小问、后续答案、收尾结论只出现在预读图里，这恰恰说明当前队列未完成，continueQuestionKey 必须返回该题，绝不能返回 null。',
-    '8) 如果预读图没有继续这道题，则 continueQuestionKey 返回 null。',
-    '9) 预读图里出现的新题、后续题、其他更大的题号，统统不能当作当前队列最后一题，也不能直接当作 continueQuestionKey。',
-    '10) 典型场景：若当前队列页上半还是习题8.1第8题，下半已切到习题8.2第1题，那么当前队列最后一道顶层大题是习题8.2第1题；如果预读页继续的是这道题，则 continueQuestionKey 必须返回习题8.2第1题，不能返回习题8.1第8题。',
-    '11) 典型场景：若当前队列实际只到第3题，预读页里后面又出现第4题、第5题，也绝不能把第5题当成当前队列最后一题；你只能判断第3题是否在预读页继续。',
-    '12) 典型场景：当前队列里第1题只完整到前7个小问，而第8-10小问在预读页里才出现；这种情况下 continueQuestionKey 必须仍然是第1题，因为预读页不属于当前队列。',
+    '2) 你必须先只根据前N张正式队列图片，识别 queueTailQuestionKey，即“正式队列里按阅读顺序最后实际出现的那一道顶层大题”；严禁把最后这张预读图里的题号或小节算进 queueTailQuestionKey。',
+    '3) queueTailQuestionKey 必须使用这道正式队列尾题真实所属的小节；如果正式队列里没有出现新小节，不能因为预读图出现新小节就说当前队列已切换。',
+    '3.1) “一、填空题”“二、选择题”“三、判断题”“四、计算题/证明题/解答题”等只是栏目标题或题型说明，不是顶层大题。',
+    '3.2) 栏目标题下面的“1.、2.、3.”等编号题，每一道都是独立顶层大题；如果正式队列最后停在某个栏目内的编号题上，queueTailQuestionKey 返回这道编号题的定位，预读图只能判断这道编号题是否继续。',
+    '4) 识别 queueTailQuestionKey 后，与边界助手识别的正式队列尾题对比；如果不一致，保留你只看正式队列得到的 queueTailQuestionKey，continueQuestionKey 返回 null，并在 reason 说明不一致。',
+    '5) 只有当 queueTailQuestionKey 与边界助手尾题一致时，才允许查看预读图，并且只判断这同一道题是否继续到了预读页；不得用预读图去补齐当前队列、也不得据此把当前队列判成完整。',
+    '6) 如果预读图页首仍在继续这道正式队列尾题，则 continueQuestionKey 必须返回与 queueTailQuestionKey 完全相同的定位。',
+    '7) 如果正式队列尾题的后续小问、后续答案、收尾结论只出现在预读图里，这说明正式队列未完成，continueQuestionKey 必须返回 queueTailQuestionKey，不能返回 null。',
+    '8) 如果预读图没有继续这道正式队列尾题，则 continueQuestionKey 返回 null。',
+    '9) 预读图里出现的新题、后续题、其他更大的题号，统统不能当作正式队列最后一题，也不能直接当作 continueQuestionKey。',
+    '10) 典型场景：若正式队列实际只到第3题，预读页里后面又出现第4题、第5题，也绝不能把第5题当成正式队列最后一题；你只能判断第3题是否在预读页继续。',
+    '11) 典型场景：当前队列里第1题只完整到前7个小问，而第8-10小问在预读页里才出现；这种情况下 queueTailQuestionKey 和 continueQuestionKey 都必须仍然是第1题，因为预读页不属于正式队列。',
+    '12) reason 必须分两步写清楚：先说明“仅看前N张正式队列图”识别出的最后一题，再说明它与边界助手尾题是否一致、预读页页首是否继续这道题；不得只根据预读页内容倒推。',
+    retryHint ? `重判要求: ${retryHint}` : '',
     '严格输出 JSON：',
     '{',
     '  "question": {',
+    '    "queueTailQuestionKey": "string or null",',
     '    "continueQuestionKey": "string or null",',
     '    "reason": "string"',
     '  }',
@@ -2195,12 +2718,17 @@ async function detectLastQuestionContinuationWithLookaheadByDoubao(params: {
 
   const questionRaw =
     output.question && typeof output.question === 'object' ? (output.question as Record<string, unknown>) : {}
+  const queueTailQuestionKey = readQuestionKeyField(questionRaw, [
+    'queueTailQuestionKey',
+    'currentQueueTailQuestionKey',
+    'tailQuestionKey',
+    'lastQuestionKey',
+  ])
+  const continueQuestionKey = readQuestionKeyField(questionRaw, ['continueQuestionKey'])
 
   return {
-    continueQuestionKey:
-      typeof questionRaw.continueQuestionKey === 'string' && questionRaw.continueQuestionKey.trim()
-        ? questionRaw.continueQuestionKey.trim()
-        : null,
+    queueTailQuestionKey,
+    continueQuestionKey,
     reason: typeof questionRaw.reason === 'string' ? questionRaw.reason : '',
     rawText: text,
   }
@@ -2257,7 +2785,7 @@ async function appendChapterSegmentFromImages(params: {
   const chapter = ensureTopChapter(payload, normalizedChapterTitle)
   const section = ensureSectionChapter(payload, chapter.chapterId, normalizedSectionTitle)
   const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
-  const questionSelectionMode = answerHandlingMode === 'generate_brief' ? 'all_visible' : 'complete_only'
+  const questionSelectionMode = answerHandlingMode === 'extract_visible' ? 'complete_only' : 'all_visible'
   const mode: 'single_page' | 'cross_page_merge' = imageDataUrls.length > 1 ? 'cross_page_merge' : 'single_page'
 
   const extractDetect = await detectChapterAndQuestionsByDoubao({
@@ -2425,7 +2953,7 @@ async function processChapterSessionImage(params: {
   const sessionStoredProcessingStartQuestionKey = questionSession.processingStartQuestionKey
   const sessionStoredPendingContinueQuestionKey = questionSession.pendingContinueQuestionKey
 
-  if (answerHandlingMode === 'generate_brief') {
+  if (answerHandlingMode !== 'extract_visible') {
     const extractDetect = await detectChapterAndQuestionsByDoubao({
       imageDataUrls: [imageDataUrl],
       currentChapterTitle: activeChapterTitle,
@@ -2461,6 +2989,7 @@ async function processChapterSessionImage(params: {
       .map((item) =>
         normalizeQuestionItem(item, section.chapterId, sectionTitle, {
           answerHandlingMode,
+          forceFallbackChapterId: false,
         }),
       )
       .filter(Boolean) as QuestionItem[]
@@ -2671,25 +3200,74 @@ async function processChapterSessionImage(params: {
   let section = ensureSectionChapter(payload, chapter.chapterId, sectionTitle)
 
   const boundaryContinueKey = resolveContinueQuestionKey(boundaryDetect.question.continueQuestionKey)
+  const boundaryQueueTailQuestionKey =
+    resolveContinueQuestionKey(boundaryDetect.question.queueTailQuestionKey) || boundaryContinueKey || null
   let effectiveBoundaryContinueKey: string | null = boundaryContinueKey || null
   let lookaheadAdjustedContinueQuestionKey: string | null = boundaryContinueKey || null
+  let lookaheadQueueTailQuestionKey: string | null = null
   let boundaryLookaheadReason = ''
-  if (lookaheadImageDataUrl) {
+  if (lookaheadImageDataUrl && boundaryQueueTailQuestionKey) {
     try {
-      const lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubao({
+      let lookaheadDetect = await detectLastQuestionContinuationWithLookaheadByDoubao({
         queueImageDataUrls: questionImageDataUrls,
         lookaheadImageDataUrl,
         currentChapterTitle: activeChapterTitle,
         currentSectionTitle: activeSectionTitle,
         currentSectionChapterId: activeSectionChapterId,
+        boundaryQueueTailQuestionKey,
         lookaheadImageLabel: lookaheadImageLabel || null,
       })
       boundaryLookaheadReason = lookaheadDetect.reason || ''
-      effectiveBoundaryContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
-      lookaheadAdjustedContinueQuestionKey = effectiveBoundaryContinueKey
+      lookaheadQueueTailQuestionKey = resolveContinueQuestionKey(lookaheadDetect.queueTailQuestionKey) || null
+      let lookaheadContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+      let lookaheadDecision = shouldAcceptLookaheadContinueQuestionKey({
+        lookaheadTailQuestionKey: lookaheadQueueTailQuestionKey,
+        boundaryQueueTailQuestionKey,
+        lookaheadContinueKey,
+        boundaryContinueKey,
+        boundaryReason: boundaryDetect.question.reason,
+        currentSectionTitle: activeSectionTitle,
+      })
+      if (!lookaheadDecision.accepted) {
+        const retryDetect = await detectLastQuestionContinuationWithLookaheadByDoubao({
+          queueImageDataUrls: questionImageDataUrls,
+          lookaheadImageDataUrl,
+          currentChapterTitle: activeChapterTitle,
+          currentSectionTitle: activeSectionTitle,
+          currentSectionChapterId: activeSectionChapterId,
+          boundaryQueueTailQuestionKey,
+          lookaheadImageLabel: lookaheadImageLabel || null,
+          retryHint:
+            `${lookaheadDecision.reason} 请重新只看前N张正式队列图来复核 queueTailQuestionKey；它应与边界助手尾题一致。预读页只能用于判断这道题是否延续，不能引入预读页的新题号或新小节。`,
+        })
+        lookaheadDetect = retryDetect
+        lookaheadQueueTailQuestionKey = resolveContinueQuestionKey(lookaheadDetect.queueTailQuestionKey) || null
+        lookaheadContinueKey = resolveContinueQuestionKey(lookaheadDetect.continueQuestionKey) || null
+        boundaryLookaheadReason = [boundaryLookaheadReason, `重判: ${lookaheadDetect.reason || ''}`]
+          .filter(Boolean)
+          .join(' | ')
+        lookaheadDecision = shouldAcceptLookaheadContinueQuestionKey({
+          lookaheadTailQuestionKey: lookaheadQueueTailQuestionKey,
+          boundaryQueueTailQuestionKey,
+          lookaheadContinueKey,
+          boundaryContinueKey,
+          boundaryReason: boundaryDetect.question.reason,
+          currentSectionTitle: activeSectionTitle,
+        })
+      }
+      if (lookaheadDecision.accepted) {
+        effectiveBoundaryContinueKey = lookaheadContinueKey
+        lookaheadAdjustedContinueQuestionKey = effectiveBoundaryContinueKey
+      } else {
+        boundaryLookaheadReason = [boundaryLookaheadReason, lookaheadDecision.reason].filter(Boolean).join(' | ')
+        effectiveBoundaryContinueKey = boundaryContinueKey || null
+        lookaheadAdjustedContinueQuestionKey = effectiveBoundaryContinueKey
+      }
     } catch (error) {
       boundaryLookaheadReason = error instanceof Error ? `预读判断失败: ${error.message}` : `预读判断失败: ${String(error)}`
     }
+  } else if (lookaheadImageDataUrl) {
+    boundaryLookaheadReason = '边界助手未返回正式队列尾题，跳过预读判断。'
   }
   let pendingFiltered = { filtered: [] as QuestionItem[], droppedCount: 0 }
   let normalizedQuestions: QuestionItem[] = []
@@ -2797,6 +3375,7 @@ async function processChapterSessionImage(params: {
       .map((item) =>
         normalizeQuestionItem(item, section.chapterId, sectionTitle, {
           answerHandlingMode,
+          forceFallbackChapterId: false,
         }),
       )
       .filter(Boolean) as QuestionItem[]
@@ -2835,6 +3414,7 @@ async function processChapterSessionImage(params: {
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
@@ -2903,6 +3483,7 @@ async function processChapterSessionImage(params: {
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
@@ -2923,7 +3504,11 @@ async function processChapterSessionImage(params: {
       }
     }
 
-    let integrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions)
+    const integrityCheckOptions = {
+      expectAnswer: true,
+      allowBlankCodeAnswer: false,
+    }
+    let integrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions, integrityCheckOptions)
     if (!rangeMismatchBlocked && integrityIssue) {
       integrityFixRetried = true
       try {
@@ -2944,10 +3529,11 @@ async function processChapterSessionImage(params: {
           .map((item) =>
             normalizeQuestionItem(item, section.chapterId, sectionTitle, {
               answerHandlingMode,
+              forceFallbackChapterId: false,
             }),
           )
           .filter(Boolean) as QuestionItem[]
-        const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized)
+        const retriedIssue = detectQuestionIntegrityIssue(integrityRetryNormalized, integrityCheckOptions)
         integrityRetryReason = integrityRetryDetect.question.reason || ''
         if (integrityRetryNormalized.length && !retriedIssue) {
           normalizedQuestions = integrityRetryNormalized
@@ -2965,7 +3551,7 @@ async function processChapterSessionImage(params: {
       }
     }
 
-    const unresolvedIntegrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions)
+    const unresolvedIntegrityIssue = rangeMismatchBlocked ? null : detectQuestionIntegrityIssue(normalizedQuestions, integrityCheckOptions)
     if (unresolvedIntegrityIssue) {
       pendingFiltered = {
         filtered: normalizedQuestions.slice(0, unresolvedIntegrityIssue.index),
@@ -3081,7 +3667,9 @@ async function processChapterSessionImage(params: {
       pendingPageLabels,
       boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
       boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+      boundaryQueueTailQuestionKey,
       boundaryContinueQuestionKey: boundaryContinueKey || null,
+      lookaheadQueueTailQuestionKey,
       lookaheadAdjustedContinueQuestionKey,
       boundaryLookaheadLabel: lookaheadImageLabel || null,
       boundaryLookaheadReason,
@@ -3130,7 +3718,9 @@ async function processChapterSessionImage(params: {
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+        boundaryQueueTailQuestionKey,
         boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadQueueTailQuestionKey,
         lookaheadAdjustedContinueQuestionKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,
         boundaryLookaheadReason,
@@ -3167,7 +3757,9 @@ async function processChapterSessionImage(params: {
         droppedPendingQuestionCount: pendingFiltered.droppedCount,
         boundaryHasExtractableQuestions: boundaryDetect.question.hasExtractableQuestions,
         boundaryNeedNextPage: boundaryDetect.question.needNextPage,
+        boundaryQueueTailQuestionKey,
         boundaryContinueQuestionKey: boundaryContinueKey || null,
+        lookaheadQueueTailQuestionKey,
         lookaheadAdjustedContinueQuestionKey,
         boundaryLookaheadLabel: lookaheadImageLabel || null,
         boundaryLookaheadReason,
@@ -3228,6 +3820,7 @@ export {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   buildCanonicalQuestionTitle,
+  buildQuestionDisplayTitle,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
   ensureSectionChapter,

@@ -255,6 +255,25 @@ export function createExamSessionFlow(deps) {
     state.examAutoStatus = ''
   }
 
+  function moveExamAutoFile(index, direction) {
+    if (state.examAutoRunning) {
+      return
+    }
+    const files = Array.isArray(state.examAutoFiles) ? state.examAutoFiles : []
+    const currentIndex = Number(index)
+    const offset = String(direction || '').trim() === 'down' ? 1 : -1
+    const nextIndex = currentIndex + offset
+    if (!Number.isInteger(currentIndex) || nextIndex < 0 || nextIndex >= files.length) {
+      return
+    }
+    const nextFiles = [...files]
+    const [item] = nextFiles.splice(currentIndex, 1)
+    nextFiles.splice(nextIndex, 0, item)
+    state.examAutoFiles = nextFiles
+    state.examAutoError = false
+    state.examAutoStatus = `已调整源文件顺序，当前共 ${nextFiles.length} 个文件`
+  }
+
   async function initExamSession() {
     if (state.workingJsonDocumentType && state.workingJsonDocumentType !== 'exam') {
       state.examSessionError = true
@@ -538,6 +557,7 @@ export function createExamSessionFlow(deps) {
     chooseExamAutoImageFolder,
     onExamAutoFilesChange,
     clearExamAutoFiles,
+    moveExamAutoFile,
     initExamSession,
     processExamImage,
     runExamAuto,

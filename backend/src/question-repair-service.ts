@@ -1,7 +1,6 @@
 import { ARK_MODEL } from './config'
 import {
   buildLegacyQuestionId,
-  findQuestionNode,
   resolveQuestionTarget,
   parseQuestionIdParts,
   resolveChapterTitles,
@@ -9,6 +8,7 @@ import {
 import type { TextbookJsonPayload } from './types'
 import {
   buildCanonicalQuestionTitle,
+  buildQuestionDisplayTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionEmptyAnswerIssue,
@@ -18,6 +18,7 @@ import {
   extractQuestionNoFromId,
   extractQuestionNoFromText,
   getPayloadAnswerHandlingMode,
+  getPayloadSourceMeta,
   loadTextbookJson,
   normalizeQuestionItem,
   parseModelJsonObject,
@@ -26,6 +27,8 @@ import {
   requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
+import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'
+import { resolveQuestionMediaCrops, type QuestionMediaCropSource } from './question-media-crop-service'
 
 type JsonNode = Record<string, unknown>
 
@@ -175,6 +178,7 @@ function resolveRepairScope(params: {
   sectionNo?: number
   questionNo?: number
   questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
 }) {
@@ -184,11 +188,12 @@ function resolveRepairScope(params: {
     sectionNo,
     questionNo,
     questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
   } = params
 
-  const resolvedQuestionId = String(questionId || '').trim()
+  const requestedQuestionId = String(questionId || '').trim()
     || (
       Number.isInteger(chapterNo) &&
       Number.isInteger(sectionNo) &&
@@ -196,32 +201,39 @@ function resolveRepairScope(params: {
         ? buildLegacyQuestionId(Number(chapterNo), Number(sectionNo), Number(questionNo))
         : ''
     )
+  const normalizedQuestionTitle = String(questionTitle || '').trim()
 
-  if (!resolvedQuestionId) {
-    throw new Error('questionId is required, or chapterNo/sectionNo/questionNo must all be positive integers')
+  if (!requestedQuestionId && !normalizedQuestionTitle) {
+    throw new Error('questionId or questionTitle is required, or chapterNo/sectionNo/questionNo must all be positive integers')
   }
 
+  const normalizedChildQuestionId = String(childQuestionId || '').trim()
+  const hasChildTarget = Boolean(normalizedChildQuestionId) || (Number.isInteger(Number(childNo)) && Number(childNo) > 0)
+  const target = resolveQuestionTarget({
+    payload,
+    questionId: requestedQuestionId,
+    questionTitle: normalizedQuestionTitle,
+    childQuestionId: hasChildTarget ? normalizedChildQuestionId : '',
+    childNo: hasChildTarget ? childNo : null,
+  })
+  const resolvedQuestionId = target.questionId
   const parts = parseQuestionIdParts(resolvedQuestionId)
   if (!parts) {
     throw new Error(`questionId ${resolvedQuestionId} is invalid`)
   }
 
-  const resolvedChapterId = parts.sectionNo > 0 ? `ch_${parts.chapterNo}_${parts.sectionNo}` : `ch_${parts.chapterNo}`
-  const titles = resolveChapterTitles(payload, resolvedChapterId)
+  const resolvedChapterId = target.chapterId || (parts.sectionNo > 0 ? `ch_${parts.chapterNo}_${parts.sectionNo}` : `ch_${parts.chapterNo}`)
+  const titles = target.sectionTitle
+    ? {
+        chapterTitle: target.chapterTitle,
+        sectionTitle: target.sectionTitle,
+      }
+    : resolveChapterTitles(payload, resolvedChapterId)
   if (!titles.sectionTitle) {
     throw new Error(`chapterId ${resolvedChapterId} not found in JSON`)
   }
 
-  const normalizedChildQuestionId = String(childQuestionId || '').trim()
-  const hasChildTarget = Boolean(normalizedChildQuestionId) || (Number.isInteger(Number(childNo)) && Number(childNo) > 0)
-
   if (!hasChildTarget) {
-    const questionNode = findQuestionNode(payload, resolvedQuestionId)
-    const questionTitle =
-      questionNode && typeof questionNode.title === 'string' && questionNode.title.trim()
-        ? questionNode.title.trim()
-        : buildCanonicalQuestionTitle(titles.sectionTitle, String(parts.questionNo))
-
     return {
       questionId: resolvedQuestionId,
       childQuestionId: '',
@@ -229,22 +241,15 @@ function resolveRepairScope(params: {
       chapterId: resolvedChapterId,
       questionNo: String(parts.questionNo),
       chapterTitle: titles.chapterTitle,
-    sectionTitle: titles.sectionTitle,
-    questionTitle,
-    childTitle: '',
-    childPromptText: '',
-    stemText: '',
-    questionNode,
-    childNode: null,
+      sectionTitle: titles.sectionTitle,
+      questionTitle: target.questionTitle,
+      childTitle: '',
+      childPromptText: '',
+      stemText: '',
+      questionNode: target.questionNode,
+      childNode: null,
+    }
   }
-  }
-
-  const target = resolveQuestionTarget({
-    payload,
-    questionId: resolvedQuestionId,
-    childQuestionId: normalizedChildQuestionId,
-    childNo,
-  })
 
   const childOrderNo =
     target.childNode && Number.isInteger(Number(target.childNode.orderNo)) && Number(target.childNode.orderNo) > 0
@@ -277,7 +282,9 @@ async function detectSingleQuestionRepairByDoubao(params: {
   chapterId: string
   questionId: string
   questionNo: string
+  questionTitle: string
   answerHandlingMode: 'extract_visible' | 'leave_empty' | 'generate_brief'
+  enableMediaCrop?: boolean
 }) {
   const {
     imageDataUrls,
@@ -286,12 +293,20 @@ async function detectSingleQuestionRepairByDoubao(params: {
     chapterId,
     questionId,
     questionNo,
+    questionTitle,
     answerHandlingMode,
+    enableMediaCrop = false,
   } = params
 
   if (!Array.isArray(imageDataUrls) || !imageDataUrls.length) {
     throw new Error('imageDataUrls is required')
   }
+
+  const targetVisibleTitle =
+    String(questionTitle || '').trim() ||
+    buildQuestionDisplayTitle(sectionTitle, '', questionNo) ||
+    buildCanonicalQuestionTitle(sectionTitle, questionNo)
+  const targetVisibleQuestionNo = String(extractQuestionNoFromText(targetVisibleTitle) || questionNo)
 
   const instruction = [
     '你是教材题库的定点重写器，只负责从图片序列里提取并重写指定的一道顶层题。',
@@ -299,26 +314,29 @@ async function detectSingleQuestionRepairByDoubao(params: {
     `当前节标题：${sectionTitle}`,
     `目标 chapterId：${chapterId}`,
     `目标 questionId：${questionId}`,
-    `目标顶层题号：第${questionNo}题`,
+    `目标内部全局题号：第${questionNo}题（只用于固定 questionId 和写回校验，不作为图片找题依据）`,
+    `目标图片可见标题：${targetVisibleTitle}`,
+    `目标图片可见题号：第${targetVisibleQuestionNo}题`,
     `输入图片数量：${imageDataUrls.length}`,
     '规则：',
     '1) 所有图片按上传顺序组成一个连续阅读序列，必要时要跨页合并后再识别。',
-    `2) 只提取“第${questionNo}题”这一道顶层题，其他题目全部忽略。`,
-    `3) 如果整组图片里没有完整出现第${questionNo}题，found 必须返回 false。`,
+    `2) 只提取图片中与“${targetVisibleTitle}”对应的这一道顶层题，其他题目全部忽略。`,
+    `3) 如果整组图片里没有完整出现“${targetVisibleTitle}”，found 必须返回 false。`,
     '4) 如果目标题跨多张图，必须合并后再提取，不能只输出半题。',
     '5) 如果目标题是综合题/大题，可以输出 GROUP，并带上属于该题的全部可见小题。',
     '6) 如果目标题是普通单题，必须输出 LEAF。',
     `7) 输出的 questionId 必须固定为 ${questionId}；若是 GROUP.children，子题 questionId 必须在此基础上按 _1、_2 递增。`,
     `8) 输出的 chapterId 必须固定为 ${chapterId}。`,
-    `9) 输出 title 必须使用“${sectionTitle} 第${questionNo}题”格式。`,
+    `9) 输出 title 必须使用“${targetVisibleTitle}”。`,
     '10) JSON 结构必须严格符合题库格式：prompt、standardAnswer、stem 都必须是对象，形如 {"text":"...", "media":[]}，绝不能返回纯字符串。',
     answerHandlingMode === 'generate_brief'
-      ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成简洁适量的答案；如果是编程题，可保留空答案。'
+      ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成包含必要解题步骤的标准答案；计算/证明/推导的关键步骤不能省略。如果是编程题，可保留空答案。'
       : answerHandlingMode === 'leave_empty'
         ? '11) 这是无答案文档，standardAnswer 字段必须保留，但 text 为空、media 为空数组。'
         : '11) 这是有答案文档，prompt 和 standardAnswer 都必须只照抄图片里真实可见的原文/原公式；严禁自行解题、补写、改写、总结、润色。如果答案没有完整拍到，found 必须返回 false。',
     ...buildSharedQuestionContentRuleLines(12, 'questionToUpsert', answerHandlingMode),
     ...buildSharedQuestionStructureInstructionLines(answerHandlingMode),
+    ...(enableMediaCrop ? buildRelativeMediaCropInstructionLines(imageDataUrls.length) : []),
     '只输出合法 JSON：',
     '{',
     '  "found": true/false,',
@@ -410,6 +428,7 @@ async function detectSingleChildRepairByDoubao(params: {
   childOrderNo: number
   childTitle?: string
   answerHandlingMode: 'extract_visible' | 'leave_empty' | 'generate_brief'
+  enableMediaCrop?: boolean
 }) {
   const {
     imageDataUrls,
@@ -423,6 +442,7 @@ async function detectSingleChildRepairByDoubao(params: {
     childOrderNo,
     childTitle = '',
     answerHandlingMode,
+    enableMediaCrop = false,
   } = params
 
   if (!Array.isArray(imageDataUrls) || !imageDataUrls.length) {
@@ -456,10 +476,11 @@ async function detectSingleChildRepairByDoubao(params: {
     '10) 这个小题的题目或答案可能跨页连续出现；如果本页结尾未结束，要继续读取下一页，直到下一个同级编号小题开始。',
     '11)公式必须转成 LaTeX，使用Katex语法，不得改成口语描述。',
     answerHandlingMode === 'generate_brief'
-      ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成简洁适量的答案；如果是编程题，可保留空答案。'
+      ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成包含必要解题步骤的标准答案；计算/证明/推导的关键步骤不能省略。如果是编程题，可保留空答案。'
       : answerHandlingMode === 'leave_empty'
         ? '11) 这是无答案文档，standardAnswer 字段必须保留，但 text 为空、media 为空数组。'
         : '11) 这是有答案文档，prompt 和 standardAnswer 都必须只照抄图片里真实可见的原文/原公式；严禁自行解题、补写、改写、总结、润色。如果答案没有完整拍到，found 必须返回 false。',
+    ...(enableMediaCrop ? buildRelativeMediaCropInstructionLines(imageDataUrls.length) : []),
     '只输出合法 JSON：',
     '{',
     '  "found": true/false,',
@@ -664,29 +685,35 @@ function normalizeRepairedChildQuestion(params: {
 
 export async function repairQuestionInTextbookJson(params: {
   jsonFilePath: string
+  workspaceId?: string
   chapterNo?: number
   sectionNo?: number
   questionNo?: number
   questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
   hasAnswerSource?: boolean | null
   generateAnswerIfMissing?: boolean | null
   imageDataUrls: string[]
+  imageSources?: QuestionMediaCropSource[]
   imageLabels?: string[]
   sourceFileName?: string
 }) {
   const {
     jsonFilePath,
+    workspaceId = '',
     chapterNo,
     sectionNo,
     questionNo,
     questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
     hasAnswerSource = null,
     generateAnswerIfMissing = null,
     imageDataUrls,
+    imageSources = [],
     imageLabels = [],
     sourceFileName = '',
   } = params
@@ -694,6 +721,7 @@ export async function repairQuestionInTextbookJson(params: {
   void sourceFileName
 
   const payload = await loadTextbookJson(jsonFilePath)
+  const autoCropMedia = getPayloadSourceMeta(payload).documentType === 'exam'
   const answerHandlingMode = resolveEffectiveAnswerHandlingMode({
     payload,
     hasAnswerSource,
@@ -707,6 +735,7 @@ export async function repairQuestionInTextbookJson(params: {
     sectionNo,
     questionNo,
     questionId,
+    questionTitle,
     childQuestionId,
     childNo,
   })
@@ -737,6 +766,7 @@ export async function repairQuestionInTextbookJson(params: {
       childOrderNo: scope.childOrderNo,
       childTitle: scope.childTitle,
       answerHandlingMode,
+      enableMediaCrop: autoCropMedia,
     })
 
     if (!repairDetect.found || !repairDetect.childToUpsert) {
@@ -758,6 +788,15 @@ export async function repairQuestionInTextbookJson(params: {
       expectAnswer: effectiveExpectAnswer,
       answerHandlingMode,
     })
+    if (autoCropMedia) {
+      await resolveQuestionMediaCrops({
+        questions: [normalizedQuestion],
+        sources: imageSources,
+        workspaceId,
+        sourceFileName,
+        jsonFilePath,
+      })
+    }
 
     const emptyAnswerIssue = detectQuestionEmptyAnswerIssue(normalizedQuestion, { expectAnswer: effectiveExpectAnswer, allowBlankCodeAnswer })
     if (emptyAnswerIssue) {
@@ -803,11 +842,13 @@ export async function repairQuestionInTextbookJson(params: {
     chapterId: scope.chapterId,
     questionId: scope.questionId,
     questionNo: scope.questionNo,
+    questionTitle: scope.questionTitle,
     answerHandlingMode,
+    enableMediaCrop: autoCropMedia,
   })
 
   if (!repairDetect.found || !repairDetect.questionToUpsert) {
-    throw createRepairError(repairDetect.reason || `未能从图片中完整识别第${scope.questionNo}题`, repairDetect.rawText)
+    throw createRepairError(repairDetect.reason || `未能从图片中完整识别${scope.questionTitle || `第${scope.questionNo}题`}`, repairDetect.rawText)
   }
 
   const normalized = normalizeQuestionItem(
@@ -815,7 +856,9 @@ export async function repairQuestionInTextbookJson(params: {
       ...repairDetect.questionToUpsert,
       questionId: scope.questionId,
       chapterId: scope.chapterId,
-      title: buildCanonicalQuestionTitle(scope.sectionTitle, scope.questionNo),
+      title:
+        buildQuestionDisplayTitle(scope.sectionTitle, scope.questionTitle, scope.questionNo) ||
+        buildCanonicalQuestionTitle(scope.sectionTitle, scope.questionNo),
     },
     scope.chapterId,
     scope.sectionTitle,
@@ -827,6 +870,15 @@ export async function repairQuestionInTextbookJson(params: {
 
   if (!normalized) {
     throw createRepairError('Repair result could not be normalized into a valid question', repairDetect.rawText)
+  }
+  if (autoCropMedia) {
+    await resolveQuestionMediaCrops({
+      questions: [normalized],
+      sources: imageSources,
+      workspaceId,
+      sourceFileName,
+      jsonFilePath,
+    })
   }
 
   const normalizedQuestionNo =

@@ -40,16 +40,24 @@
         </select>
       </label>
       <label class="field">
-        <span>是否有答案</span>
+        <span>原卷是否有答案</span>
         <select v-model="hasAnswerValue" class="glass-input">
           <option value="true">有答案</option>
           <option value="false">无答案</option>
+        </select>
+      </label>
+      <label v-if="hasAnswerValue === 'false'" class="field">
+        <span>无答案时</span>
+        <select v-model="answerHandlingModeValue" class="glass-input">
+          <option value="leave_empty">保持留空</option>
+          <option value="generate_brief">由 AI 生成完整步骤答案</option>
         </select>
       </label>
     </div>
 
     <div class="action-row">
       <button class="primary-button" @click="actions.generateExamJson">生成基础 JSON</button>
+      <button class="secondary-button" @click="actions.saveExamJsonToWorkspace">保存到当前工作区</button>
       <button class="secondary-button" @click="actions.saveExamJson">选择位置并保存</button>
     </div>
 
@@ -83,6 +91,22 @@ const hasAnswerValue = computed({
   },
   set(value) {
     props.state.examJsonForm.hasAnswer = value !== 'false'
+    if (props.state.examJsonForm.hasAnswer !== false) {
+      props.state.examJsonForm.answerHandlingMode = 'extract_visible'
+    } else if (!['leave_empty', 'generate_brief'].includes(String(props.state.examJsonForm.answerHandlingMode || '').trim())) {
+      props.state.examJsonForm.answerHandlingMode = 'leave_empty'
+    }
+  },
+})
+
+const answerHandlingModeValue = computed({
+  get() {
+    const value = String(props.state.examJsonForm.answerHandlingMode || '').trim()
+    return value === 'generate_brief' ? 'generate_brief' : 'leave_empty'
+  },
+  set(value) {
+    props.state.examJsonForm.answerHandlingMode = value === 'generate_brief' ? 'generate_brief' : 'leave_empty'
+    props.state.examJsonForm.hasAnswer = false
   },
 })
 </script>

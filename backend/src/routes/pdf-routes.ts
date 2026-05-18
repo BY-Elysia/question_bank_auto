@@ -58,6 +58,7 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
     const workspace = await ensureWorkspace({
       workspaceId: workspaceIdInput,
       name: folderName,
+      kind: 'textbook',
     })
     const batchOutputRelativeDir = path.posix.join('output_images', folderName)
     const batchOutputDir = path.join(workspace.workspaceDir, batchOutputRelativeDir)
@@ -101,7 +102,8 @@ router.post('/api/convert', upload.any(), async (req: Request, res: Response) =>
         fileName: savedPdfName,
         sourceFilePath: pdfFile.path,
         type: 'pdf',
-        relativeDir: 'uploads',
+        relativeDir: 'source_files',
+        workspaceKind: 'textbook',
         meta: {
           originalName,
           order: index + 1,

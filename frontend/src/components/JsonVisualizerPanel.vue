@@ -92,7 +92,7 @@
             :disabled="!hasVisualizerWorkspaceSelection"
             @click="actions.useDefaultWorkspaceUploadsForVisualizer"
           >
-            用 uploads/source_uploads
+            用 output_images/source_uploads
           </button>
         </div>
 
@@ -214,7 +214,7 @@
             选当前浏览目录
           </button>
           <button class="ghost-button" :disabled="!hasVisualizerWorkspaceSelection" @click="actions.useDefaultWorkspaceUploadsForVisualizer">
-            用 uploads/source_uploads
+            用 output_images/source_uploads
           </button>
           <button
             class="ghost-button"
@@ -419,6 +419,15 @@
               <strong>{{ currentQuestionLocatorText }}</strong>
             </article>
           </div>
+
+          <label class="field field-span-2">
+            <span>修复定位方式</span>
+            <select v-model="locatorMode" class="glass-input">
+              <option v-for="item in locatorModeOptions" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </label>
 
           <div class="action-row inline-row visualizer-mode-tabs">
             <button class="ghost-button" :class="{ 'is-active': operationMode === 'attach' }" @click="operationMode = 'attach'">
@@ -652,6 +661,7 @@ const selectedChildKey = ref('')
 const keyword = ref('')
 const repairingTargetType = ref('')
 const operationMode = ref('attach')
+const locatorMode = ref('title')
 const attachTarget = ref('')
 const rewriteHasAnswerSource = ref('yes')
 const rewriteGenerateAnswerIfMissing = ref('no')
@@ -813,10 +823,23 @@ function buildQuestionSearchText(question) {
   if (question.nodeType === 'GROUP') {
     parts.push(question.stem?.text || '')
     for (const child of question.children || []) {
-      parts.push(child.questionId, child.title, child.questionType, child.prompt?.text || '', child.standardAnswer?.text || '')
+      parts.push(
+        child.questionId,
+        child.title,
+        child.questionType,
+        child.prompt?.text || '',
+        ...(child.options || []).map((option) => `${option.id} ${option.text}`),
+        child.standardAnswer?.text || '',
+        child.standardAnswer?.explanation || '',
+      )
     }
   } else {
-    parts.push(question.prompt?.text || '', question.standardAnswer?.text || '')
+    parts.push(
+      question.prompt?.text || '',
+      ...(question.options || []).map((option) => `${option.id} ${option.text}`),
+      question.standardAnswer?.text || '',
+      question.standardAnswer?.explanation || '',
+    )
   }
   return parts.join('\n').toLowerCase()
 }
@@ -826,15 +849,25 @@ function buildQuestionLabel(groupTitle, question) {
 }
 
 function parseQuestionIdParts(questionId) {
-  const match = String(questionId || '').trim().match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
-  if (!match) {
+  const normalized = String(questionId || '').trim()
+  const legacyMatch = normalized.match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
+  if (legacyMatch) {
+    return {
+      chapterNo: Number(legacyMatch[1]),
+      sectionNo: Number(legacyMatch[2]),
+      questionNo: Number(legacyMatch[3]),
+      childNo: legacyMatch[4] ? Number(legacyMatch[4]) : null,
+    }
+  }
+  const examMatch = normalized.match(/^q_(\d+)_(\d+)(?:_(\d+))?$/)
+  if (!examMatch) {
     return null
   }
   return {
-    chapterNo: Number(match[1]),
-    sectionNo: Number(match[2]),
-    questionNo: Number(match[3]),
-    childNo: match[4] ? Number(match[4]) : null,
+    chapterNo: Number(examMatch[1]),
+    sectionNo: 0,
+    questionNo: Number(examMatch[2]),
+    childNo: examMatch[3] ? Number(examMatch[3]) : null,
   }
 }
 
@@ -958,6 +991,85 @@ const currentOperationTitle = computed(() => {
   return currentQuestion.value.title || currentQuestion.value.questionId
 })
 
+const currentQuestionTitleLocator = computed(() =>
+  String(currentQuestion.value?.title || '').trim(),
+)
+
+const currentQuestionIdLocator = computed(() =>
+  String(currentQuestion.value?.questionId || '').trim(),
+)
+
+const locatorModeOptions = computed(() => {
+  if (!currentQuestion.value) {
+    return []
+  }
+  const items = []
+  if (currentQuestionTitleLocator.value) {
+    items.push({
+      value: 'title',
+      label: `当前定位：${currentOperationTitle.value || currentQuestionTitleLocator.value}`,
+    })
+  }
+  if (currentQuestionIdLocator.value) {
+    items.push({
+      value: 'id',
+      label: `自动定位：${currentQuestionLocatorText.value || currentQuestionIdLocator.value}`,
+    })
+  }
+  return items
+})
+
+watch(
+  locatorModeOptions,
+  (items) => {
+    const exists = items.some((item) => item.value === locatorMode.value)
+    if (!exists) {
+      locatorMode.value = items[0]?.value || 'title'
+    }
+  },
+  { immediate: true },
+)
+
+const selectedQuestionLocator = computed(() => {
+  if (!currentQuestion.value) {
+    return {
+      mode: '',
+      questionId: '',
+      questionTitle: '',
+      label: '',
+    }
+  }
+
+  if (locatorMode.value === 'id' && currentQuestionIdLocator.value) {
+    return {
+      mode: 'id',
+      questionId: currentQuestionIdLocator.value,
+      questionTitle: '',
+      label: currentQuestionLocatorText.value || currentQuestionIdLocator.value,
+    }
+  }
+
+  if (currentQuestionTitleLocator.value) {
+    return {
+      mode: 'title',
+      questionId: '',
+      questionTitle: currentQuestionTitleLocator.value,
+      label: currentOperationTitle.value || currentQuestionTitleLocator.value,
+    }
+  }
+
+  return {
+    mode: currentQuestionIdLocator.value ? 'id' : '',
+    questionId: currentQuestionIdLocator.value,
+    questionTitle: '',
+    label: currentQuestionLocatorText.value || currentQuestionIdLocator.value,
+  }
+})
+
+const hasSelectedQuestionLocator = computed(() =>
+  Boolean(selectedQuestionLocator.value.questionId || selectedQuestionLocator.value.questionTitle),
+)
+
 const attachTargetOptions = computed(() => {
   const question = currentQuestion.value
   if (!question) {
@@ -1048,6 +1160,7 @@ const canRunAttachMode = computed(() =>
   Boolean(
     currentQuestion.value &&
     selectedAttachTargetOption.value &&
+    hasSelectedQuestionLocator.value &&
     props.state.visualizerServerJsonPath &&
     props.state.visualizerRepairImageFiles.length &&
     !props.state.visualizerRepairProcessing
@@ -1057,6 +1170,7 @@ const canRunAttachMode = computed(() =>
 const canRunRewriteMode = computed(() =>
   Boolean(
     currentQuestion.value &&
+    hasSelectedQuestionLocator.value &&
     props.state.visualizerServerJsonPath &&
     props.state.visualizerRepairImageFiles.length &&
     !props.state.visualizerRepairProcessing
@@ -1066,6 +1180,9 @@ const canRunRewriteMode = computed(() =>
 const canRunAnswerMode = computed(() => {
   const question = currentQuestion.value
   if (!question || !props.state.visualizerServerJsonPath || props.state.visualizerAnswerProcessing) {
+    return false
+  }
+  if (!hasSelectedQuestionLocator.value) {
     return false
   }
   if (String(question.nodeType || '').toUpperCase() === 'GROUP') {
@@ -1128,13 +1245,15 @@ async function runAttachMode() {
   if (!currentQuestion.value || !selectedAttachTargetOption.value) {
     return
   }
+  const locator = selectedQuestionLocator.value
   await props.actions.attachImagesFromVisualizer({
-    questionId: currentQuestion.value.questionId,
-    questionTitle: currentOperationTitle.value,
+    locatorMode: locator.mode,
+    questionId: locator.questionId,
+    questionTitle: locator.questionTitle,
     childQuestionId: selectedAttachTargetOption.value.childQuestionId,
     childNo: selectedAttachTargetOption.value.childNo,
     targetType: selectedAttachTargetOption.value.targetType,
-    blockLabel: selectedAttachTargetOption.value.blockLabel,
+    blockLabel: `${locator.label || currentOperationTitle.value} / ${selectedAttachTargetOption.value.blockLabel}`,
   })
 }
 
@@ -1144,12 +1263,14 @@ async function runRewriteMode() {
   }
 
   const rewriteChild = rewriteScope.value === 'child' && currentQuestion.value.nodeType === 'GROUP' && currentLocatedChild.value
+  const locator = selectedQuestionLocator.value
   await props.actions.repairQuestionFromVisualizer({
-    questionId: currentQuestion.value.questionId,
-    questionTitle: rewriteChild ? currentOperationTitle.value : currentQuestion.value.title || currentQuestion.value.questionId,
+    locatorMode: locator.mode,
+    questionId: locator.questionId,
+    questionTitle: locator.questionTitle,
     childQuestionId: rewriteChild ? String(currentLocatedChild.value.questionId || '') : '',
     childNo: rewriteChild ? currentLocatedChildNo.value : null,
-    blockLabel: rewriteChild ? `第${currentLocatedChildNo.value}小题` : '当前大题',
+    blockLabel: rewriteChild ? `${locator.label || currentOperationTitle.value} / 第${currentLocatedChildNo.value}小题` : (locator.label || '当前大题'),
     hasAnswerSource: rewriteHasAnswerSource.value === 'yes',
     generateAnswerIfMissing: rewriteHasAnswerSource.value === 'no' && rewriteGenerateAnswerIfMissing.value === 'yes',
   })
@@ -1161,12 +1282,14 @@ async function runAnswerMode() {
   }
 
   const useChild = currentQuestion.value.nodeType === 'GROUP' && currentLocatedChild.value
+  const locator = selectedQuestionLocator.value
   await props.actions.generateAnswerFromVisualizer({
-    questionId: currentQuestion.value.questionId,
-    questionTitle: useChild ? currentOperationTitle.value : currentQuestion.value.title || currentQuestion.value.questionId,
+    locatorMode: locator.mode,
+    questionId: locator.questionId,
+    questionTitle: locator.questionTitle,
     childQuestionId: useChild ? String(currentLocatedChild.value.questionId || '') : '',
     childNo: useChild ? currentLocatedChildNo.value : null,
-    blockLabel: useChild ? `第${currentLocatedChildNo.value}小题` : '当前题目',
+    blockLabel: useChild ? `${locator.label || currentOperationTitle.value} / 第${currentLocatedChildNo.value}小题` : (locator.label || '当前题目'),
     imageFiles: props.state.visualizerRepairImageFiles,
   })
 }

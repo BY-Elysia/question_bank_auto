@@ -2,7 +2,7 @@
   <GlassPanel
     eyebrow="Step 01"
     title="基础教材 JSON"
-    description="这是一个可选步骤：需要时先生成教材骨架；已有 JSON 时可以直接去第二步继续处理。"
+    description="这是一个可选步骤：需要时先生成教材骨架；已有 JSON 时可直接去第二步继续处理。"
     tone="mint"
   >
     <div class="field-grid">
@@ -35,6 +35,13 @@
         <select v-model="hasAnswerValue" class="glass-input">
           <option value="true">有答案</option>
           <option value="false">无答案</option>
+        </select>
+      </label>
+      <label v-if="hasAnswerValue === 'false'" class="field">
+        <span>无答案时</span>
+        <select v-model="answerHandlingModeValue" class="glass-input">
+          <option value="generate_brief">由 AI 生成完整步骤答案</option>
+          <option value="leave_empty">保持留空</option>
         </select>
       </label>
       <label class="field">
@@ -97,6 +104,22 @@ const hasAnswerValue = computed({
   },
   set(value) {
     props.state.jsonForm.hasAnswer = value !== 'false'
+    if (props.state.jsonForm.hasAnswer !== false) {
+      props.state.jsonForm.answerHandlingMode = 'extract_visible'
+    } else if (!['leave_empty', 'generate_brief'].includes(String(props.state.jsonForm.answerHandlingMode || '').trim())) {
+      props.state.jsonForm.answerHandlingMode = 'generate_brief'
+    }
+  },
+})
+
+const answerHandlingModeValue = computed({
+  get() {
+    const value = String(props.state.jsonForm.answerHandlingMode || '').trim()
+    return value === 'leave_empty' ? 'leave_empty' : 'generate_brief'
+  },
+  set(value) {
+    props.state.jsonForm.answerHandlingMode = value === 'leave_empty' ? 'leave_empty' : 'generate_brief'
+    props.state.jsonForm.hasAnswer = false
   },
 })
 </script>

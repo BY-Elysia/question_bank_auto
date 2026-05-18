@@ -7,7 +7,7 @@ import {
   previewExamSectionFromImages,
   previewExamSectionFromQuestionBank,
 } from '../exam-section-compose-service'
-import { initExamSession, processExamSessionImage } from '../exam-session-service'
+import { detectExamSectionsFromImages, initExamSession, processExamSessionImage } from '../exam-session-service'
 import {
   getExamQuestionSession,
   getExamSession,
@@ -90,6 +90,17 @@ function detectUploadedSourceKind(files: Express.Multer.File[]) {
   return ''
 }
 
+function inferExamQuestionTypeFromStructureTitle(majorTitle: string, minorTitle: string) {
+  const title = `${String(majorTitle || '').trim()} ${String(minorTitle || '').trim()}`
+  if (/证明/.test(title)) return 'PROOF'
+  if (/编程|程序|代码/.test(title)) return 'CODE'
+  if (/计算|解答|求|求解/.test(title)) return 'CALCULATION'
+  if (/单选/.test(title)) return 'SINGLE_CHOICE'
+  if (/多选/.test(title)) return 'MULTI_CHOICE'
+  if (/判断/.test(title)) return 'JUDGE'
+  return 'SHORT_ANSWER'
+}
+
 async function loadExamAutoSourceDataUrl(source: ExamAutoSourceItem) {
   if (source.imagePath) {
     return await toImageDataUrl(source.imagePath)
@@ -127,14 +138,37 @@ async function buildExamAutoSourcesFromUploads(params: {
   }
 
   if (sourceKind === 'image') {
+    const folderToken = sanitizeFolderName(String(params.folderName || '').trim()) || `exam_auto_${batchId()}`
+    const workspace = await ensureWorkspace({
+      workspaceId: params.workspaceId,
+      name: folderToken,
+      kind: 'exam',
+    })
+    const outputRelativeDir = 'output_images'
+    const outputDir = path.join(workspace.workspaceDir, outputRelativeDir)
+    ensureDir(outputDir)
+    const existingItems = await fsp.readdir(outputDir).catch(() => [])
+    await Promise.all(existingItems.map((item) => fsp.rm(path.join(outputDir, item), { recursive: true, force: true })))
+
+    const sources: ExamAutoSourceItem[] = []
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index]
+      const originalName = String(file.originalname || `image_${index + 1}`).trim()
+      const extension = path.extname(originalName).toLowerCase() || '.png'
+      const normalizedFileName = `${index + 1}${extension}`
+      const toPath = path.join(outputDir, normalizedFileName)
+      await fsp.copyFile(file.path, toPath)
+      sources.push({
+        fileName: normalizedFileName,
+        imagePath: toPath,
+      })
+    }
+
     return {
       sourceKind,
-      workspaceId: String(params.workspaceId || '').trim(),
-      outputFolder: '',
-      sources: files.map((file, index) => ({
-        fileName: file.originalname || `image_${index + 1}`,
-        uploadFile: file,
-      })) as ExamAutoSourceItem[],
+      workspaceId: workspace.workspaceId,
+      outputFolder: outputDir,
+      sources,
     }
   }
 
@@ -142,8 +176,9 @@ async function buildExamAutoSourcesFromUploads(params: {
   const workspace = await ensureWorkspace({
     workspaceId: params.workspaceId,
     name: folderToken,
+    kind: 'exam',
   })
-  const outputRelativeDir = path.posix.join('output_images', folderToken)
+  const outputRelativeDir = 'output_images'
   const outputDir = path.join(workspace.workspaceDir, outputRelativeDir)
   ensureDir(outputDir)
   const existingItems = await fsp.readdir(outputDir).catch(() => [])
@@ -223,6 +258,7 @@ async function streamExamAutoRun(params: {
           imageLabel: current.fileName,
           lookaheadImageDataUrl: lookahead ? await loadExamAutoSourceDataUrl(lookahead) : '',
           lookaheadImageLabel: lookahead?.fileName || '',
+          isFinalSource: index === sources.length - 1,
         }),
       )
       writeNdjson(res, {
@@ -309,6 +345,7 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
       jsonFilePath: jsonFilePathRaw,
     })
     const imageDataUrls = await Promise.all(files.map((file) => toImageDataUrlFromFile(file)))
+    const mediaNamespace = `exam_extract_${batchId()}`
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       previewExamSectionFromImages({
         jsonFilePath: resolved.jsonFilePath,
@@ -316,6 +353,13 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
         minorTitle,
         questionType,
         imageDataUrls,
+        imageSources: files.map((file) => ({
+          label: file.originalname || '',
+          filePath: file.path,
+        })),
+        workspaceId: resolved.workspaceId,
+        sourceFileName: path.basename(resolved.jsonFilePath),
+        mediaNamespace,
       }),
     )
     return res.json({
@@ -326,6 +370,94 @@ router.post('/api/exams/sections/extract-from-images', upload.array('images', 30
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(500).json({ message: `Extract exam section from images failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
+  }
+})
+
+router.post('/api/exams/sections/bootstrap-from-sources', upload.any(), async (req: Request, res: Response) => {
+  try {
+    const jsonFilePathRaw = String(req.body?.jsonFilePath || '').trim()
+    const workspaceIdInput = String(req.body?.workspaceId || '').trim()
+    const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
+    const folderNameInput = String(req.body?.folderName || '').trim()
+    const files = getOrderedUploadSourceFiles(req.files).filter((file) => Number(file?.size) > 0)
+    if (!files.length) {
+      return res.status(400).json({ message: 'source files are required' })
+    }
+
+    const resolved = await resolveManagedJsonInput({
+      workspaceId: workspaceIdInput,
+      jsonAssetId: jsonAssetIdInput,
+      jsonFilePath: jsonFilePathRaw,
+    })
+    const prepared = await buildExamAutoSourcesFromUploads({
+      files,
+      workspaceId: resolved.workspaceId || workspaceIdInput,
+      folderName: folderNameInput,
+    })
+    const imageDataUrls = await Promise.all(prepared.sources.map((source) => loadExamAutoSourceDataUrl(source)))
+    const detection = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+      detectExamSectionsFromImages({
+        jsonFilePath: resolved.jsonFilePath,
+        imageDataUrls,
+        imageLabels: prepared.sources.map((source) => source.fileName),
+      }),
+    )
+
+    const sections = []
+    const logs = Array.isArray(detection.logs) ? [...detection.logs] : []
+    const bootstrapMediaNamespace = `exam_bootstrap_${batchId()}`
+    for (const section of detection.sections) {
+      const questionType = inferExamQuestionTypeFromStructureTitle(section.majorTitle, section.minorTitle)
+      const rangeStart = Math.max(0, Number(section.startIndex || 1) - 1)
+      const rangeEnd = Math.min(imageDataUrls.length - 1, Number(section.endIndex || section.startIndex || 1) - 1)
+      const sectionImages = imageDataUrls.slice(rangeStart, rangeEnd + 1)
+      const sectionSources = prepared.sources.slice(rangeStart, rangeEnd + 1).map((item) => ({
+        label: item.fileName,
+        filePath: item.imagePath,
+      }))
+      const preview = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
+        previewExamSectionFromImages({
+          jsonFilePath: resolved.jsonFilePath,
+          majorTitle: section.majorTitle,
+          minorTitle: section.minorTitle,
+          questionType,
+          imageDataUrls: sectionImages,
+          imageSources: sectionSources,
+          workspaceId: prepared.workspaceId || resolved.workspaceId,
+          sourceFileName: path.basename(resolved.jsonFilePath),
+          mediaNamespace: `${bootstrapMediaNamespace}_${sections.length + 1}`,
+        }),
+      )
+      sections.push({
+        ...section,
+        questionType,
+        questionTypeLabel: String(preview.questionTypeLabel || ''),
+        sourceLabels: prepared.sources.slice(rangeStart, rangeEnd + 1).map((item) => item.fileName),
+        questionsToStage: preview.questionsToStage,
+        question: preview.question,
+      })
+      logs.push(
+        `板块 ${section.structureLabel} 页码 ${section.startIndex}-${section.endIndex} 题型=${questionType} 暂存=${Number(preview.question?.upsertedCount ?? 0)} 原因=${String(preview.question?.reason || '').trim() || 'none'}`,
+      )
+    }
+
+    return res.json({
+      jsonFilePath: resolved.jsonFilePath,
+      workspaceId: prepared.workspaceId || resolved.workspaceId,
+      jsonAssetId: resolved.jsonAssetId,
+      examTitle: detection.examTitle,
+      examType: detection.examType,
+      hasAnswer: detection.hasAnswer,
+      sourceKind: prepared.sourceKind,
+      totalCount: detection.totalCount,
+      sections,
+      logs,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(500).json({ message: `Bootstrap exam sections failed: ${msg}` })
   } finally {
     await cleanupUploadedFiles(req)
   }

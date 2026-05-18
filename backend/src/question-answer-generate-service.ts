@@ -32,7 +32,7 @@ function normalizeTextBlock(value: unknown) {
   }
 }
 
-function getOrCreateTextBlock(host: JsonNode, key: string) {
+function getOrCreateTextBlock(host: JsonNode, key: string): JsonNode {
   const current = host[key]
   if (isObject(current)) {
     if (typeof current.text !== 'string') {
@@ -43,7 +43,7 @@ function getOrCreateTextBlock(host: JsonNode, key: string) {
     }
     return current
   }
-  const block = {
+  const block: JsonNode = {
     text: typeof current === 'string' ? current : '',
     media: [] as unknown[],
   }
@@ -100,6 +100,7 @@ function buildAnswerInstruction(params: {
   questionType: string
   stemText?: string
   promptText: string
+  optionLines?: string[]
   answerPrompt?: string
 }) {
   const {
@@ -109,6 +110,7 @@ function buildAnswerInstruction(params: {
     questionType,
     stemText = '',
     promptText,
+    optionLines = [],
     answerPrompt = '',
   } = params
 
@@ -120,23 +122,71 @@ function buildAnswerInstruction(params: {
     '如果信息仍不完整，请先用一句话说明缺失点，再给出基于可见信息的最合理答案。',
     normalizeQuestionType(questionType) === 'CODE'
       ? '如果这是编程题，请优先给出简洁思路、核心代码和必要说明。'
-      : '如果是非编程题，请优先给出清晰、可直接作为标准答案的解答。',
+      : normalizeQuestionType(questionType) === 'SINGLE_CHOICE' || normalizeQuestionType(questionType) === 'MULTI_CHOICE'
+        ? '如果这是选择题，第一行只写正确选项字母（如 B 或 A,C），后续再写解析；不要把“答案：”前缀和解析混在第一行。'
+        : '如果是非编程题，请优先给出清晰、可直接作为标准答案的解答。',
     `章节: ${chapterTitle || '未标注'}`,
     `小节/结构: ${sectionTitle || '未标注'}`,
     `题目标题: ${questionTitle || '未命名题目'}`,
     `题型: ${questionType || '未分类'}`,
     stemText ? `题干:\n${stemText}` : '',
     `题目:\n${promptText}`,
+    optionLines.length ? `选项:\n${optionLines.join('\n')}` : '',
     answerPrompt ? `补充要求:\n${answerPrompt}` : '',
   ]
     .filter(Boolean)
     .join('\n\n')
 }
 
+function normalizeChoiceOptionId(value: unknown) {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^[\[\(（【]\s*/, '')
+    .replace(/\s*[\]\)）】]$/, '')
+  return /^[A-Z]$/.test(normalized) ? normalized : ''
+}
+
+function formatChoiceOptionLines(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[]
+  }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+      const row = item as Record<string, unknown>
+      const id = normalizeChoiceOptionId(row.id)
+      const text = String(row.text || '').trim()
+      return id && text ? `${id}. ${text}` : ''
+    })
+    .filter(Boolean)
+}
+
+function splitChoiceGeneratedAnswer(value: string, questionType: string) {
+  const text = String(value || '').trim()
+  const directMatch = text.match(
+    /^(?:答案|正确答案)?\s*[:：]?\s*([\[\(（【]?[A-Za-z][\]\)）】]?(?:\s*[,，、/]\s*[\[\(（【]?[A-Za-z][\]\)）】]?)*)\s*(?:\r?\n|$)/i,
+  )
+  const optionIds = String(directMatch?.[1] || '')
+    .split(/[\s,，、/]+/)
+    .map(normalizeChoiceOptionId)
+    .filter(Boolean)
+  const normalizedIds = questionType === 'SINGLE_CHOICE' ? optionIds.slice(0, 1) : optionIds
+  const consumed = directMatch?.[0] || ''
+  const explanation = consumed ? text.slice(consumed.length).trim().replace(/^(?:解析|解答|说明)\s*[:：]?\s*/i, '') : ''
+  return {
+    text: normalizedIds.join(',') || text,
+    explanation,
+  }
+}
+
 export async function generateQuestionAnswerInTextbookJson(params: {
   jsonFilePath: string
   sourceFileName?: string
-  questionId: string
+  questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
   answerPrompt?: string
@@ -145,7 +195,8 @@ export async function generateQuestionAnswerInTextbookJson(params: {
   const {
     jsonFilePath,
     sourceFileName = '',
-    questionId,
+    questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
     answerPrompt = '',
@@ -153,14 +204,16 @@ export async function generateQuestionAnswerInTextbookJson(params: {
   } = params
 
   const normalizedQuestionId = String(questionId || '').trim()
-  if (!normalizedQuestionId) {
-    throw new Error('questionId is required')
+  const normalizedQuestionTitle = String(questionTitle || '').trim()
+  if (!normalizedQuestionId && !normalizedQuestionTitle) {
+    throw new Error('questionId or questionTitle is required')
   }
 
   const payload = await loadTextbookJson(jsonFilePath)
   const target = resolveQuestionTarget({
     payload,
     questionId: normalizedQuestionId,
+    questionTitle: normalizedQuestionTitle,
     childQuestionId,
     childNo,
   })
@@ -191,9 +244,11 @@ export async function generateQuestionAnswerInTextbookJson(params: {
   const questionType = childNode
     ? String(childNode.questionType || questionNode.questionType || '').trim()
     : String(questionNode.questionType || '').trim()
+  const normalizedQuestionType = normalizeQuestionType(questionType)
   const targetTitle = childNode
     ? String(childNode.title || childNode.questionId || target.questionTitle || '').trim()
     : target.questionTitle
+  const optionLines = formatChoiceOptionLines(childNode ? childNode.options : questionNode.options)
 
   const instruction = buildAnswerInstruction({
     chapterTitle: target.chapterTitle,
@@ -202,6 +257,7 @@ export async function generateQuestionAnswerInTextbookJson(params: {
     questionType,
     stemText: childNode ? stemBlock.text : '',
     promptText: promptBlock.text,
+    optionLines,
     answerPrompt,
   })
 
@@ -237,7 +293,18 @@ export async function generateQuestionAnswerInTextbookJson(params: {
   const answerBlock = childNode
     ? getOrCreateTextBlock(childNode, 'standardAnswer')
     : getOrCreateTextBlock(questionNode, 'standardAnswer')
-  answerBlock.text = answerText
+  if (normalizedQuestionType === 'SINGLE_CHOICE' || normalizedQuestionType === 'MULTI_CHOICE') {
+    const splitAnswer = splitChoiceGeneratedAnswer(answerText, normalizedQuestionType)
+    answerBlock.text = splitAnswer.text
+    if (splitAnswer.explanation) {
+      answerBlock.explanation = splitAnswer.explanation
+    } else {
+      delete answerBlock.explanation
+    }
+  } else {
+    answerBlock.text = answerText
+    delete answerBlock.explanation
+  }
   answerBlock.media = []
 
   await saveTextbookJson(jsonFilePath, payload)

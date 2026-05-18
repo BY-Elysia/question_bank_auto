@@ -1,15 +1,14 @@
-import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { QUESTION_MEDIA_DIR } from './config'
 import {
   buildLegacyQuestionId,
   isObject,
   resolveQuestionTarget,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
-import { loadTextbookJson, normalizeJsonFileName, saveTextbookJson, sanitizeFileName } from './question-bank-service'
+import { loadTextbookJson, saveTextbookJson } from './question-bank-service'
 import { readUploadedFileBuffer } from './upload'
-import { ensureWorkspace, getWorkspaceDir } from './workspace-store'
+import { ensureWorkspace } from './workspace-store'
+import { writeQuestionMediaBuffers } from './question-media-store'
 
 type JsonNode = Record<string, unknown>
 type ImageAttachTargetType = 'prompt' | 'standardAnswer'
@@ -39,6 +38,7 @@ function resolveImageTarget(params: {
   sectionNo?: number
   questionNo?: number
   questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
   targetType: ImageAttachTargetType
@@ -49,6 +49,7 @@ function resolveImageTarget(params: {
     sectionNo,
     questionNo,
     questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
     targetType,
@@ -65,6 +66,7 @@ function resolveImageTarget(params: {
   const target = resolveQuestionTarget({
     payload,
     questionId: resolvedQuestionId,
+    questionTitle,
     childQuestionId,
     childNo,
   })
@@ -109,15 +111,6 @@ function resolveImageTarget(params: {
   }
 }
 
-function buildTargetFolderName(sourceFileName: string, jsonFilePath: string, targetKey: string, targetField: string) {
-  const normalizedFileName = normalizeJsonFileName(
-    path.basename(String(sourceFileName || '').trim() || path.basename(jsonFilePath)),
-  )
-  const sourceBase = path.basename(normalizedFileName, '.json')
-  const safeSourceBase = sanitizeFileName(sourceBase || 'textbook')
-  return path.join(safeSourceBase, targetKey, sanitizeFileName(targetField || 'prompt'))
-}
-
 export async function attachImagesToQuestionInTextbookJson(params: {
   jsonFilePath: string
   sourceFileName?: string
@@ -125,6 +118,7 @@ export async function attachImagesToQuestionInTextbookJson(params: {
   sectionNo?: number
   questionNo?: number
   questionId?: string
+  questionTitle?: string
   childQuestionId?: string
   childNo?: number | null
   targetType?: ImageAttachTargetType
@@ -142,6 +136,7 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     sectionNo,
     questionNo,
     questionId = '',
+    questionTitle = '',
     childQuestionId = '',
     childNo = null,
     targetType = 'prompt',
@@ -157,8 +152,8 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     Number.isInteger(questionNo) &&
     Number(questionNo) > 0
 
-  if (!String(questionId || '').trim() && !hasLegacyQuestionRef) {
-    throw new Error('questionId is required, or chapterNo/sectionNo/questionNo must all be positive integers')
+  if (!String(questionId || '').trim() && !String(questionTitle || '').trim() && !hasLegacyQuestionRef) {
+    throw new Error('questionId or questionTitle is required, or chapterNo/sectionNo/questionNo must all be positive integers')
   }
   if (!Array.isArray(files) || !files.length) {
     throw new Error('at least one image file is required')
@@ -171,6 +166,7 @@ export async function attachImagesToQuestionInTextbookJson(params: {
     sectionNo,
     questionNo,
     questionId,
+    questionTitle,
     childQuestionId,
     childNo,
     targetType: normalizedTargetType,
@@ -178,37 +174,32 @@ export async function attachImagesToQuestionInTextbookJson(params: {
 
   const targetKey = target.childQuestionId || target.questionId
   const targetField = String(target.targetField || 'prompt')
-  const relativeTargetDir = buildTargetFolderName(sourceFileName, jsonFilePath, targetKey, targetField)
   const normalizedWorkspaceId = String(workspaceId || '').trim()
   if (normalizedWorkspaceId) {
     await ensureWorkspace({ workspaceId: normalizedWorkspaceId })
   }
-  const targetDir = normalizedWorkspaceId
-    ? path.join(getWorkspaceDir(normalizedWorkspaceId), 'uploads', 'question_media', relativeTargetDir)
-    : path.join(QUESTION_MEDIA_DIR, relativeTargetDir)
-  await fsp.rm(targetDir, { recursive: true, force: true })
-  await fsp.mkdir(targetDir, { recursive: true })
-
-  const mediaItems = []
+  const writeFiles = []
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index]
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png'
-    const storedFileName = `${targetKey}_${targetField}_${String(index + 1).padStart(2, '0')}${ext}`
-    const filePath = path.join(targetDir, storedFileName)
     const bytes = Buffer.isBuffer(file.buffer)
       ? file.buffer
       : await readUploadedFileBuffer(file as Express.Multer.File)
-    await fsp.writeFile(filePath, bytes)
-    const publicUrl = normalizedWorkspaceId
-      ? `/workspace-assets/${normalizedWorkspaceId}/uploads/question_media/${relativeTargetDir.replace(/\\/g, '/')}/${storedFileName}`
-      : `/uploads/question_media/${path.basename(path.dirname(targetDir))}/${path.basename(targetDir)}/${storedFileName}`
-    mediaItems.push({
-      type: 'image',
-      url: publicUrl,
+    writeFiles.push({
+      buffer: bytes,
       caption: '',
-      orderNo: index + 1,
+      extension: path.extname(file.originalname || '').toLowerCase() || '.png',
     })
   }
+
+  const stored = await writeQuestionMediaBuffers({
+    workspaceId: normalizedWorkspaceId,
+    sourceFileName,
+    jsonFilePath,
+    targetKey,
+    targetField,
+    files: writeFiles,
+  })
+  const mediaItems = stored.mediaItems
 
   target.textBlock.media = mediaItems
   await saveTextbookJson(jsonFilePath, payload)

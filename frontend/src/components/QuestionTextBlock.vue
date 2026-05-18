@@ -12,6 +12,7 @@
       </button>
     </div>
     <div v-if="block.text" class="question-block__text" v-html="html"></div>
+    <div v-if="block.explanation" class="question-block__text" v-html="explanationHtml"></div>
     <div
       v-if="block.media.length"
       class="question-block__media"
@@ -63,5 +64,6 @@ const props = defineProps({
 
 const block = computed(() => normalizeTextBlock(props.value))
 const html = computed(() => renderRichTextHtml(block.value.text))
-const hasContent = computed(() => Boolean(block.value.text.trim() || block.value.media.length))
+const explanationHtml = computed(() => renderRichTextHtml(block.value.explanation))
+const hasContent = computed(() => Boolean(block.value.text.trim() || block.value.explanation.trim() || block.value.media.length))
 </script>

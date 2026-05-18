@@ -38,6 +38,9 @@ function ensureCompatibleBase(base: TextbookJsonPayload, current: TextbookJsonPa
   if (baseMeta.hasAnswer !== currentMeta.hasAnswer) {
     throw new Error(`文件 ${fileName} 的 hasAnswer 与第一个文件不一致`)
   }
+  if (baseMeta.answerHandlingMode !== currentMeta.answerHandlingMode) {
+    throw new Error(`文件 ${fileName} 的 answerHandlingMode 与第一个文件不一致`)
+  }
 }
 
 function mergeChapters(target: ChapterItem[], incoming: ChapterItem[], fileName: string) {
@@ -305,6 +308,7 @@ export async function mergeTextbookJsonFiles(params: {
       workspaceId: normalizedWorkspaceId,
       fileName: mergedFileName,
       text: mergedText,
+      workspaceKind: 'textbook',
     })
     persistedToWorkspace = true
     persistedWorkspaceId = saved.workspaceId

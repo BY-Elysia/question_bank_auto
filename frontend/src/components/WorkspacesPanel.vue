@@ -18,6 +18,13 @@
             @keyup.enter="actions.createWorkspace"
           />
         </label>
+        <label class="field">
+          <span>工作区类型</span>
+          <select v-model="state.workspaceCreateKind" class="glass-input">
+            <option value="textbook">课本</option>
+            <option value="exam">试卷</option>
+          </select>
+        </label>
       </div>
 
       <div class="action-row">
@@ -58,7 +65,7 @@
           <div class="workspace-manager-card__head">
             <div class="workspace-manager-card__title">
               <strong>{{ workspace.name || workspace.workspaceId }}</strong>
-              <small>{{ workspace.workspaceId }}</small>
+              <small>{{ workspace.workspaceId }} · {{ workspace.kind === 'exam' ? '试卷' : '课本' }}</small>
             </div>
             <span
               class="glass-pill"

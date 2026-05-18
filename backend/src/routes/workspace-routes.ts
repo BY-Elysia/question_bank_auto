@@ -1,17 +1,20 @@
 import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { isValidTextbookPayload } from '../question-bank-service'
-import { cleanupUploadedFiles, upload } from '../upload'
+import { batchId, isSupportedImageFileName, isValidTextbookPayload, sanitizeFolderName } from '../question-bank-service'
+import { cleanupUploadedFiles, normalizeUploadedOriginalName, upload } from '../upload'
 import {
   browseWorkspaceDirectory,
   cleanupWorkspaceDerivedFiles,
   createWorkspace,
   deleteWorkspace,
+  ensureWorkspace,
+  getWorkspaceDir,
   getWorkspaceSummary,
   listWorkspaces,
   listMultiChapterSlots,
   overwriteMultiChapterSlotImages,
+  registerWorkspaceAsset,
   rebuildMultiChapterSlots,
   resolveWorkspaceEntry,
 } from '../workspace-store'
@@ -54,7 +57,16 @@ function resolveWorkspaceErrorStatus(error: unknown) {
   if (message.toLowerCase().includes('multi chapter slot json missing')) {
     return 409
   }
+  if (message.toLowerCase().includes('multi chapter slots are only available in textbook workspaces')) {
+    return 400
+  }
   if (message.toLowerCase().includes('images are required')) {
+    return 400
+  }
+  if (message.toLowerCase().includes('foldername is required')) {
+    return 400
+  }
+  if (message.toLowerCase().includes('only image files are supported')) {
     return 400
   }
   return 500
@@ -76,7 +88,8 @@ router.get('/api/workspaces', async (_req: Request, res: Response) => {
 router.post('/api/workspaces', async (req: Request, res: Response) => {
   try {
     const name = String(req.body?.name || '').trim()
-    const summary = await createWorkspace({ name })
+    const kind = String(req.body?.kind || '').trim() === 'exam' ? 'exam' : 'textbook'
+    const summary = await createWorkspace({ name, kind })
     return res.json({
       message: 'success',
       summary,
@@ -175,6 +188,98 @@ router.post('/api/workspaces/:workspaceId/multi-chapter/images', upload.array('i
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return res.status(resolveWorkspaceErrorStatus(error)).json({ message: `Upload multi chapter slot images failed: ${msg}` })
+  } finally {
+    await cleanupUploadedFiles(req)
+  }
+})
+
+router.post('/api/workspaces/:workspaceId/image-batches', upload.array('images', 400), async (req: Request, res: Response) => {
+  try {
+    const workspaceId = String(req.params?.workspaceId || '').trim()
+    const rawFolderName = String(req.body?.folderName || '').trim()
+    const folderName = sanitizeFolderName(rawFolderName)
+    const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) => Number(file?.size) > 0)
+
+    if (!workspaceId) {
+      return res.status(400).json({ message: 'workspaceId is required' })
+    }
+    if (!folderName) {
+      return res.status(400).json({ message: 'folderName is required' })
+    }
+    if (!files.length) {
+      return res.status(400).json({ message: 'images are required' })
+    }
+
+    const workspace = await ensureWorkspace({
+      workspaceId,
+      name: folderName,
+      kind: 'textbook',
+    })
+    const batchOutputRelativeDir = path.posix.join('output_images', folderName)
+    const batchOutputDir = path.join(getWorkspaceDir(workspace.workspaceId), batchOutputRelativeDir)
+    await fsp.mkdir(batchOutputDir, { recursive: true })
+
+    const existingItems = await fsp.readdir(batchOutputDir).catch(() => [])
+    await Promise.all(
+      existingItems.map((item) =>
+        fsp.rm(path.join(batchOutputDir, item), { recursive: true, force: true }),
+      ),
+    )
+
+    const id = batchId()
+    const pages: Array<{
+      page: number
+      filename: string
+      url: string
+      sourceImageName: string
+      sourceImageIndex: number
+    }> = []
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index]
+      const originalName = normalizeUploadedOriginalName(file.originalname || '') || `page_${index + 1}.png`
+      if (!isSupportedImageFileName(originalName)) {
+        return res.status(400).json({ message: `Only image files are supported: ${originalName}` })
+      }
+
+      const ext = path.extname(originalName).toLowerCase() || '.png'
+      const pageNo = index + 1
+      const storedFileName = `${pageNo}${ext}`
+      await fsp.copyFile(file.path, path.join(batchOutputDir, storedFileName))
+      pages.push({
+        page: pageNo,
+        filename: storedFileName,
+        url: `/workspace-assets/${workspace.workspaceId}/${batchOutputRelativeDir}/${storedFileName}`,
+        sourceImageName: originalName,
+        sourceImageIndex: pageNo,
+      })
+    }
+
+    const imageBatch = await registerWorkspaceAsset({
+      workspaceId: workspace.workspaceId,
+      type: 'image_batch',
+      fileName: folderName,
+      relativePath: batchOutputRelativeDir,
+      assetId: `image_batch_${folderName}`,
+      meta: {
+        totalPages: pages.length,
+        imageCount: files.length,
+      },
+    })
+
+    return res.json({
+      message: 'success',
+      batchId: id,
+      folderName,
+      workspaceId: workspace.workspaceId,
+      imageBatchAssetId: imageBatch.asset.assetId,
+      outputFolder: batchOutputDir,
+      pages,
+      totalPages: pages.length,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return res.status(resolveWorkspaceErrorStatus(error)).json({ message: `Upload workspace image batch failed: ${msg}` })
   } finally {
     await cleanupUploadedFiles(req)
   }

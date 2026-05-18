@@ -102,6 +102,17 @@
           @repair="emitRepair('childPrompt')"
         />
 
+        <section v-if="hasChoiceOptions(currentChild)" class="question-block">
+          <div class="question-block__head">
+            <div class="question-block__label">选项</div>
+          </div>
+          <div class="question-block__text">
+            <div v-for="option in currentChild.options" :key="option.id">
+              {{ option.id }}. {{ option.text }}
+            </div>
+          </div>
+        </section>
+
         <QuestionTextBlock
           label="答案"
           :value="currentChild.standardAnswer"
@@ -120,6 +131,17 @@
         :repairing="repairingTarget === 'prompt'"
         @repair="emitRepair('prompt')"
       />
+
+      <section v-if="hasChoiceOptions(question)" class="question-block">
+        <div class="question-block__head">
+          <div class="question-block__label">选项</div>
+        </div>
+        <div class="question-block__text">
+          <div v-for="option in question.options" :key="option.id">
+            {{ option.id }}. {{ option.text }}
+          </div>
+        </div>
+      </section>
 
       <QuestionTextBlock
         label="答案"
@@ -250,6 +272,10 @@ const childQuestionTypeChanged = computed(
 
 function getCurrentChildNo() {
   return Number(currentChild.value?.orderNo || currentChildIndex.value + 1 || 0)
+}
+
+function hasChoiceOptions(questionLike) {
+  return Array.isArray(questionLike?.options) && questionLike.options.length > 0
 }
 
 function handleChildSelect(event) {

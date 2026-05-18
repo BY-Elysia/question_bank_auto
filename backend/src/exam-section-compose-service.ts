@@ -8,6 +8,7 @@ import {
   buildSharedQuestionStructureInstructionLines,
   extractArkText,
   extractFirstJsonObject,
+  getPayloadAnswerHandlingMode,
   getPayloadSourceMeta,
   loadTextbookJson,
   normalizeQuestionItem,
@@ -19,7 +20,10 @@ import {
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'
+import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'
+import { resolveQuestionMediaCrops, type QuestionMediaCropSource } from './question-media-crop-service'
 import type {
+  AnswerHandlingMode,
   ChapterItem,
   QuestionGroup,
   QuestionGroupChild,
@@ -138,6 +142,14 @@ function ensureExamMajorChapter(payload: TextbookJsonPayload, titleInput: string
     return Math.max(max, match?.[1] ? Number(match[1]) : 0)
   }, 0)
   const parsedMajorNo = extractExamMajorNo(title)
+  if (parsedMajorNo > 0) {
+    const sameId = payload.chapters.find(
+      (item) => item.parentId === null && String(item.chapterId || '').trim() === `ch_${parsedMajorNo}`,
+    )
+    if (sameId) {
+      return sameId
+    }
+  }
   const majorNo = parsedMajorNo > 0 ? parsedMajorNo : maxIdNum + 1
 
   const created: ChapterItem = {
@@ -168,6 +180,12 @@ function ensureExamMinorChapter(payload: TextbookJsonPayload, parentChapterId: s
   }, 0)
   const parsedMinorNo = extractExamMinorNo(title, parentMajorNo)
   const minorNo = parsedMinorNo > 0 ? parsedMinorNo : maxMinorNo + 1
+  const sameId = payload.chapters.find(
+    (item) => item.parentId === parentChapterId && String(item.chapterId || '').trim() === `ch_${parentMajorNo}_${minorNo}`,
+  )
+  if (sameId) {
+    return sameId
+  }
 
   const created: ChapterItem = {
     chapterId: `ch_${parentMajorNo}_${minorNo}`,
@@ -224,20 +242,20 @@ function ensureExamPayload(jsonFilePath: string, payload: TextbookJsonPayload) {
   return sourceMeta
 }
 
-function chapterSuffixFromChapterId(chapterId: string) {
-  const match = String(chapterId || '').trim().match(/^ch_(\d+)(?:_(\d+))?$/)
-  if (!match?.[1]) {
-    return '0_0'
-  }
-  return `${match[1]}_${match[2] || '0'}`
-}
-
 function extractTopQuestionNoFromQuestionId(questionId: string) {
-  const match = String(questionId || '').trim().match(/^q_(\d+)_(\d+)_(\d+)/)
-  if (!match?.[3]) {
+  const match = String(questionId || '').trim().match(/^q_(\d+)_(\d+)(?:_(\d+))?$/)
+  if (!match?.[2]) {
     return 0
   }
-  return Number(match[3]) || 0
+  return Number(match[2]) || 0
+}
+
+function extractMajorNoFromExamChapterId(chapterId: string) {
+  const match = String(chapterId || '').trim().match(/^ch_(\d+)(?:_(\d+))?$/)
+  if (!match?.[1]) {
+    return 0
+  }
+  return Number(match[1]) || 0
 }
 
 function getNextQuestionNo(payload: TextbookJsonPayload, chapterId: string) {
@@ -288,12 +306,13 @@ function reassignQuestionToExamSection(
   questionType: string,
   mainNo: number,
 ) {
-  const suffix = chapterSuffixFromChapterId(context.chapterId)
+  const majorNo = extractMajorNoFromExamChapterId(context.chapterId)
+  const idPrefix = majorNo > 0 ? `q_${majorNo}_${mainNo}` : `q_0_${mainNo}`
   const title = buildExamQuestionTitle(context, mainNo)
   if (question.nodeType === 'GROUP') {
     return {
       ...question,
-      questionId: `q_${suffix}_${mainNo}`,
+      questionId: idPrefix,
       chapterId: context.chapterId,
       questionType,
       title,
@@ -301,7 +320,7 @@ function reassignQuestionToExamSection(
         const childNo = index + 1
         return {
           ...child,
-          questionId: `q_${suffix}_${mainNo}_${childNo}`,
+          questionId: `${idPrefix}_${childNo}`,
           title: buildExamChildTitle(title, childNo),
           orderNo: childNo,
           chapterId: context.chapterId,
@@ -312,7 +331,7 @@ function reassignQuestionToExamSection(
   }
   return {
     ...question,
-    questionId: `q_${suffix}_${mainNo}`,
+    questionId: idPrefix,
     chapterId: context.chapterId,
     questionType,
     title,
@@ -325,6 +344,7 @@ function normalizeQuestionsForExamSection(params: {
   context: ExamSectionContext
   questionType: string
   expectAnswer: boolean
+  answerHandlingMode?: AnswerHandlingMode
   startQuestionNo?: number
 }) {
   const { payload, rawQuestions, context, questionType, expectAnswer, startQuestionNo } = params
@@ -337,16 +357,59 @@ function normalizeQuestionsForExamSection(params: {
   for (const rawQuestion of rawQuestions) {
     const item = normalizeQuestionItem(rawQuestion, context.chapterId, context.structureLabel, {
       expectAnswer,
+      answerHandlingMode: params.answerHandlingMode,
     })
     if (!item) {
       continue
     }
-    const fixed = applyFixedQuestionType(item, questionType)
-    normalized.push(reassignQuestionToExamSection(fixed, context, questionType, nextQuestionNo))
-    nextQuestionNo += 1
+    const expanded = expandExamSectionQuestionItems(item)
+    for (const expandedItem of expanded) {
+      const fixed = applyFixedQuestionType(expandedItem, questionType)
+      normalized.push(reassignQuestionToExamSection(fixed, context, questionType, nextQuestionNo))
+      nextQuestionNo += 1
+    }
   }
 
   return normalized
+}
+
+function isExamSectionOverviewStem(text: string) {
+  const value = normalizeTitle(text)
+  if (!value) {
+    return false
+  }
+  return /^本大题共\s*\d+\s*小题/.test(value)
+}
+
+function shouldFlattenExamPseudoGroup(question: QuestionItem) {
+  const group = question.nodeType === 'GROUP' ? question : null
+  if (!group) {
+    return false
+  }
+  if (!group.children.length) {
+    return false
+  }
+  if (!isExamSectionOverviewStem(group.stem.text || '')) {
+    return false
+  }
+  return group.children.every((child: QuestionGroupChild) => normalizeTitle(child.prompt.text || ''))
+}
+
+function expandExamSectionQuestionItems(question: QuestionItem) {
+  if (question.nodeType !== 'GROUP' || !shouldFlattenExamPseudoGroup(question)) {
+    return [question]
+  }
+  return question.children.map((child) => ({
+    questionId: child.questionId,
+    chapterId: child.chapterId,
+    nodeType: 'LEAF',
+    questionType: child.questionType,
+    title: child.title,
+    prompt: child.prompt,
+    standardAnswer: child.standardAnswer,
+    defaultScore: child.defaultScore,
+    rubric: child.rubric,
+  } as QuestionLeaf))
 }
 
 function cloneQuestionItems(items: QuestionItem[]) {
@@ -429,6 +492,7 @@ function normalizePreviewQuestions(params: {
   context: ExamSectionContext
   questionType: string
   expectAnswer: boolean
+  answerHandlingMode?: AnswerHandlingMode
 }) {
   const previewPayload: TextbookJsonPayload = {
     version: 'v1.1',
@@ -440,6 +504,7 @@ function normalizePreviewQuestions(params: {
       subject: '',
       examType: 'midterm',
       hasAnswer: params.expectAnswer,
+      answerHandlingMode: params.answerHandlingMode || (params.expectAnswer ? 'extract_visible' : 'leave_empty'),
     },
     chapters: [],
     questions: [],
@@ -449,9 +514,10 @@ function normalizePreviewQuestions(params: {
     rawQuestions: params.rawQuestions,
     context: params.context,
     questionType: params.questionType,
-    expectAnswer: params.expectAnswer,
-    startQuestionNo: 1,
-  })
+      expectAnswer: params.expectAnswer,
+      answerHandlingMode: params.answerHandlingMode,
+      startQuestionNo: 1,
+    })
 }
 
 async function requestExamSectionJsonObject(params: {
@@ -493,6 +559,7 @@ async function extractExamSectionQuestionsByDoubao(params: {
   examTitle: string
   examType: string
   hasAnswer: boolean
+  answerHandlingMode: AnswerHandlingMode
   context: ExamSectionContext
   questionType: string
   questionTypeLabel: string
@@ -502,6 +569,7 @@ async function extractExamSectionQuestionsByDoubao(params: {
     '你是试卷分段提取助手。',
     '这次不是自动识别整份试卷，而是只提取前端已经指定好的一个部分。',
     '你不需要做结构切换判断，不需要做跨页预读，不需要输出 needNextPage / continueQuestionKey / structure。',
+    '输入图片已经是当前板块的人工选定范围；这是“按板块提取”，不是“整卷逐页续题”。',
     '上下文:',
     `- 试卷标题: ${params.examTitle}`,
     `- 考试类型: ${params.examType}`,
@@ -517,11 +585,16 @@ async function extractExamSectionQuestionsByDoubao(params: {
     '4) 本次 questionsToUpsert 可以为空；为空时请在 reason 里明确说明没有找到完整可提取的目标题目。',
     `5) 本次所有 top-level questionType 与 GROUP.children.questionType 都固定写成 ${params.questionType}。`,
     `6) 所有题目的 chapterId 都固定写成 ${params.context.chapterId}。`,
-    params.hasAnswer
-      ? '7) 如果题干可见但答案在图片里没有完整出现，standardAnswer 保持空字符串，不得猜测补写。'
-      : '7) 本文档无答案，所有 standardAnswer 字段必须保留，但统一返回空字符串和空 media。',
-    ...buildSharedQuestionContentRuleLines(8),
-    ...buildSharedQuestionStructureInstructionLines(params.hasAnswer),
+    '7) 像“1. … 2. … 3. …”这样连续出现的题号，必须拆成多道顶层题；“本大题共X小题/每题X分/共X分”只是栏目说明，不是公共母题题干。',
+    '8) 只有同一题号下继续出现 (1)/(2)/①/② 等子问，并且这些子问共享同一个题干时，才允许输出 GROUP。',
+    params.answerHandlingMode === 'generate_brief'
+      ? '9) 本文档原卷无答案，但允许基于题目生成包含必要解题步骤的标准答案；计算/证明/推导的关键步骤不能省略，不要伪装成图片原文，不要写题外拓展或长篇讲义。'
+      : params.hasAnswer
+        ? '9) 如果题干可见但答案在图片里没有完整出现，standardAnswer 保持空字符串，不得猜测补写。'
+        : '9) 本文档无答案，所有 standardAnswer 字段必须保留，但统一返回空字符串和空 media。',
+    ...buildSharedQuestionContentRuleLines(10, 'questionsToUpsert', params.answerHandlingMode),
+    ...buildSharedQuestionStructureInstructionLines(params.answerHandlingMode),
+    ...buildRelativeMediaCropInstructionLines(params.imageDataUrls.length),
     '严格输出 JSON（不要 markdown，不要解释）:',
     '{',
     '  "questionsToUpsert": [ ...question objects... ],',
@@ -548,13 +621,15 @@ function buildExamSectionPreviewResponse(params: {
   questionTypeLabel: string
   rawQuestions: unknown[]
   reason: string
+  answerHandlingMode: AnswerHandlingMode
 }) {
   const previewQuestions = cloneQuestionItems(
     normalizePreviewQuestions({
       rawQuestions: params.rawQuestions,
       context: params.context,
       questionType: params.questionType,
-      expectAnswer: params.sourceMeta.hasAnswer !== false,
+      expectAnswer: params.answerHandlingMode !== 'leave_empty',
+      answerHandlingMode: params.answerHandlingMode,
     }),
   )
 
@@ -584,6 +659,10 @@ export async function previewExamSectionFromImages(params: {
   minorTitle?: string
   questionType: string
   imageDataUrls: string[]
+  imageSources?: QuestionMediaCropSource[]
+  workspaceId?: string
+  sourceFileName?: string
+  mediaNamespace?: string
 }) {
   if (!Array.isArray(params.imageDataUrls) || !params.imageDataUrls.length) {
     throw new Error('imageDataUrls is required')
@@ -591,6 +670,7 @@ export async function previewExamSectionFromImages(params: {
 
   const payload = await loadTextbookJson(params.jsonFilePath)
   const sourceMeta = ensureExamPayload(params.jsonFilePath, payload)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
   const previewPayload: TextbookJsonPayload = {
     ...payload,
     chapters: Array.isArray(payload.chapters) ? [...payload.chapters] : [],
@@ -599,24 +679,51 @@ export async function previewExamSectionFromImages(params: {
   const context = ensureExamStructureContext(previewPayload, params.majorTitle, params.minorTitle || '')
   const questionTypeMeta = getQuestionTypeMeta(params.questionType)
   const extracted = await extractExamSectionQuestionsByDoubao({
+      examTitle: sourceMeta.title,
+      examType: sourceMeta.examType || 'midterm',
+      hasAnswer: sourceMeta.hasAnswer !== false,
+      answerHandlingMode,
+      context,
+      questionType: questionTypeMeta.value,
+      questionTypeLabel: questionTypeMeta.label,
+      imageDataUrls: params.imageDataUrls,
+    })
+  const previewQuestions = cloneQuestionItems(
+    normalizePreviewQuestions({
+      rawQuestions: extracted.questionsToUpsert,
+      context,
+      questionType: questionTypeMeta.value,
+      expectAnswer: answerHandlingMode !== 'leave_empty',
+      answerHandlingMode,
+    }),
+  )
+  await resolveQuestionMediaCrops({
+    questions: previewQuestions,
+    sources: Array.isArray(params.imageSources) ? params.imageSources : [],
+    workspaceId: params.workspaceId,
+    sourceFileName: params.sourceFileName,
+    jsonFilePath: params.jsonFilePath,
+    namespace: params.mediaNamespace,
+  })
+
+  return {
+    jsonFilePath: params.jsonFilePath,
     examTitle: sourceMeta.title,
     examType: sourceMeta.examType || 'midterm',
     hasAnswer: sourceMeta.hasAnswer !== false,
-    context,
     questionType: questionTypeMeta.value,
     questionTypeLabel: questionTypeMeta.label,
-    imageDataUrls: params.imageDataUrls,
-  })
-
-  return buildExamSectionPreviewResponse({
-    jsonFilePath: params.jsonFilePath,
-    sourceMeta,
-    context,
-    questionType: questionTypeMeta.value,
-    questionTypeLabel: questionTypeMeta.label,
-    rawQuestions: extracted.questionsToUpsert,
-    reason: extracted.reason || extracted.rawText,
-  })
+    currentMajorTitle: context.majorTitle,
+    currentMinorTitle: context.minorTitle,
+    currentStructureChapterId: context.chapterId,
+    questionsToStage: previewQuestions,
+    question: {
+      upsertedCount: previewQuestions.length,
+      reason: extracted.reason || extracted.rawText || (previewQuestions.length ? `已暂存 ${previewQuestions.length} 道题` : '本次没有提取到可暂存题目'),
+      pending: false as const,
+      continueQuestionKey: null,
+    },
+  }
 }
 
 export async function previewExamSectionFromQuestionBank(params: {
@@ -633,6 +740,7 @@ export async function previewExamSectionFromQuestionBank(params: {
 
   const payload = await loadTextbookJson(params.jsonFilePath)
   const sourceMeta = ensureExamPayload(params.jsonFilePath, payload)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(payload)
   const previewPayload: TextbookJsonPayload = {
     ...payload,
     chapters: Array.isArray(payload.chapters) ? [...payload.chapters] : [],
@@ -655,6 +763,7 @@ export async function previewExamSectionFromQuestionBank(params: {
     questionTypeLabel: questionTypeMeta.label,
     rawQuestions: sourceRows.map((item) => item.rawPayloadJson),
     reason: `已从题库选入 ${sourceRows.length} 道${questionTypeMeta.label}`,
+    answerHandlingMode,
   })
 }
 
@@ -674,6 +783,7 @@ export async function finalizeExamSections(params: {
 
   const basePayload = await loadTextbookJson(params.jsonFilePath)
   const sourceMeta = ensureExamPayload(params.jsonFilePath, basePayload)
+  const answerHandlingMode = getPayloadAnswerHandlingMode(basePayload)
   const finalPayload: TextbookJsonPayload = {
     ...basePayload,
     chapters: [],
@@ -694,7 +804,8 @@ export async function finalizeExamSections(params: {
       rawQuestions,
       context,
       questionType: questionTypeMeta.value,
-      expectAnswer: sourceMeta.hasAnswer !== false,
+      expectAnswer: answerHandlingMode !== 'leave_empty',
+      answerHandlingMode,
     }).map((item, index) => applyEditableScoresFromRaw(item, rawQuestions[index]))
     upsertQuestionsById(finalPayload, normalized)
   }

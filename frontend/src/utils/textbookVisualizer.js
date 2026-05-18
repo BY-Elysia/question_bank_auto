@@ -77,15 +77,28 @@ function compareQuestion(left, right) {
 
 export function normalizeTextBlock(value) {
   if (!value) {
-    return { text: '', media: [] }
+    return { text: '', media: [], explanation: '' }
   }
   if (typeof value === 'string') {
-    return { text: value, media: [] }
+    return { text: value, media: [], explanation: '' }
   }
   return {
     text: String(value.text || ''),
     media: Array.isArray(value.media) ? value.media : [],
+    explanation: typeof value.explanation === 'string' ? value.explanation : '',
   }
+}
+
+function normalizeChoiceOptions(value) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => ({
+      id: String(item?.id || '').trim(),
+      text: String(item?.text || '').trim(),
+    }))
+    .filter((item) => item.id && item.text)
 }
 
 function normalizeQuestionType(value) {
@@ -121,6 +134,11 @@ function normalizeQuestion(question) {
           questionType: normalizeQuestionType(child?.questionType),
           prompt: normalizeTextBlock(child?.prompt),
           standardAnswer: normalizeTextBlock(child?.standardAnswer),
+          options: normalizeChoiceOptions(child?.options),
+          correctOptionIds: Array.isArray(child?.correctOptionIds)
+            ? child.correctOptionIds.map((item) => String(item || '').trim()).filter(Boolean)
+            : [],
+          allowPartial: child?.allowPartial === true,
           defaultScore: toFiniteNumber(child?.defaultScore),
         }))
         .sort((left, right) => {
@@ -141,6 +159,11 @@ function normalizeQuestion(question) {
     title: String(source.title || ''),
     prompt: normalizeTextBlock(source.prompt),
     standardAnswer: normalizeTextBlock(source.standardAnswer),
+    options: normalizeChoiceOptions(source.options),
+    correctOptionIds: Array.isArray(source.correctOptionIds)
+      ? source.correctOptionIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    allowPartial: source.allowPartial === true,
     defaultScore: toFiniteNumber(source.defaultScore),
   }
 }

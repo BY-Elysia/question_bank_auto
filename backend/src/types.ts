@@ -15,6 +15,7 @@ export type TextbookMeta = {
   publisher: string
   subject: string
   hasAnswer?: boolean
+  answerHandlingMode?: AnswerHandlingMode
 }
 
 export type ExamType = 'quiz' | 'midterm' | 'final'
@@ -25,6 +26,7 @@ export type ExamMeta = {
   subject: string
   examType: ExamType
   hasAnswer: boolean
+  answerHandlingMode?: AnswerHandlingMode
 }
 
 export type TextbookJsonPayload = {
@@ -79,6 +81,12 @@ export type ExamStructureDetectResult = {
 export type QuestionTextBlock = {
   text: string
   media: Array<Record<string, unknown>>
+  explanation?: string
+}
+
+export type QuestionOption = {
+  id: string
+  text: string
 }
 
 export type QuestionRubricItem = {
@@ -95,6 +103,9 @@ export type QuestionLeaf = {
   title: string
   prompt: QuestionTextBlock
   standardAnswer: QuestionTextBlock
+  options?: QuestionOption[]
+  correctOptionIds?: string[]
+  allowPartial?: boolean
   defaultScore: number
   rubric: QuestionRubricItem[]
 }
@@ -107,6 +118,9 @@ export type QuestionGroupChild = {
   chapterId: string
   prompt: QuestionTextBlock
   standardAnswer: QuestionTextBlock
+  options?: QuestionOption[]
+  correctOptionIds?: string[]
+  allowPartial?: boolean
   defaultScore: number
   rubric: QuestionRubricItem[]
 }
@@ -180,6 +194,7 @@ export type ExamCombinedExtractResult = {
 
 export type QuestionBoundaryResult = {
   needNextPage: boolean
+  queueTailQuestionKey: string | null
   continueQuestionKey: string | null
   hasExtractableQuestions: boolean
   reason: string
@@ -187,6 +202,7 @@ export type QuestionBoundaryResult = {
 }
 
 export type LastQuestionLookaheadResult = {
+  queueTailQuestionKey: string | null
   continueQuestionKey: string | null
   reason: string
   rawText: string

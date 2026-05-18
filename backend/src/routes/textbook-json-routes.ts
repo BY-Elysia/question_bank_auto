@@ -5,6 +5,7 @@ import { OUTPUT_JSON_DIR } from '../config'
 import { runWithArkApiKey } from '../ark-request-context'
 import {
   batchId,
+  getPayloadDocumentType,
   isValidTextbookPayload,
   normalizeJsonFileName,
   sanitizeFileName,
@@ -80,6 +81,7 @@ router.post('/api/textbook-json/save', async (req: Request, res: Response) => {
       workspaceId,
       fileName,
       text,
+      workspaceKind: getPayloadDocumentType(payload),
     })
 
     return res.json({
@@ -128,6 +130,7 @@ router.post('/api/textbook-json/import', upload.single('json'), async (req: Requ
       fileName: originalName,
       text: `${JSON.stringify(parsed, null, 2)}\n`,
       workspaceName: path.basename(originalName, ext),
+      workspaceKind: getPayloadDocumentType(parsed),
     })
 
     return res.json({
@@ -266,6 +269,7 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
     const questionId = String(req.body?.questionId || '').trim()
+    const questionTitle = String(req.body?.questionTitle || '').trim()
     const childQuestionId = String(req.body?.childQuestionId || '').trim()
     const childNoRaw = req.body?.childNo
     const childNo =
@@ -294,15 +298,21 @@ router.post('/api/textbook-json/repair-question', upload.any(), async (req: Requ
     const result = await runWithArkApiKey(getArkApiKeyFromRequest(req), () =>
       repairQuestionInTextbookJson({
         jsonFilePath: resolved.jsonFilePath,
+        workspaceId: resolved.workspaceId,
         chapterNo,
         sectionNo,
         questionNo,
         questionId,
+        questionTitle,
         childQuestionId,
         childNo,
         hasAnswerSource,
         generateAnswerIfMissing,
         imageDataUrls,
+        imageSources: files.map((file) => ({
+          label: file.originalname || '',
+          filePath: file.path,
+        })),
         imageLabels: files.map((file) => file.originalname || ''),
         sourceFileName,
       }),
@@ -382,6 +392,7 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
     const sectionNo = Number(req.body?.sectionNo)
     const questionNo = Number(req.body?.questionNo)
     const questionId = String(req.body?.questionId || '').trim()
+    const questionTitle = String(req.body?.questionTitle || '').trim()
     const childQuestionId = String(req.body?.childQuestionId || '').trim()
     const targetType = String(req.body?.targetType || '').trim()
     const childNoRaw = req.body?.childNo
@@ -407,6 +418,7 @@ router.post('/api/textbook-json/attach-images', upload.array('images', 20), asyn
       sectionNo,
       questionNo,
       questionId,
+      questionTitle,
       childQuestionId,
       childNo,
       targetType: targetType === 'standardAnswer' ? 'standardAnswer' : 'prompt',
@@ -497,6 +509,7 @@ router.post('/api/textbook-json/generate-answer', upload.any(), async (req: Requ
     const jsonAssetIdInput = String(req.body?.jsonAssetId || '').trim()
     const sourceFileName = String(req.body?.sourceFileName || '').trim()
     const questionId = String(req.body?.questionId || '').trim()
+    const questionTitle = String(req.body?.questionTitle || '').trim()
     const childQuestionId = String(req.body?.childQuestionId || '').trim()
     const answerPrompt = String(req.body?.answerPrompt || '').trim()
     const childNoRaw = req.body?.childNo
@@ -505,8 +518,8 @@ router.post('/api/textbook-json/generate-answer', upload.any(), async (req: Requ
     const filesRaw = (req.files as Express.Multer.File[] | undefined) ?? []
     const files = filesRaw.filter((file) => /^(images?|answerImages?)$/i.test(file.fieldname))
 
-    if (!questionId) {
-      return res.status(400).json({ message: 'questionId is required' })
+    if (!questionId && !questionTitle) {
+      return res.status(400).json({ message: 'questionId or questionTitle is required' })
     }
 
     const resolved = await resolveManagedJsonInput({
@@ -521,6 +534,7 @@ router.post('/api/textbook-json/generate-answer', upload.any(), async (req: Requ
         jsonFilePath: resolved.jsonFilePath,
         sourceFileName,
         questionId,
+        questionTitle,
         childQuestionId,
         childNo,
         answerPrompt,
