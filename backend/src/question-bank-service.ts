@@ -701,6 +701,74 @@ function normalizeChoiceStandardAnswer(
   }
 }
 
+function normalizePersistedChoiceQuestionLike(host: Record<string, unknown>) {
+  const questionType = normalizeQuestionType(host.questionType)
+  if (!isChoiceQuestionType(questionType)) {
+    return
+  }
+
+  const promptRaw = host.prompt && typeof host.prompt === 'object'
+    ? (host.prompt as Record<string, unknown>)
+    : {}
+  const prompt = {
+    text: typeof promptRaw.text === 'string' ? promptRaw.text : '',
+    media: Array.isArray(promptRaw.media)
+      ? (promptRaw.media.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>)
+      : [],
+  }
+  const choice = normalizeChoicePromptAndOptions(host.options, prompt)
+
+  const answerRaw = host.standardAnswer && typeof host.standardAnswer === 'object'
+    ? (host.standardAnswer as Record<string, unknown>)
+    : {}
+  const answerBlock = {
+    text: typeof answerRaw.text === 'string' ? sanitizeStandardAnswerText(answerRaw.text) : '',
+    media: Array.isArray(answerRaw.media)
+      ? (answerRaw.media.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>)
+      : [],
+  }
+  const parsedAnswer = parseChoiceAnswerText(answerBlock.text)
+  const correctOptionIds = normalizeCorrectOptionIds(
+    host.correctOptionIds,
+    parsedAnswer.optionIds,
+    questionType,
+    false,
+  )
+
+  host.questionType = questionType
+  host.prompt = choice.prompt
+  host.options = choice.options
+  host.correctOptionIds = correctOptionIds
+  host.allowPartial = questionType === 'SINGLE_CHOICE' ? false : host.allowPartial === true
+  host.standardAnswer = normalizeChoiceStandardAnswer(
+    host.standardAnswer,
+    answerBlock,
+    questionType,
+    correctOptionIds,
+    false,
+  )
+}
+
+function normalizePersistedChoiceQuestionShapes(payload: TextbookJsonPayload) {
+  const questions = Array.isArray(payload.questions) ? payload.questions : []
+  for (const item of questions) {
+    if (!item || typeof item !== 'object') {
+      continue
+    }
+    const question = item as Record<string, unknown>
+    if (String(question.nodeType || '').trim().toUpperCase() === 'GROUP') {
+      const children = Array.isArray(question.children) ? question.children : []
+      for (const child of children) {
+        if (child && typeof child === 'object') {
+          normalizePersistedChoiceQuestionLike(child as Record<string, unknown>)
+        }
+      }
+      continue
+    }
+    normalizePersistedChoiceQuestionLike(question)
+  }
+}
+
 function normalizeQuestionId(value: unknown, chapterId: string, questionNo: string, childNo?: string) {
   const chapterSuffix = chapterSuffixFromChapterId(chapterId)
   const mainNo = questionNo || '0'
@@ -1933,6 +2001,7 @@ function stripMediaCaptionsDeep(value: unknown) {
 }
 
 async function saveTextbookJson(filePath: string, payload: TextbookJsonPayload) {
+  normalizePersistedChoiceQuestionShapes(payload)
   stripMediaCaptionsDeep(payload)
   const text = `${JSON.stringify(payload, null, 2)}\n`
   await fsp.writeFile(filePath, text, { encoding: 'utf8' })
