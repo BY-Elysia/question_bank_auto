@@ -11,9 +11,10 @@ import {
   WORKSPACE_DERIVED_RETENTION_DAYS,
   WORKSPACE_MAINTENANCE_INTERVAL_MS,
 } from './config'
+import { registerAgentProxyRoutes } from './routes/agent-proxy-routes'
 import { registerExamSessionRoutes } from './routes/exam-session-routes'
-import { registerQuestionBankAssistantRoutes } from './routes/question-bank-assistant-routes'
 import { registerQuestionBankDbRoutes } from './routes/question-bank-db-routes'
+import { registerQuestionBankMcpRoutes } from './routes/question-bank-mcp-routes'
 import { registerChapterSessionRoutes } from './routes/chapter-session-routes'
 import { registerPdfRoutes } from './routes/pdf-routes'
 import { registerTextbookJsonRoutes } from './routes/textbook-json-routes'
@@ -64,7 +65,8 @@ export function createApp() {
   registerChapterSessionRoutes(app)
   registerExamSessionRoutes(app)
   registerQuestionBankDbRoutes(app)
-  registerQuestionBankAssistantRoutes(app)
+  registerQuestionBankMcpRoutes(app)
+  registerAgentProxyRoutes(app)
 
   if (fs.existsSync(FRONTEND_DIST_DIR)) {
     app.use(express.static(FRONTEND_DIST_DIR))

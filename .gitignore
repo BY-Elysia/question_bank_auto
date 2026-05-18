@@ -19,6 +19,16 @@ frontend/public/
 .env.*
 !.env.example
 !.env.*.example
+agent_service/logs/
+agent_service/.agent.pid
+agent_service/.reply-bot.pid
+agent_service/.venv/
+agent_service/.pytest_cache/
+agent_service/**/__pycache__/
+agent_service/src/*.egg-info/
+agent_service/data/
+agent_service/vendor/
+agent_service/_
 
 *.log
 npm-debug.log*

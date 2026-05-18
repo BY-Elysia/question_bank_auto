@@ -10,7 +10,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5001
-      DATA_ROOT: ${DATA_ROOT:-/app/data}
+      DATA_ROOT: /app/data
+      AEMEATH_AGENT_BASE_URL: ${DOCKER_AEMEATH_AGENT_BASE_URL:-http://host.docker.internal:8000}
+      QUESTION_BANK_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "${APP_PORT:-5001}:5001"
     depends_on:

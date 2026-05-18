@@ -1,11 +1,12 @@
 <template>
-  <div class="app-shell" :class="{ 'app-shell--overview': currentPage === 'overview' }">
+  <div class="app-shell" :class="{ 'app-shell--overview': currentPage === 'overview', 'app-shell--assistant': currentPage === 'assistant' }">
     <span class="ambient-orb orb-a"></span>
     <span class="ambient-orb orb-b"></span>
     <span class="ambient-orb orb-c"></span>
 
-    <main class="workspace-shell">
+    <main class="workspace-shell" :class="{ 'workspace-shell--assistant': currentPage === 'assistant' }">
       <WorkspaceNav
+        v-if="currentPage !== 'assistant'"
         :items="pages"
         :state="state"
         :actions="actions"
@@ -13,8 +14,8 @@
         @change="currentPage = $event"
       />
 
-      <div class="workspace-stage">
-        <aside class="workspace-dock workspace-dock--left">
+      <div class="workspace-stage" :class="{ 'workspace-stage--assistant': currentPage === 'assistant' }">
+        <aside class="workspace-dock workspace-dock--left" :class="{ 'is-hidden': currentPage === 'assistant' }">
           <OverviewDeck
             :items="overviewItems"
             :current-page="currentPage"
@@ -79,8 +80,8 @@
             <QuestionBankDatabasePanel :state="state" :actions="actions" />
           </section>
 
-          <section v-else-if="currentPage === 'assistant'" class="stack-column">
-            <QuestionBankAssistantPanel :state="state" :actions="actions" />
+          <section v-else-if="currentPage === 'assistant'" class="agent-stage-section">
+            <QuestionBankAssistantPanel :state="state" :actions="actions" @exit="currentPage = 'overview'" />
           </section>
         </div>
       </div>
@@ -124,7 +125,7 @@ const pages = [
   { id: 'visualize', label: '题库可视化', description: '章节树与题目浏览' },
   { id: 'merge', label: 'JSON 合并', description: '多文件整理输出' },
   { id: 'database', label: '数据库导入', description: '新 schema 入库' },
-  { id: 'assistant', label: 'AI 助手', description: 'MCP 查库问答' },
+  { id: 'assistant', label: 'Aemeath Agent', description: '聊天、飞书、题库 MCP' },
 ]
 
 const sessionLabel = computed(() => {
@@ -304,6 +305,8 @@ onMounted(() => {
   actions.loadQuestionBankDbSummary().catch(() => {})
   actions.loadExamQuestionTypeOptions().catch(() => {})
   actions.loadWorkspaceList().catch(() => {})
+  actions.loadAgentBootstrap({ silent: true }).catch(() => {})
+  actions.loadAgentSessions({ silent: true }).catch(() => {})
 })
 
 const overviewItems = computed(() => [
@@ -399,12 +402,12 @@ const overviewItems = computed(() => [
   {
     id: 'assistant',
     eyebrow: 'Assistant',
-    title: 'AI 助手',
-    description: '采用 MCP 查询题库数据库，支持自然语言问答、来源筛选、结构定位和题目检索。',
-    value: state.assistantMessages.length ? `${state.assistantMessages.length} 条消息` : '等待提问',
-    hint: state.assistantStatus || '可直接询问某章某节有哪些题',
+    title: 'Aemeath Agent',
+    description: '辅助聊天页，负责普通聊天、飞书控制，以及通过题库 MCP 查询数据库。',
+    value: state.agentMessages.length ? `${state.agentMessages.length} 条消息` : '等待会话',
+    hint: state.agentStatus || state.agentBootstrapStatus || '可先刷新 Agent，再开始聊天或查库',
     tone: 'berry',
-    buttonLabel: 'AI 助手',
+    buttonLabel: 'Aemeath Agent',
   },
 ])
 </script>

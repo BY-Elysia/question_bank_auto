@@ -1,4 +1,8 @@
 import path from 'node:path'
+import dotenv from 'dotenv'
+
+process.env.DOTENV_CONFIG_QUIET ??= 'true'
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env'), quiet: true })
 
 export const APP_ROOT = path.resolve(__dirname, '..', '..')
 export const DATA_ROOT = path.resolve(String(process.env.DATA_ROOT || path.join(APP_ROOT, 'data')))
@@ -23,6 +27,9 @@ export const ARK_MODEL = String(process.env.ARK_MODEL || 'doubao-seed-2-0-pro-26
 export const ARK_TIMEOUT_MS = Number(process.env.ARK_TIMEOUT_MS || 300000)
 export const ARK_RETRY_TIMES = Number(process.env.ARK_RETRY_TIMES || 3)
 export const ARK_RETRY_DELAY_MS = Number(process.env.ARK_RETRY_DELAY_MS || 1200)
+export const AEMEATH_AGENT_BASE_URL = String(
+  process.env.AEMEATH_AGENT_BASE_URL || 'http://127.0.0.1:8000',
+).replace(/\/+$/g, '')
 export const MAX_PENDING_QUEUE_PAGES = Number(process.env.MAX_PENDING_QUEUE_PAGES || 8)
 export const QUESTION_BANK_DATABASE_URL = String(
   process.env.QUESTION_BANK_DATABASE_URL || process.env.DATABASE_URL || '',

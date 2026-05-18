@@ -73,6 +73,7 @@ export function useQuestionBankWorkbench() {
     workspaceListError: false,
     workspaceList: [],
     workspaceCreateName: '',
+    workspaceCreateKind: 'textbook',
     workspaceCreateRunning: false,
     workspaceSummaryLoading: false,
     workspaceSummaryStatus: '',
@@ -93,6 +94,7 @@ export function useQuestionBankWorkbench() {
     workingJsonDocumentType: '',
     workingJsonExamType: '',
     workingJsonHasAnswer: null,
+    workingJsonAnswerHandlingMode: '',
     chapterSessionInitChapter: '第八章 不定积分',
     chapterSessionInitSection: '习题8.1',
     chapterSessionId: '',
@@ -107,6 +109,7 @@ export function useQuestionBankWorkbench() {
     examSessionJsonLabel: '',
     examSessionServerJsonPath: '',
     examSessionJsonAssetId: '',
+    examSessionWorkspaceJsonPath: '',
     examSessionJsonHandle: null,
     examSessionId: '',
     examSessionTitle: '',
@@ -121,6 +124,8 @@ export function useQuestionBankWorkbench() {
     examQuestionTypeLoading: false,
     examQuestionTypeStatus: '',
     examQuestionTypeError: false,
+    examSectionBootstrapProcessing: false,
+    examSectionBootstrapLogs: '',
     examSectionStatus: '',
     examSectionError: false,
     examFinalizeStatus: '',
@@ -216,13 +221,27 @@ export function useQuestionBankWorkbench() {
     dbSummaryStatus: '',
     dbSummaryError: false,
     dbSummary: null,
-    assistantInput: '',
-    assistantMessages: [],
-    assistantProcessing: false,
-    assistantStatus: '',
-    assistantError: false,
-    assistantArkApiKey: '',
-    assistantToolTraces: [],
+    agentAvailable: false,
+    agentIdentity: null,
+    agentHealth: null,
+    agentMcp: null,
+    agentBootstrapLoading: false,
+    agentBootstrapStatus: '',
+    agentSessions: [],
+    agentSessionsLoading: false,
+    agentSessionsStatus: '',
+    agentSessionsError: false,
+    agentSessionLoading: false,
+    agentSessionId: '',
+    agentInput: '',
+    agentAttachmentFiles: [],
+    agentMessages: [],
+    agentProcessing: false,
+    agentStatus: '',
+    agentError: false,
+    agentArkApiKey: '',
+    agentTrace: [],
+    agentPendingAction: null,
     chapterImageFile: null,
     chapterProcessing: false,
     chapterPassLogs: '',
@@ -282,6 +301,7 @@ export function useQuestionBankWorkbench() {
       publisher: '',
       subject: '',
       hasAnswer: true,
+      answerHandlingMode: 'extract_visible',
     },
     examJsonForm: {
       version: 'v1.1',
@@ -291,6 +311,7 @@ export function useQuestionBankWorkbench() {
       subject: '',
       examType: 'midterm',
       hasAnswer: true,
+      answerHandlingMode: 'extract_visible',
     },
   })
 
@@ -302,6 +323,8 @@ export function useQuestionBankWorkbench() {
   let examSectionTaskSequence = 0
   let examStagedQuestionSequence = 0
   const chapterBatchAbortControllers = new Map()
+  const questionBankSourceCache = new Map()
+  const questionBankChapterCache = new Map()
 
   function createSelectedPdfEntry(file) {
     selectedPdfSequence += 1
@@ -484,6 +507,9 @@ export function useQuestionBankWorkbench() {
         publisher: String(state.jsonForm.publisher || '').trim(),
         subject: String(state.jsonForm.subject || '').trim(),
         hasAnswer: state.jsonForm.hasAnswer !== false,
+        answerHandlingMode: String(
+          state.jsonForm.hasAnswer !== false ? 'extract_visible' : state.jsonForm.answerHandlingMode || 'generate_brief',
+        ).trim() || 'extract_visible',
       },
       chapters: [],
       questions: [],
@@ -522,7 +548,18 @@ export function useQuestionBankWorkbench() {
       majorTitle: '',
       minorTitle: '',
       questionType: 'SHORT_ANSWER',
-      libraryDocumentType: '',
+      libraryDocumentType: 'textbook',
+      libraryTextbookId: '',
+      libraryChapterId: '',
+      librarySectionChapterId: '',
+      librarySources: [],
+      librarySourceStatus: '',
+      librarySourceError: false,
+      librarySourcesLoading: false,
+      libraryChapters: [],
+      libraryChapterStatus: '',
+      libraryChapterError: false,
+      libraryChaptersLoading: false,
       imageFiles: [],
       stagedQuestions: [],
       confirmed: false,
@@ -538,7 +575,6 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  state.examSectionTasks.push(createExamSectionTask())
   state.chapterManualChapters.push(createChapterManualChapter())
 
   function buildExamPayload() {
@@ -552,6 +588,9 @@ export function useQuestionBankWorkbench() {
         subject: String(state.examJsonForm.subject || '').trim(),
         examType: String(state.examJsonForm.examType || '').trim() || 'midterm',
         hasAnswer: state.examJsonForm.hasAnswer !== false,
+        answerHandlingMode: String(
+          state.examJsonForm.hasAnswer !== false ? 'extract_visible' : state.examJsonForm.answerHandlingMode || 'leave_empty',
+        ).trim() || 'extract_visible',
       },
       chapters: [],
       questions: [],
@@ -576,6 +615,9 @@ export function useQuestionBankWorkbench() {
         subject: String(exam.subject || '').trim(),
         examType: String(exam.examType || '').trim(),
         hasAnswer: exam.hasAnswer !== false,
+        answerHandlingMode: String(
+          exam.hasAnswer !== false ? 'extract_visible' : exam.answerHandlingMode || 'leave_empty',
+        ).trim() || 'extract_visible',
       }
     }
 
@@ -587,6 +629,9 @@ export function useQuestionBankWorkbench() {
       subject: String(textbook.subject || '').trim(),
       examType: '',
       hasAnswer: textbook.hasAnswer !== false,
+      answerHandlingMode: String(
+        textbook.hasAnswer !== false ? 'extract_visible' : textbook.answerHandlingMode || 'generate_brief',
+      ).trim() || 'extract_visible',
     }
   }
 
@@ -607,6 +652,7 @@ export function useQuestionBankWorkbench() {
     state.workingJsonDocumentType = meta.documentType
     state.workingJsonExamType = meta.examType || ''
     state.workingJsonHasAnswer = typeof meta.hasAnswer === 'boolean' ? meta.hasAnswer : null
+    state.workingJsonAnswerHandlingMode = meta.answerHandlingMode || ''
     if (meta.documentType === 'exam') {
       applyExamSourceMeta(state, meta)
     }
@@ -713,6 +759,7 @@ export function useQuestionBankWorkbench() {
     state.examSessionJsonLabel = ''
     state.examSessionServerJsonPath = ''
     state.examSessionJsonAssetId = ''
+    state.examSessionWorkspaceJsonPath = ''
     state.examSessionJsonHandle = null
     state.examSessionId = ''
     state.examSessionTitle = ''
@@ -810,13 +857,30 @@ export function useQuestionBankWorkbench() {
     return arkApiKey ? { 'X-Ark-Api-Key': arkApiKey } : {}
   }
 
-  function getAssistantArkApiKey() {
-    return String(state.assistantArkApiKey || '').trim()
+  function getAgentArkApiKey() {
+    return String(state.agentArkApiKey || '').trim()
   }
 
-  function buildAssistantArkHeaders() {
-    const arkApiKey = getAssistantArkApiKey()
+  function buildAgentArkHeaders() {
+    const arkApiKey = getAgentArkApiKey()
     return arkApiKey ? { 'X-Ark-Api-Key': arkApiKey } : {}
+  }
+
+  function sanitizeAgentUiMessage(value, fallback = '辅助 Agent 当前不可用') {
+    const text = String(value || '').trim()
+    if (!text) {
+      return fallback
+    }
+    if (text.includes('后端返回非 JSON 响应') && (text.includes('<!doctype html') || text.includes('<html'))) {
+      return '当前 backend 还在运行旧代码，请重启 backend 服务后再试。'
+    }
+    if (text.includes('Agent service returned non-JSON response') || text.includes('Internal Server Error')) {
+      return 'Agent 服务内部报错了，请检查 agent_service 控制台日志。'
+    }
+    if (text.includes('<!doctype html') || text.includes('<html')) {
+      return 'Agent 接口当前没有返回有效 JSON。请确认前端代理和后端服务都已启动。'
+    }
+    return text.length > 220 ? `${text.slice(0, 220)}...` : text
   }
 
   function getVisualizerArkApiKey() {
@@ -1004,7 +1068,7 @@ export function useQuestionBankWorkbench() {
   }
 
   function useDefaultWorkspaceUploadsForVisualizer() {
-    setVisualizerWorkspaceFolder('uploads/source_uploads')
+    setVisualizerWorkspaceFolder('output_images/source_uploads')
     state.visualizerImportSourceMode = 'workspace'
   }
 
@@ -1185,15 +1249,25 @@ export function useQuestionBankWorkbench() {
   }
 
   function parseQuestionIdParts(questionId) {
-    const match = String(questionId || '').trim().match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
-    if (!match) {
+    const normalized = String(questionId || '').trim()
+    const legacyMatch = normalized.match(/^q_(\d+)_(\d+)_(\d+)(?:_(\d+))?$/)
+    if (legacyMatch) {
+      return {
+        chapterNo: Number(legacyMatch[1]),
+        sectionNo: Number(legacyMatch[2]),
+        questionNo: Number(legacyMatch[3]),
+        childNo: legacyMatch[4] ? Number(legacyMatch[4]) : null,
+      }
+    }
+    const examMatch = normalized.match(/^q_(\d+)_(\d+)(?:_(\d+))?$/)
+    if (!examMatch) {
       return null
     }
     return {
-      chapterNo: Number(match[1]),
-      sectionNo: Number(match[2]),
-      questionNo: Number(match[3]),
-      childNo: match[4] ? Number(match[4]) : null,
+      chapterNo: Number(examMatch[1]),
+      sectionNo: 0,
+      questionNo: Number(examMatch[2]),
+      childNo: examMatch[3] ? Number(examMatch[3]) : null,
     }
   }
 
@@ -1547,6 +1621,7 @@ export function useQuestionBankWorkbench() {
   async function attachImagesFromVisualizer(params) {
     const questionId = String(params?.questionId || '').trim()
     const questionTitle = String(params?.questionTitle || '').trim()
+    const locatorMode = String(params?.locatorMode || '').trim()
     const childQuestionId = String(params?.childQuestionId || '').trim()
     const childNoRaw = params?.childNo
     const childNo =
@@ -1564,6 +1639,11 @@ export function useQuestionBankWorkbench() {
       state.visualizerRepairStatus = '请先上传用于补图的图片'
       return
     }
+    if (!questionId && !questionTitle) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '缺少题目定位，无法补图'
+      return
+    }
 
     state.visualizerRepairProcessing = true
     state.visualizerRepairError = false
@@ -1578,7 +1658,15 @@ export function useQuestionBankWorkbench() {
         jsonFilePath: state.visualizerServerJsonPath,
       })
       formData.append('sourceFileName', state.visualizerFileName || '')
-      formData.append('questionId', questionId)
+      if (questionId) {
+        formData.append('questionId', questionId)
+      }
+      if (questionTitle) {
+        formData.append('questionTitle', questionTitle)
+      }
+      if (locatorMode) {
+        formData.append('locatorMode', locatorMode)
+      }
       formData.append('targetType', targetType)
       if (childQuestionId) {
         formData.append('childQuestionId', childQuestionId)
@@ -1599,8 +1687,9 @@ export function useQuestionBankWorkbench() {
         throw new Error(data.message || '当前题目补图失败')
       }
 
+      const resolvedQuestionId = String(data.questionId || questionId).trim()
       applyVisualizerImageAttachToPayload({
-        questionId,
+        questionId: resolvedQuestionId,
         mediaItems: Array.isArray(data.mediaItems) ? data.mediaItems : [],
         childNo,
         childQuestionId: String(data.childQuestionId || childQuestionId),
@@ -1687,6 +1776,7 @@ export function useQuestionBankWorkbench() {
   async function generateAnswerFromVisualizer(params) {
     const questionId = String(params?.questionId || '').trim()
     const questionTitle = String(params?.questionTitle || '').trim()
+    const locatorMode = String(params?.locatorMode || '').trim()
     const childQuestionId = String(params?.childQuestionId || '').trim()
     const childNoRaw = params?.childNo
     const childNo =
@@ -1699,9 +1789,9 @@ export function useQuestionBankWorkbench() {
       state.visualizerAnswerStatus = '请先导入 JSON 和图片文件夹到工作区'
       return
     }
-    if (!questionId) {
+    if (!questionId && !questionTitle) {
       state.visualizerAnswerError = true
-      state.visualizerAnswerStatus = '缺少 questionId，无法生成答案'
+      state.visualizerAnswerStatus = '缺少题目定位，无法生成答案'
       return
     }
 
@@ -1718,7 +1808,15 @@ export function useQuestionBankWorkbench() {
         jsonFilePath: state.visualizerServerJsonPath,
       })
       formData.append('sourceFileName', state.visualizerFileName || '')
-      formData.append('questionId', questionId)
+      if (questionId) {
+        formData.append('questionId', questionId)
+      }
+      if (questionTitle) {
+        formData.append('questionTitle', questionTitle)
+      }
+      if (locatorMode) {
+        formData.append('locatorMode', locatorMode)
+      }
       if (childQuestionId) {
         formData.append('childQuestionId', childQuestionId)
       }
@@ -1742,8 +1840,9 @@ export function useQuestionBankWorkbench() {
         throw new Error(data.message || '答案生成失败')
       }
 
+      const resolvedQuestionId = String(data.questionId || questionId).trim()
       applyVisualizerGeneratedAnswerToPayload({
-        questionId,
+        questionId: resolvedQuestionId,
         answerText: String(data.answerText || ''),
         childNo,
         childQuestionId: String(data.childQuestionId || childQuestionId),
@@ -1761,6 +1860,7 @@ export function useQuestionBankWorkbench() {
   async function repairQuestionFromVisualizer(params) {
     const questionId = String(params?.questionId || '').trim()
     const questionTitle = String(params?.questionTitle || '').trim()
+    const locatorMode = String(params?.locatorMode || '').trim()
     const childQuestionId = String(params?.childQuestionId || '').trim()
     const childNoRaw = params?.childNo
     const childNo =
@@ -1780,6 +1880,11 @@ export function useQuestionBankWorkbench() {
       state.visualizerRepairStatus = '请先上传用于重写当前题目的图片'
       return
     }
+    if (!questionId && !questionTitle) {
+      state.visualizerRepairError = true
+      state.visualizerRepairStatus = '缺少题目定位，无法重写当前题目'
+      return
+    }
 
     state.visualizerRepairProcessing = true
     state.visualizerRepairError = false
@@ -1795,7 +1900,15 @@ export function useQuestionBankWorkbench() {
         jsonFilePath: state.visualizerServerJsonPath,
       })
       formData.append('sourceFileName', state.visualizerFileName || '')
-      formData.append('questionId', questionId)
+      if (questionId) {
+        formData.append('questionId', questionId)
+      }
+      if (questionTitle) {
+        formData.append('questionTitle', questionTitle)
+      }
+      if (locatorMode) {
+        formData.append('locatorMode', locatorMode)
+      }
       if (childQuestionId) {
         formData.append('childQuestionId', childQuestionId)
       }
@@ -2660,6 +2773,7 @@ export function useQuestionBankWorkbench() {
         },
         body: JSON.stringify({
           name: String(state.workspaceCreateName || '').trim(),
+          kind: String(state.workspaceCreateKind || '').trim() === 'exam' ? 'exam' : 'textbook',
         }),
       })
       const data = await parseApiResponse(resp)
@@ -2965,6 +3079,25 @@ export function useQuestionBankWorkbench() {
     return data
   }
 
+  function bindExamSessionJsonRef(params) {
+    state.examSessionJsonLabel = String(params?.label || '').trim()
+    state.examSessionServerJsonPath = String(params?.jsonFilePath || '').trim()
+    state.examSessionJsonAssetId = String(params?.jsonAssetId || '').trim()
+    state.examSessionWorkspaceJsonPath = String(params?.workspaceRelativePath || '').trim()
+    state.currentWorkspaceId = String(params?.workspaceId || state.currentWorkspaceId || '').trim()
+    state.examSessionPayload = params?.payload || null
+    state.examSectionTasks = []
+    state.examSectionBootstrapProcessing = false
+    state.examSectionBootstrapLogs = ''
+    state.examFinalizeError = false
+    state.examFinalizeStatus = ''
+    state.examSectionError = false
+    state.examSectionStatus = ''
+    if (params?.sourceMeta) {
+      applyExamSourceMeta(state, params.sourceMeta)
+    }
+  }
+
   async function requestMultiChapterSlotSetup(params) {
     const workspaceId = String(params?.workspaceId || '').trim()
     const slotCount = normalizeMultiChapterSlotCount(params?.slotCount)
@@ -3102,6 +3235,48 @@ export function useQuestionBankWorkbench() {
     return Array.isArray(data.items) ? data.items : []
   }
 
+  async function requestQuestionBankSources(params) {
+    const search = new URLSearchParams()
+    if (params?.courseId) {
+      search.set('courseId', params.courseId)
+    }
+    if (params?.documentType) {
+      search.set('documentType', params.documentType)
+    }
+    const queryString = search.toString()
+    const resp = await fetch(queryString ? `/api/question-bank-db/sources?${queryString}` : '/api/question-bank-db/sources')
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '读取题库来源失败')
+    }
+    return Array.isArray(data.items) ? data.items : []
+  }
+
+  async function requestQuestionBankChapters(params) {
+    const textbookId = String(params?.textbookId || '').trim()
+    if (!textbookId) {
+      return []
+    }
+    const search = new URLSearchParams()
+    if (params?.courseId) {
+      search.set('courseId', params.courseId)
+    }
+    if (params?.documentType) {
+      search.set('documentType', params.documentType)
+    }
+    const queryString = search.toString()
+    const resp = await fetch(
+      queryString
+        ? `/api/question-bank-db/sources/${encodeURIComponent(textbookId)}/chapters?${queryString}`
+        : `/api/question-bank-db/sources/${encodeURIComponent(textbookId)}/chapters`,
+    )
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '读取题库章节失败')
+    }
+    return Array.isArray(data.items) ? data.items : []
+  }
+
   async function requestQuestionBankQuestionSearch(params) {
     const resp = await fetch('/api/question-bank-db/questions/search', {
       method: 'POST',
@@ -3110,6 +3285,7 @@ export function useQuestionBankWorkbench() {
         query: params?.query || '',
         courseId: params?.courseId || '',
         textbookId: params?.textbookId || '',
+        chapterId: params?.chapterId || '',
         documentType: params?.documentType || '',
         questionType: params?.questionType || '',
         limit: params?.limit ?? 12,
@@ -3146,6 +3322,35 @@ export function useQuestionBankWorkbench() {
     const data = await parseApiResponse(resp)
     if (!resp.ok) {
       throw new Error(data.message || '按指定部分提取试卷图片失败')
+    }
+    return data
+  }
+
+  async function requestBootstrapExamSectionsFromSources(params) {
+    const formData = new FormData()
+    appendManagedJsonFormData(formData, {
+      workspaceId: params?.workspaceId || '',
+      jsonAssetId: params?.jsonAssetId || '',
+      jsonFilePath: params?.jsonFilePath || '',
+    })
+    formData.append('folderName', params?.folderName || '')
+    ;(Array.isArray(params?.files) ? params.files : []).forEach((entry, index) => {
+      const file = entry?.file || entry
+      if (file) {
+        formData.append(`source_${index}`, file, entry?.name || file.name || `source_${index + 1}`)
+      }
+    })
+
+    const resp = await fetch('/api/exams/sections/bootstrap-from-sources', {
+      method: 'POST',
+      headers: {
+        ...params?.chapterArkHeaders,
+      },
+      body: formData,
+    })
+    const data = await parseApiResponse(resp)
+    if (!resp.ok) {
+      throw new Error(data.message || '分析试卷板块失败')
     }
     return data
   }
@@ -3216,12 +3421,14 @@ export function useQuestionBankWorkbench() {
       const data = await importJsonFileToWorkspace(file, payload)
       state.chapterSessionJsonHandle = handle
       state.examSessionJsonHandle = handle
-      state.examSessionJsonLabel = file.name
-      state.examSessionServerJsonPath = String(data.workspaceFilePath || data.filePath || '')
-      state.examSessionJsonAssetId = String(data.jsonAssetId || '')
-      state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
-      state.examSessionPayload = payload
-      applyExamSourceMeta(state, sourceMeta)
+      bindExamSessionJsonRef({
+        label: file.name,
+        jsonFilePath: String(data.workspaceFilePath || data.filePath || ''),
+        jsonAssetId: String(data.jsonAssetId || ''),
+        workspaceId: String(data.workspaceId || state.currentWorkspaceId || ''),
+        payload,
+        sourceMeta,
+      })
       state.examSessionError = false
       state.examSessionStatus = `已选择试卷 JSON：${file.name}`
     } catch (error) {
@@ -3230,6 +3437,39 @@ export function useQuestionBankWorkbench() {
       }
       state.examSessionError = true
       state.examSessionStatus = error instanceof Error ? error.message : '选择试卷 JSON 失败'
+    }
+  }
+
+  async function chooseExamJsonSessionFileFromWorkspace(relativePath = '') {
+    try {
+      const workspaceId = requireCurrentWorkspace()
+      const normalizedPath = String(relativePath || state.examSessionWorkspaceJsonPath || '').trim()
+      if (!normalizedPath) {
+        throw new Error('请先选择工作区里的试卷 JSON')
+      }
+      const text = await readWorkspaceJsonText({
+        workspaceId,
+        jsonFilePath: normalizedPath,
+      })
+      const payload = JSON.parse(text)
+      const sourceMeta = getPayloadSourceMeta(payload)
+      if (sourceMeta.documentType !== 'exam') {
+        throw new Error('所选工作区文件不是试卷 JSON')
+      }
+      bindExamSessionJsonRef({
+        label: normalizedPath.split('/').pop() || normalizedPath,
+        jsonFilePath: normalizedPath,
+        jsonAssetId: '',
+        workspaceId,
+        workspaceRelativePath: normalizedPath,
+        payload,
+        sourceMeta,
+      })
+      state.examSessionError = false
+      state.examSessionStatus = `已从工作区选择试卷 JSON：${normalizedPath}`
+    } catch (error) {
+      state.examSessionError = true
+      state.examSessionStatus = error instanceof Error ? error.message : '从工作区选择试卷 JSON 失败'
     }
   }
 
@@ -3258,6 +3498,220 @@ export function useQuestionBankWorkbench() {
     if (!exists) {
       task.questionType = getDefaultExamQuestionType()
     }
+  }
+
+  function normalizeExamLibraryDocumentType(value) {
+    return String(value || '').trim().toLowerCase() === 'exam' ? 'exam' : 'textbook'
+  }
+
+  function createQuestionBankSourceCacheKey(params) {
+    return JSON.stringify({
+      courseId: String(params?.courseId || '').trim(),
+      documentType: normalizeExamLibraryDocumentType(params?.documentType),
+    })
+  }
+
+  function createQuestionBankChapterCacheKey(params) {
+    return JSON.stringify({
+      courseId: String(params?.courseId || '').trim(),
+      documentType: normalizeExamLibraryDocumentType(params?.documentType),
+      textbookId: String(params?.textbookId || '').trim(),
+    })
+  }
+
+  function resetExamSectionLibrarySearch(task, status = '') {
+    if (!task || typeof task !== 'object') {
+      return
+    }
+    task.searchError = false
+    task.searchStatus = status
+    task.searchResults = []
+    task.selectedRecordIds = []
+  }
+
+  function clearExamSectionLibraryChapters(task, status = '') {
+    if (!task || typeof task !== 'object') {
+      return
+    }
+    task.libraryChapterId = ''
+    task.librarySectionChapterId = ''
+    task.libraryChapters = []
+    task.libraryChapterError = false
+    task.libraryChapterStatus = status
+    task.libraryChaptersLoading = false
+  }
+
+  function syncExamSectionLibraryChapterSelection(task) {
+    if (!task || typeof task !== 'object') {
+      return
+    }
+    const chapters = Array.isArray(task.libraryChapters) ? task.libraryChapters : []
+    const chapterIds = new Set(
+      chapters
+        .map((item) => String(item?.chapterId || '').trim())
+        .filter(Boolean),
+    )
+    if (!chapterIds.has(String(task.libraryChapterId || '').trim())) {
+      task.libraryChapterId = ''
+    }
+    if (!chapterIds.has(String(task.librarySectionChapterId || '').trim())) {
+      task.librarySectionChapterId = ''
+    }
+  }
+
+  async function loadExamSectionLibrarySources(taskId, options = {}) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return []
+    }
+    const courseId = String(state.examJsonForm.courseId || '').trim()
+    const documentType = normalizeExamLibraryDocumentType(task.libraryDocumentType)
+    const cacheKey = createQuestionBankSourceCacheKey({ courseId, documentType })
+    task.libraryDocumentType = documentType
+
+    if (!options.force && questionBankSourceCache.has(cacheKey)) {
+      const cached = questionBankSourceCache.get(cacheKey) || []
+      if (Array.isArray(cached) && cached.length) {
+        task.librarySources = cached
+        task.librarySourceError = false
+        task.librarySourceStatus = `已载入 ${task.librarySources.length} 个题库来源`
+        if (!task.librarySources.some((item) => String(item?.textbookId || '').trim() === String(task.libraryTextbookId || '').trim())) {
+          task.libraryTextbookId = ''
+          clearExamSectionLibraryChapters(task)
+        }
+        return task.librarySources
+      }
+    }
+
+    task.librarySourcesLoading = true
+    task.librarySourceError = false
+    task.librarySourceStatus = '加载题库来源中...'
+    try {
+      const items = await requestQuestionBankSources({ courseId, documentType })
+      if (items.length) {
+        questionBankSourceCache.set(cacheKey, items)
+      } else {
+        questionBankSourceCache.delete(cacheKey)
+      }
+      task.librarySources = items
+      task.librarySourceStatus = items.length ? `已载入 ${items.length} 个题库来源` : '当前没有可选题库来源'
+      if (!items.some((item) => String(item?.textbookId || '').trim() === String(task.libraryTextbookId || '').trim())) {
+        task.libraryTextbookId = ''
+        clearExamSectionLibraryChapters(task)
+      }
+      return items
+    } catch (error) {
+      task.librarySources = []
+      task.librarySourceError = true
+      task.librarySourceStatus = error instanceof Error ? error.message : '加载题库来源失败'
+      clearExamSectionLibraryChapters(task)
+      return []
+    } finally {
+      task.librarySourcesLoading = false
+    }
+  }
+
+  async function loadExamSectionLibraryChapters(taskId, options = {}) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return []
+    }
+    const courseId = String(state.examJsonForm.courseId || '').trim()
+    const documentType = normalizeExamLibraryDocumentType(task.libraryDocumentType)
+    const textbookId = String(task.libraryTextbookId || '').trim()
+
+    if (!textbookId) {
+      clearExamSectionLibraryChapters(task, '请先选择题库来源')
+      return []
+    }
+
+    const cacheKey = createQuestionBankChapterCacheKey({ courseId, documentType, textbookId })
+    if (!options.force && questionBankChapterCache.has(cacheKey)) {
+      const cached = questionBankChapterCache.get(cacheKey) || []
+      if (Array.isArray(cached) && cached.length) {
+        task.libraryChapters = cached
+        task.libraryChapterError = false
+        task.libraryChapterStatus = `已载入 ${task.libraryChapters.length} 个章节节点`
+        syncExamSectionLibraryChapterSelection(task)
+        return task.libraryChapters
+      }
+    }
+
+    task.libraryChaptersLoading = true
+    task.libraryChapterError = false
+    task.libraryChapterStatus = '加载章节结构中...'
+    try {
+      const items = await requestQuestionBankChapters({ courseId, documentType, textbookId })
+      if (items.length) {
+        questionBankChapterCache.set(cacheKey, items)
+      } else {
+        questionBankChapterCache.delete(cacheKey)
+      }
+      task.libraryChapters = items
+      task.libraryChapterStatus = items.length ? `已载入 ${items.length} 个章节节点` : '当前来源还没有可选章节'
+      syncExamSectionLibraryChapterSelection(task)
+      return items
+    } catch (error) {
+      task.libraryChapters = []
+      task.libraryChapterError = true
+      task.libraryChapterStatus = error instanceof Error ? error.message : '加载章节结构失败'
+      syncExamSectionLibraryChapterSelection(task)
+      return []
+    } finally {
+      task.libraryChaptersLoading = false
+    }
+  }
+
+  async function updateExamSectionLibraryDocumentType(taskId, value) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    const nextDocumentType = normalizeExamLibraryDocumentType(value)
+    if (nextDocumentType === normalizeExamLibraryDocumentType(task.libraryDocumentType) && Array.isArray(task.librarySources) && task.librarySources.length) {
+      return
+    }
+    task.libraryDocumentType = nextDocumentType
+    task.libraryTextbookId = ''
+    task.librarySources = []
+    task.librarySourceError = false
+    task.librarySourceStatus = ''
+    clearExamSectionLibraryChapters(task)
+    resetExamSectionLibrarySearch(task, '已切换题库类型，请重新选择来源后检索')
+    await loadExamSectionLibrarySources(taskId, { force: true })
+  }
+
+  async function updateExamSectionLibrarySource(taskId, value) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    const nextTextbookId = String(value || '').trim()
+    task.libraryTextbookId = nextTextbookId
+    clearExamSectionLibraryChapters(task, nextTextbookId ? '' : '请先选择题库来源')
+    resetExamSectionLibrarySearch(task, nextTextbookId ? '已切换题库来源，请继续选择章节或直接检索' : '请先选择题库来源')
+    if (nextTextbookId) {
+      await loadExamSectionLibraryChapters(taskId, { force: false })
+    }
+  }
+
+  function updateExamSectionLibraryChapter(taskId, value) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    task.libraryChapterId = String(value || '').trim()
+    task.librarySectionChapterId = ''
+    resetExamSectionLibrarySearch(task, task.libraryChapterId ? '已切换章节，请继续选择小节或直接检索' : '已清空章节筛选')
+  }
+
+  function updateExamSectionLibrarySection(taskId, value) {
+    const task = findExamSectionTask(taskId)
+    if (!task) {
+      return
+    }
+    task.librarySectionChapterId = String(value || '').trim()
+    resetExamSectionLibrarySearch(task, task.librarySectionChapterId ? '已切换小节，请重新检索题目' : '已清空小节筛选')
   }
 
   async function loadExamQuestionTypeOptions(force = false) {
@@ -3290,31 +3744,103 @@ export function useQuestionBankWorkbench() {
     const task = createExamSectionTask()
     task.questionType = getDefaultExamQuestionType()
     state.examSectionTasks.push(task)
+    void loadExamSectionLibrarySources(task.id)
+  }
+
+  async function bootstrapExamSectionsFromSources() {
+    const files = Array.isArray(state.examAutoFiles) ? state.examAutoFiles : []
+    if (!state.examSessionServerJsonPath) {
+      state.examSectionError = true
+      state.examSectionStatus = '请先选择试卷 JSON 文件'
+      return
+    }
+    if (!ensureChapterArkApiKey()) {
+      return
+    }
+    if (!files.length) {
+      state.examSectionError = true
+      state.examSectionStatus = '请先上传整份试卷图片或 PDF'
+      return
+    }
+
+    state.examSectionBootstrapProcessing = true
+    state.examSectionError = false
+    state.examSectionBootstrapLogs = ''
+    state.examSectionStatus = '正在分析试卷板块并生成任务...'
+
+    try {
+      await loadExamQuestionTypeOptions()
+      const data = await requestBootstrapExamSectionsFromSources({
+        chapterArkHeaders: buildChapterArkHeaders(),
+        workspaceId: state.currentWorkspaceId,
+        jsonAssetId: state.examSessionJsonAssetId,
+        jsonFilePath: state.examSessionServerJsonPath,
+        folderName: state.examAutoFolderLabel || state.examSessionTitle || state.examSessionJsonLabel || 'exam_sections',
+        files,
+      })
+
+      const incomingSections = Array.isArray(data.sections) ? data.sections : []
+      if (data.workspaceId) {
+        state.currentWorkspaceId = String(data.workspaceId || state.currentWorkspaceId || '')
+      }
+      state.examSectionTasks = incomingSections.map((section) => {
+        const task = createExamSectionTask()
+        task.majorTitle = String(section.majorTitle || '').trim()
+        task.minorTitle = String(section.minorTitle || '').trim()
+        task.questionType = normalizeQuestionTypeValue(section.questionType) || getDefaultExamQuestionType()
+        normalizeExamSectionTaskQuestionType(task)
+        task.stagedQuestions = (Array.isArray(section.questionsToStage) ? section.questionsToStage : []).map((question) =>
+          createExamStagedQuestion(task, question, 'image'),
+        )
+        task.confirmed = false
+        task.error = false
+        task.result = {
+          questionType: task.questionType,
+          questionTypeLabel: String(section.questionTypeLabel || questionTypeLabelByValue(task.questionType)),
+          currentMajorTitle: task.majorTitle,
+          currentMinorTitle: task.minorTitle,
+          currentStructureChapterId: String(section.chapterId || ''),
+          chaptersCount: incomingSections.length,
+          questionsCount: task.stagedQuestions.length,
+          upsertedCount: Number(section.question?.upsertedCount ?? task.stagedQuestions.length),
+          reason: String(section.question?.reason || ''),
+          startIndex: Number(section.startIndex || 0),
+          endIndex: Number(section.endIndex || 0),
+          sourceLabels: Array.isArray(section.sourceLabels) ? section.sourceLabels : [],
+        }
+        task.status = `已识别板块并暂存 ${task.stagedQuestions.length} 道题，请检查后确认`
+        return task
+      })
+      state.examSectionTasks.forEach((task) => {
+        void loadExamSectionLibrarySources(task.id)
+      })
+
+      applyExamSourceMeta(state, {
+        title: String(data.examTitle || state.examSessionTitle || ''),
+        examType: String(data.examType || state.examSessionExamType || 'midterm'),
+        hasAnswer: data.hasAnswer !== false,
+      })
+      state.examSectionBootstrapLogs = Array.isArray(data.logs) ? data.logs.join('\n') : ''
+      state.examSectionError = false
+      state.examSectionStatus = incomingSections.length
+        ? `已识别 ${incomingSections.length} 个板块，请逐个检查并确认`
+        : '没有识别到可用板块，请检查图片是否完整'
+      await Promise.all([
+        refreshCurrentWorkspaceSummary({ silent: true }).catch(() => null),
+        browseCurrentWorkspace('output_images', { silent: true }).catch(() => null),
+      ])
+    } catch (error) {
+      state.examSectionError = true
+      state.examSectionBootstrapLogs = ''
+      state.examSectionStatus = error instanceof Error ? error.message : '分析试卷板块失败'
+    } finally {
+      state.examSectionBootstrapProcessing = false
+    }
   }
 
   function removeExamSectionTask(taskId) {
     if (state.examSectionTasks.length <= 1) {
-      const onlyTask = state.examSectionTasks[0]
-      if (!onlyTask) {
-        state.examSectionTasks = [createExamSectionTask()]
-        return
-      }
-      onlyTask.majorTitle = ''
-      onlyTask.minorTitle = ''
-      onlyTask.questionType = getDefaultExamQuestionType()
-      onlyTask.libraryDocumentType = ''
-      onlyTask.imageFiles = []
-      onlyTask.stagedQuestions = []
-      onlyTask.confirmed = false
-      onlyTask.status = ''
-      onlyTask.error = false
-      onlyTask.running = false
-      onlyTask.result = null
-      onlyTask.searchQuery = ''
-      onlyTask.searchStatus = ''
-      onlyTask.searchError = false
-      onlyTask.searchResults = []
-      onlyTask.selectedRecordIds = []
+      state.examSectionTasks = []
       return
     }
     state.examSectionTasks = state.examSectionTasks.filter((item) => item?.id !== taskId)
@@ -3535,6 +4061,7 @@ export function useQuestionBankWorkbench() {
       state.examSessionStatus = state.examFinalizeStatus
       state.examSessionCurrentMajor = ''
       state.examSessionCurrentMinor = ''
+      await examSessionFlow.refreshExamSessionPayloadFromWorkspace().catch(() => {})
       await syncExamWorkingJsonToLocalFile().catch(() => {})
     } catch (error) {
       state.examFinalizeError = true
@@ -3575,6 +4102,7 @@ export function useQuestionBankWorkbench() {
     }
     await loadExamQuestionTypeOptions()
     normalizeExamSectionTaskQuestionType(task)
+    task.libraryDocumentType = normalizeExamLibraryDocumentType(task.libraryDocumentType)
 
     task.searchError = false
     task.searchStatus = '检索题库中...'
@@ -3585,6 +4113,8 @@ export function useQuestionBankWorkbench() {
       const items = await requestQuestionBankQuestionSearch({
         query: String(task.searchQuery || '').trim(),
         courseId: String(state.examJsonForm.courseId || '').trim(),
+        textbookId: String(task.libraryTextbookId || '').trim(),
+        chapterId: String(task.librarySectionChapterId || task.libraryChapterId || '').trim(),
         documentType: String(task.libraryDocumentType || '').trim(),
         questionType: String(task.questionType || '').trim(),
         limit: 12,
@@ -4242,6 +4772,42 @@ export function useQuestionBankWorkbench() {
     }
   }
 
+  async function saveExamJsonToWorkspace() {
+    const payload = buildExamPayload()
+    if (!payload.version || !payload.courseId || !payload.exam.examId || !payload.exam.title) {
+      state.examJsonFormError = '请至少填写 version、courseId、examId、试卷名称'
+      state.generatedExamJson = ''
+      return
+    }
+
+    state.examJsonFormError = ''
+    state.examJsonSaveError = false
+    state.examJsonSaveStatus = '正在写入当前工作区...'
+
+    const text = `${JSON.stringify(payload, null, 2)}\n`
+    const suggestedName = createSuggestedExamJsonFileName()
+
+    try {
+      requireCurrentWorkspace()
+      const localFile = new File([text], suggestedName, { type: 'application/json' })
+      const data = await importJsonFileToWorkspace(localFile, payload)
+      bindExamSessionJsonRef({
+        label: suggestedName,
+        jsonFilePath: String(data.workspaceFilePath || data.filePath || ''),
+        jsonAssetId: String(data.jsonAssetId || ''),
+        workspaceId: String(data.workspaceId || state.currentWorkspaceId || ''),
+        payload,
+        sourceMeta: getPayloadSourceMeta(payload),
+      })
+      state.generatedExamJson = text.trim()
+      state.examJsonSaveStatus = `已保存到当前工作区：${suggestedName}`
+      await browseCurrentWorkspace(state.workspaceBrowser?.currentPath || '', { silent: true }).catch(() => null)
+    } catch (error) {
+      state.examJsonSaveError = true
+      state.examJsonSaveStatus = error instanceof Error ? error.message : '保存到工作区失败'
+    }
+  }
+
   function setMergeSourceMode(mode) {
     state.mergeSourceMode = normalizeMergeSourceMode(mode)
     state.mergeError = false
@@ -4479,80 +5045,451 @@ export function useQuestionBankWorkbench() {
     }
   }
 
-  function fillAssistantPrompt(prompt) {
-    state.assistantInput = String(prompt || '').trim()
-    state.assistantError = false
-    if (state.assistantInput) {
-      state.assistantStatus = '已填入示例问题，可以直接发送'
+  function createAgentSessionId() {
+    return `agent_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  function createAgentMessage(role, content, extra = {}) {
+    const normalizedRole = role === 'assistant' ? 'assistant' : 'user'
+    return {
+      role: normalizedRole,
+      content:
+        String(content || '').trim() ||
+        (normalizedRole === 'assistant' ? 'Aemeath 没有返回可用内容。' : ''),
+      createdAt: String(extra.createdAt || '').trim() || new Date().toISOString(),
+      status: String(extra.status || 'message'),
+      pendingAction: extra.pendingAction && typeof extra.pendingAction === 'object' ? extra.pendingAction : null,
+      attachments: Array.isArray(extra.attachments) ? extra.attachments : [],
+      audioUrl: String(extra.audioUrl || '').trim(),
+      audioLoading: false,
+      audioError: '',
     }
   }
 
-  function clearQuestionBankAssistantChat() {
-    state.assistantMessages = []
-    state.assistantToolTraces = []
-    state.assistantError = false
-    state.assistantStatus = '已清空当前对话'
+  function createAgentUserMessage(content, extra = {}) {
+    return createAgentMessage('user', content, extra)
   }
 
-  async function sendQuestionBankAssistantMessage() {
-    const question = String(state.assistantInput || '').trim()
-    if (!question) {
-      state.assistantError = true
-      state.assistantStatus = '请先输入问题'
-      return
+  function createAgentAssistantMessage(content, extra = {}) {
+    return createAgentMessage('assistant', content, extra)
+  }
+
+  function appendAgentAssistantMessage(content, extra = {}) {
+    state.agentMessages = [...state.agentMessages, createAgentAssistantMessage(content, extra)]
+  }
+
+  function createAgentSessionSummary(item) {
+    return {
+      sessionId: String(item?.session_id || '').trim(),
+      title: String(item?.title || '').trim() || '未命名对话',
+      preview: String(item?.preview || '').trim(),
+      messageCount: Number(item?.message_count ?? 0),
+      createdAt: String(item?.created_at || '').trim(),
+      updatedAt: String(item?.updated_at || '').trim(),
+      hasPendingAction: Boolean(item?.has_pending_action),
+      origin: String(item?.origin || '').trim() || 'unknown',
+      originLabel: String(item?.origin_label || '').trim(),
+      participantLabel: String(item?.participant_label || '').trim(),
+      participantId: String(item?.participant_id || '').trim(),
+    }
+  }
+
+  function applyAgentSessionDetail(detail, options = {}) {
+    const { statusText = '已载入历史对话' } = options
+    const messages = Array.isArray(detail?.messages)
+      ? detail.messages.map((item) =>
+          createAgentMessage(item?.role, item?.content, {
+            createdAt: item?.created_at,
+            status: item?.status,
+            pendingAction: item?.pending_action,
+          }),
+        )
+      : []
+
+    state.agentSessionId = String(detail?.session_id || '').trim()
+    state.agentMessages = messages
+    state.agentPendingAction =
+      detail?.pending_action && typeof detail.pending_action === 'object' ? detail.pending_action : null
+    state.agentTrace = []
+    state.agentError = false
+    state.agentStatus = statusText
+  }
+
+  function ensureAgentSessionId() {
+    if (!String(state.agentSessionId || '').trim()) {
+      state.agentSessionId = createAgentSessionId()
+    }
+    return state.agentSessionId
+  }
+
+  function fillAgentPrompt(prompt) {
+    state.agentInput = String(prompt || '').trim()
+    state.agentError = false
+    if (state.agentInput) {
+      state.agentStatus = '已填入提示词，可以直接发送'
+    }
+  }
+
+  function clearAgentConversation(options = {}) {
+    const { statusText = '已开始新对话' } = options
+    state.agentSessionId = ''
+    state.agentInput = ''
+    state.agentAttachmentFiles = []
+    state.agentMessages = []
+    state.agentTrace = []
+    state.agentPendingAction = null
+    state.agentError = false
+    state.agentStatus = statusText
+  }
+
+  function setAgentAttachmentFiles(files) {
+    const items = Array.from(files || []).filter((file) => file && Number(file.size || 0) > 0)
+    const supported = items.filter((file) => /\.(pdf|png|jpe?g|webp)$/i.test(String(file.name || '')))
+    state.agentAttachmentFiles = supported
+    state.agentError = items.length !== supported.length
+    state.agentStatus =
+      items.length !== supported.length
+        ? '已忽略不支持的附件；仅支持 PDF、PNG、JPG、JPEG、WEBP'
+        : supported.length
+          ? `已选择 ${supported.length} 个附件`
+          : ''
+  }
+
+  function removeAgentAttachmentFile(index) {
+    const targetIndex = Number(index)
+    state.agentAttachmentFiles = state.agentAttachmentFiles.filter((_, itemIndex) => itemIndex !== targetIndex)
+  }
+
+  function clearAgentAttachmentFiles() {
+    state.agentAttachmentFiles = []
+  }
+
+  async function ensureAgentMessageVoice(messageIndex) {
+    const index = Number(messageIndex)
+    const message = state.agentMessages[index]
+    if (!message || message.role !== 'assistant') {
+      throw new Error('只能为助手消息生成语音')
+    }
+    if (message.status === 'error') {
+      throw new Error('错误消息不支持语音播放')
+    }
+    if (String(message.audioUrl || '').trim()) {
+      return message.audioUrl
     }
 
-    const userMessage = {
-      role: 'user',
-      content: question,
-      createdAt: new Date().toISOString(),
-    }
-
-    state.assistantMessages = [...state.assistantMessages, userMessage]
-    state.assistantProcessing = true
-    state.assistantError = false
-    state.assistantStatus = 'AI 助手正在通过 MCP 查询数据库...'
-    state.assistantToolTraces = []
+    message.audioLoading = true
+    message.audioError = ''
 
     try {
-      const resp = await fetch('/api/question-bank-assistant/chat', {
+      const resp = await fetch('/api/agent/voice', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...buildAssistantArkHeaders(),
         },
         body: JSON.stringify({
-          messages: state.assistantMessages.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-          maxToolSteps: 6,
+          text: String(message.content || '').trim(),
+        }),
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '语音生成失败')
+      }
+
+      const audioUrl = String(data.audio_url || '').trim()
+      if (!audioUrl) {
+        throw new Error('语音生成成功，但没有返回音频地址')
+      }
+
+      message.audioUrl = audioUrl
+      return audioUrl
+    } catch (error) {
+      const safeMessage = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : '语音生成失败',
+        '语音生成失败',
+      )
+      message.audioError = safeMessage
+      throw new Error(safeMessage)
+    } finally {
+      message.audioLoading = false
+    }
+  }
+
+  async function loadAgentBootstrap(options = {}) {
+    const { silent = false } = options
+    state.agentBootstrapLoading = true
+    if (!silent) {
+      state.agentBootstrapStatus = '正在连接 Aemeath Agent...'
+    }
+
+    try {
+      const resp = await fetch('/api/agent/bootstrap', {
+        headers: {
+          ...buildAgentArkHeaders(),
+        },
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取 Agent 状态失败')
+      }
+
+      state.agentAvailable = Boolean(data.agent?.available)
+      state.agentIdentity = data.agent?.identity && typeof data.agent.identity === 'object' ? data.agent.identity : null
+      state.agentHealth = data.agent?.health && typeof data.agent.health === 'object' ? data.agent.health : null
+      state.agentMcp = data.mcp && typeof data.mcp === 'object' ? data.mcp : null
+      state.agentBootstrapStatus = state.agentAvailable
+        ? data.mcp?.available
+          ? 'Aemeath Agent 已连接，题库 MCP 可用'
+          : 'Aemeath Agent 已连接，题库 MCP 暂不可用'
+        : sanitizeAgentUiMessage(data.agent?.error || '辅助 Agent 未连接', '辅助 Agent 未连接')
+    } catch (error) {
+      state.agentAvailable = false
+      state.agentIdentity = null
+      state.agentHealth = null
+      state.agentMcp = null
+      state.agentBootstrapStatus = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : '辅助 Agent 未连接',
+        '辅助 Agent 未连接',
+      )
+    } finally {
+      state.agentBootstrapLoading = false
+    }
+  }
+
+  async function loadAgentSessions(options = {}) {
+    const { silent = false } = options
+    state.agentSessionsLoading = true
+    state.agentSessionsError = false
+    if (!silent) {
+      state.agentSessionsStatus = '正在读取历史对话...'
+    }
+
+    try {
+      const resp = await fetch('/api/agent/sessions')
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取历史对话失败')
+      }
+
+      state.agentSessions = Array.isArray(data.sessions)
+        ? data.sessions.map((item) => createAgentSessionSummary(item)).filter((item) => item.sessionId)
+        : []
+      state.agentSessionsStatus = state.agentSessions.length
+        ? `已载入 ${state.agentSessions.length} 个历史对话`
+        : '还没有历史对话'
+    } catch (error) {
+      state.agentSessions = []
+      state.agentSessionsError = true
+      state.agentSessionsStatus = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : '读取历史对话失败',
+        '读取历史对话失败',
+      )
+    } finally {
+      state.agentSessionsLoading = false
+    }
+  }
+
+  async function openAgentSession(sessionId, options = {}) {
+    const normalizedSessionId = String(sessionId || '').trim()
+    const { silent = false } = options
+    if (!normalizedSessionId) {
+      clearAgentConversation()
+      return
+    }
+
+    state.agentSessionLoading = true
+    state.agentError = false
+    if (!silent) {
+      state.agentStatus = '正在载入历史对话...'
+    }
+
+    try {
+      const resp = await fetch(`/api/agent/sessions/${encodeURIComponent(normalizedSessionId)}`)
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '读取历史对话失败')
+      }
+
+      applyAgentSessionDetail(data, {
+        statusText: '已载入历史对话',
+      })
+    } catch (error) {
+      state.agentError = true
+      state.agentStatus = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : '读取历史对话失败',
+        '读取历史对话失败',
+      )
+    } finally {
+      state.agentSessionLoading = false
+    }
+  }
+
+  async function deleteAgentSession(sessionId) {
+    const normalizedSessionId = String(sessionId || '').trim()
+    if (!normalizedSessionId) {
+      return
+    }
+
+    try {
+      const resp = await fetch(`/api/agent/sessions/${encodeURIComponent(normalizedSessionId)}`, {
+        method: 'DELETE',
+      })
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || '删除历史对话失败')
+      }
+
+      state.agentSessions = state.agentSessions.filter((item) => item.sessionId !== normalizedSessionId)
+      if (state.agentSessionId === normalizedSessionId) {
+        clearAgentConversation({ statusText: '已删除当前对话' })
+      }
+      state.agentSessionsError = false
+      state.agentSessionsStatus = state.agentSessions.length ? '已删除历史对话' : '历史对话已清空'
+      void loadAgentSessions({ silent: true })
+    } catch (error) {
+      state.agentError = true
+      state.agentStatus = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : '删除历史对话失败',
+        '删除历史对话失败',
+      )
+    }
+  }
+
+  async function sendAgentMessage() {
+    const message = String(state.agentInput || '').trim()
+    const attachmentFiles = Array.from(state.agentAttachmentFiles || []).filter((file) => file && Number(file.size || 0) > 0)
+    if (!message && !attachmentFiles.length) {
+      state.agentError = true
+      state.agentStatus = '请先输入消息或选择附件'
+      return
+    }
+
+    const sessionId = ensureAgentSessionId()
+    const outgoingMessage = message || '请处理这些附件'
+    const userMessage = createAgentUserMessage(outgoingMessage, {
+      attachments: attachmentFiles.map((file) => ({
+        name: file.name,
+        size: Number(file.size || 0),
+        type: file.type || '',
+      })),
+    })
+
+    state.agentMessages = [...state.agentMessages, userMessage]
+    state.agentProcessing = true
+    state.agentError = false
+    state.agentStatus = attachmentFiles.length ? 'Aemeath Agent 正在上传附件并处理中...' : 'Aemeath Agent 正在处理中...'
+    state.agentTrace = []
+
+    try {
+      let resp
+      if (attachmentFiles.length) {
+        const formData = new FormData()
+        formData.append('sessionId', sessionId)
+        formData.append('message', outgoingMessage)
+        attachmentFiles.forEach((file) => {
+          formData.append('attachments', file, file.name)
+        })
+        resp = await fetch('/api/agent/chat', {
+          method: 'POST',
+          headers: {
+            ...buildAgentArkHeaders(),
+          },
+          body: formData,
+        })
+      } else {
+        resp = await fetch('/api/agent/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...buildAgentArkHeaders(),
+          },
+          body: JSON.stringify({
+            sessionId,
+            message: outgoingMessage,
+          }),
+        })
+      }
+
+      const data = await parseApiResponse(resp)
+      if (!resp.ok) {
+        throw new Error(data.message || 'Aemeath Agent 对话失败')
+      }
+
+      const assistantMessage = createAgentAssistantMessage(data.message, {
+        status: String(data.status || 'message'),
+        pendingAction: data.pending_action,
+      })
+
+      state.agentMessages = [...state.agentMessages, assistantMessage]
+      state.agentTrace = Array.isArray(data.trace) ? data.trace : []
+      state.agentPendingAction = assistantMessage.pendingAction
+      state.agentAvailable = true
+      state.agentStatus = assistantMessage.pendingAction
+        ? `待确认操作：${assistantMessage.pendingAction.tool_name || '未命名工具'}`
+        : '回答完成'
+      state.agentInput = ''
+      state.agentAttachmentFiles = []
+      void loadAgentSessions({ silent: true })
+    } catch (error) {
+      const safeMessage = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : 'Aemeath Agent 对话失败',
+        'Aemeath Agent 对话失败',
+      )
+      state.agentError = true
+      state.agentAvailable = false
+      state.agentStatus = safeMessage
+      appendAgentAssistantMessage(safeMessage, { status: 'error' })
+    } finally {
+      state.agentProcessing = false
+    }
+  }
+
+  async function confirmAgentPendingAction(confirm) {
+    const actionId = String(state.agentPendingAction?.action_id || '').trim()
+    if (!actionId) {
+      state.agentError = true
+      state.agentStatus = '当前没有待确认操作'
+      return
+    }
+
+    state.agentProcessing = true
+    state.agentError = false
+    state.agentStatus = confirm ? '正在确认执行操作...' : '正在取消操作...'
+
+    try {
+      const resp = await fetch(`/api/agent/actions/${encodeURIComponent(actionId)}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildAgentArkHeaders(),
+        },
+        body: JSON.stringify({
+          confirm: Boolean(confirm),
         }),
       })
 
       const data = await parseApiResponse(resp)
       if (!resp.ok) {
-        throw new Error(data.message || 'AI 助手回答失败')
+        throw new Error(data.message || 'Agent 操作确认失败')
       }
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: String(data.answer || '').trim() || '数据库返回了结果，但助手没有生成可用回答。',
-        usedTools: Array.isArray(data.usedTools) ? data.usedTools.map((item) => String(item || '').trim()).filter(Boolean) : [],
-        createdAt: new Date().toISOString(),
-      }
-
-      state.assistantMessages = [...state.assistantMessages, assistantMessage]
-      state.assistantToolTraces = Array.isArray(data.toolTraces) ? data.toolTraces : []
-      state.assistantStatus = assistantMessage.usedTools.length
-        ? `回答完成，已调用 ${assistantMessage.usedTools.length} 个 MCP 工具`
-        : '回答完成'
-      state.assistantInput = ''
+      appendAgentAssistantMessage(String(data.message || '').trim() || 'Agent 操作已完成，但没有返回更多信息。', {
+        status: String(data.status || 'message'),
+      })
+      state.agentTrace = Array.isArray(data.trace) ? data.trace : []
+      state.agentPendingAction = null
+      state.agentStatus = String(data.message || '').trim() || '操作已完成'
+      void loadAgentSessions({ silent: true })
     } catch (error) {
-      state.assistantError = true
-      state.assistantStatus = error instanceof Error ? error.message : 'AI 助手回答失败'
+      const safeMessage = sanitizeAgentUiMessage(
+        error instanceof Error ? error.message : 'Agent 操作确认失败',
+        'Agent 操作确认失败',
+      )
+      state.agentError = true
+      state.agentAvailable = false
+      state.agentStatus = safeMessage
+      appendAgentAssistantMessage(safeMessage, { status: 'error' })
     } finally {
-      state.assistantProcessing = false
+      state.agentProcessing = false
     }
   }
 
@@ -5322,6 +6259,7 @@ export function useQuestionBankWorkbench() {
 
   const actions = {
     addExamSectionTask,
+    bootstrapExamSectionsFromSources,
     addChapterBatchTask,
     addChapterManualChapter,
     addChapterManualSection,
@@ -5330,6 +6268,7 @@ export function useQuestionBankWorkbench() {
     chooseAutoImageFolder: chapterSessionFlow.chooseAutoImageFolder,
     chooseExamAutoImageFolder: examSessionFlow.chooseExamAutoImageFolder,
     chooseExamJsonSessionFile,
+    chooseExamJsonSessionFileFromWorkspace,
     chooseJsonSessionFile,
     onDbImportFilesChange,
     removeDbImportFile,
@@ -5345,8 +6284,17 @@ export function useQuestionBankWorkbench() {
     createMultiChapterSlotsFromTextbookForm,
     deleteCurrentWorkspace,
     deleteWorkspaceById,
-    fillAssistantPrompt,
-    clearQuestionBankAssistantChat,
+    loadAgentBootstrap,
+    loadAgentSessions,
+    openAgentSession,
+    deleteAgentSession,
+    ensureAgentMessageVoice,
+    fillAgentPrompt,
+    clearAgentConversation,
+    setAgentAttachmentFiles,
+    removeAgentAttachmentFile,
+    clearAgentAttachmentFiles,
+    confirmAgentPendingAction,
     clearChapterManualSectionImages,
     clearExamSectionImages,
     confirmExamSection,
@@ -5359,11 +6307,12 @@ export function useQuestionBankWorkbench() {
     browseVisualizerWorkspace,
     openWorkspaceBrowserEntry,
     refreshCurrentWorkspaceSummary,
-    sendQuestionBankAssistantMessage,
+    sendAgentMessage,
     finalizeExamSections,
     generateExamJson,
     generateTextbookJson,
     saveExamJson,
+    saveExamJsonToWorkspace,
     saveTextbookJson,
     initExamSession: examSessionFlow.initExamSession,
     initChapterSession: chapterSessionFlow.initChapterSession,
@@ -5397,7 +6346,12 @@ export function useQuestionBankWorkbench() {
     onChapterManualSectionImagesChange,
     onExamAutoFilesChange: examSessionFlow.onExamAutoFilesChange,
     onExamSectionImagesChange,
+    updateExamSectionLibraryDocumentType,
+    updateExamSectionLibrarySource,
+    updateExamSectionLibraryChapter,
+    updateExamSectionLibrarySection,
     clearExamAutoFiles: examSessionFlow.clearExamAutoFiles,
+    moveExamAutoFile: examSessionFlow.moveExamAutoFile,
     clearImageAttachFiles,
     removeImageAttachFile,
     attachImagesToQuestionJson,

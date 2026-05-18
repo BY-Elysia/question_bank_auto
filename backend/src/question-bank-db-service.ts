@@ -43,6 +43,26 @@ type QuestionBankSearchItem = {
   contentPreview: string
 }
 
+type QuestionBankSourceItem = {
+  textbookId: string
+  title: string
+  documentType: string
+  subject: string
+  examType: string | null
+  hasAnswer: boolean | null
+  courseId: string
+  chapters: number
+  questionRows: number
+}
+
+type QuestionBankChapterItem = {
+  chapterId: string
+  parentChapterId: string | null
+  title: string
+  orderNo: number
+  depth: number
+}
+
 type QuestionBankTopLevelRow = QuestionBankSearchItem & {
   rawPayloadJson: unknown
 }
@@ -932,10 +952,181 @@ export function getQuestionBankQuestionTypeOptions(): QuestionTypeOption[] {
   }))
 }
 
+export async function listQuestionBankSources(params: {
+  courseId?: string
+  documentType?: string
+}) {
+  const pool = getQuestionBankPool()
+  const client = await pool.connect()
+
+  try {
+    await assertQuestionBankSchemaReady(client)
+
+    const conditions: string[] = []
+    const values: Array<string | number> = []
+
+    const courseId = String(params.courseId || '').trim()
+    if (courseId) {
+      values.push(courseId)
+      conditions.push(`t.course_id = $${values.length}`)
+    }
+
+    const documentType = normalizeDocumentTypeFilter(params.documentType)
+    if (documentType) {
+      values.push(documentType)
+      conditions.push(`t.document_type = $${values.length}`)
+    }
+
+    const result = await client.query<{
+      textbookId: string
+      title: string
+      documentType: string
+      subject: string
+      examType: string | null
+      hasAnswer: boolean | null
+      courseId: string
+      chapters: string
+      questionRows: string
+    }>(
+      `
+        SELECT
+          t.external_id AS "textbookId",
+          t.title,
+          t.document_type AS "documentType",
+          t.subject,
+          t.exam_type AS "examType",
+          t.has_answer AS "hasAnswer",
+          t.course_id AS "courseId",
+          COUNT(DISTINCT c.id)::text AS "chapters",
+          COUNT(DISTINCT q.id)::text AS "questionRows"
+        FROM ${tableName('textbooks')} t
+        LEFT JOIN ${tableName('chapters')} c ON c.textbook_id = t.id
+        LEFT JOIN ${tableName('assignment_questions')} q
+          ON q.textbook_id = t.id
+          AND q.parent_id IS NULL
+          AND q.status = 'ACTIVE'
+        ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+        GROUP BY t.id
+        ORDER BY t.updated_at DESC, t.title ASC
+      `,
+      values,
+    )
+
+    return result.rows.map((row) => ({
+      textbookId: row.textbookId,
+      title: row.title,
+      documentType: row.documentType,
+      subject: row.subject,
+      examType: row.examType,
+      hasAnswer: row.hasAnswer,
+      courseId: row.courseId,
+      chapters: Number(row.chapters || 0),
+      questionRows: Number(row.questionRows || 0),
+    })) as QuestionBankSourceItem[]
+  } finally {
+    client.release()
+  }
+}
+
+export async function listQuestionBankChapters(params: {
+  textbookId?: string
+  courseId?: string
+  documentType?: string
+}) {
+  const normalizedTextbookId = String(params.textbookId || '').trim()
+  if (!normalizedTextbookId) {
+    throw new Error('textbookId is required')
+  }
+
+  const pool = getQuestionBankPool()
+  const client = await pool.connect()
+
+  try {
+    await assertQuestionBankSchemaReady(client)
+
+    const textbookConditions: string[] = []
+    const values: Array<string | number> = []
+
+    values.push(normalizedTextbookId)
+    textbookConditions.push(`t.external_id = $${values.length}`)
+
+    const courseId = String(params.courseId || '').trim()
+    if (courseId) {
+      values.push(courseId)
+      textbookConditions.push(`t.course_id = $${values.length}`)
+    }
+
+    const documentType = normalizeDocumentTypeFilter(params.documentType)
+    if (documentType) {
+      values.push(documentType)
+      textbookConditions.push(`t.document_type = $${values.length}`)
+    }
+
+    const result = await client.query<{
+      chapterId: string
+      parentChapterId: string | null
+      title: string
+      orderNo: number | null
+      depth: number
+    }>(
+      `
+        WITH RECURSIVE chapter_tree AS (
+          SELECT
+            c.id,
+            c.external_id,
+            c.parent_id,
+            c.title,
+            c.order_no,
+            0::int AS depth,
+            LPAD(COALESCE(c.order_no, 0)::text, 8, '0') AS sort_key
+          FROM ${tableName('chapters')} c
+          INNER JOIN ${tableName('textbooks')} t ON t.id = c.textbook_id
+          WHERE ${textbookConditions.join(' AND ')}
+            AND c.parent_id IS NULL
+
+          UNION ALL
+
+          SELECT
+            child.id,
+            child.external_id,
+            child.parent_id,
+            child.title,
+            child.order_no,
+            parent.depth + 1 AS depth,
+            parent.sort_key || '.' || LPAD(COALESCE(child.order_no, 0)::text, 8, '0') AS sort_key
+          FROM ${tableName('chapters')} child
+          INNER JOIN chapter_tree parent ON child.parent_id = parent.id
+        )
+        SELECT
+          chapter_tree.external_id AS "chapterId",
+          parent.external_id AS "parentChapterId",
+          chapter_tree.title,
+          chapter_tree.order_no AS "orderNo",
+          chapter_tree.depth
+        FROM chapter_tree
+        LEFT JOIN ${tableName('chapters')} parent ON parent.id = chapter_tree.parent_id
+        ORDER BY chapter_tree.sort_key ASC, chapter_tree.title ASC
+      `,
+      values,
+    )
+
+    return result.rows.map((row) => ({
+      chapterId: row.chapterId,
+      parentChapterId: row.parentChapterId,
+      title: row.title,
+      orderNo: Number(row.orderNo || 0),
+      depth: Number(row.depth || 0),
+    })) as QuestionBankChapterItem[]
+  } finally {
+    client.release()
+  }
+}
+
 export async function searchQuestionBankQuestions(params: {
   query?: string
   courseId?: string
   textbookId?: string
+  chapterId?: string
   documentType?: string
   questionType?: string
   limit?: number
@@ -971,6 +1162,28 @@ export async function searchQuestionBankQuestions(params: {
     if (textbookId) {
       values.push(textbookId)
       conditions.push(`t.external_id = $${values.length}`)
+    }
+
+    const chapterId = String(params.chapterId || '').trim()
+    if (chapterId) {
+      values.push(chapterId)
+      conditions.push(`
+        c.id IN (
+          WITH RECURSIVE chapter_scope AS (
+            SELECT scope.id
+            FROM ${tableName('chapters')} scope
+            WHERE scope.textbook_id = t.id
+              AND scope.external_id = $${values.length}
+
+            UNION ALL
+
+            SELECT child.id
+            FROM ${tableName('chapters')} child
+            INNER JOIN chapter_scope parent_scope ON child.parent_id = parent_scope.id
+          )
+          SELECT id FROM chapter_scope
+        )
+      `)
     }
 
     const documentType = normalizeDocumentTypeFilter(params.documentType)
