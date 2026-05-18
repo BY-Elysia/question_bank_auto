@@ -151,6 +151,16 @@ function getTextBlockObject(value: unknown) {
   }
 }
 
+function buildRepairChoiceStructureInstructionLines() {
+  return [
+    '如果这个小题的 questionType 是 SINGLE_CHOICE 或 MULTI_CHOICE，prompt.text 只能写题干本身，A/B/C/D 选项必须单独写入 options，不能继续拼在 prompt.text 末尾。',
+    '选择题小题还必须包含 options、correctOptionIds、allowPartial 三个字段。',
+    'options 结构固定为 [{ "id": "A", "text": "string" }, { "id": "B", "text": "string" }, ...]。',
+    'SINGLE_CHOICE 的 correctOptionIds 必须且只能有 1 个选项 id，allowPartial 固定为 false；MULTI_CHOICE 必须写出全部正确选项 id，未明确允许部分得分时 allowPartial=false。',
+    '选择题 standardAnswer.text 只写正确选项字母，如 "B" 或 "A,C"；解析过程若存在，必须写入 standardAnswer.explanation，不能把“答案：B\\n解析：...”整体塞回 standardAnswer.text。',
+  ]
+}
+
 function resolveEffectiveAnswerHandlingMode(params: {
   payload: TextbookJsonPayload
   hasAnswerSource?: boolean | null
@@ -329,6 +339,7 @@ async function detectSingleQuestionRepairByDoubao(params: {
     `8) 输出的 chapterId 必须固定为 ${chapterId}。`,
     `9) 输出 title 必须使用“${targetVisibleTitle}”。`,
     '10) JSON 结构必须严格符合题库格式：prompt、standardAnswer、stem 都必须是对象，形如 {"text":"...", "media":[]}，绝不能返回纯字符串。',
+    ...buildRepairChoiceStructureInstructionLines(),
     answerHandlingMode === 'generate_brief'
       ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成包含必要解题步骤的标准答案；计算/证明/推导的关键步骤不能省略。如果是编程题，可保留空答案。'
       : answerHandlingMode === 'leave_empty'
@@ -475,6 +486,7 @@ async function detectSingleChildRepairByDoubao(params: {
     '9) prompt.text 只能写这个小题自己的题目内容，不能混入其他小题内容。',
     '10) 这个小题的题目或答案可能跨页连续出现；如果本页结尾未结束，要继续读取下一页，直到下一个同级编号小题开始。',
     '11)公式必须转成 LaTeX，使用Katex语法，不得改成口语描述。',
+    ...buildRepairChoiceStructureInstructionLines(),
     answerHandlingMode === 'generate_brief'
       ? '11) 这是无现成答案的文档，standardAnswer 需要基于题目生成包含必要解题步骤的标准答案；计算/证明/推导的关键步骤不能省略。如果是编程题，可保留空答案。'
       : answerHandlingMode === 'leave_empty'
@@ -493,6 +505,9 @@ async function detectSingleChildRepairByDoubao(params: {
     '    "chapterId": "string",',
     '    "prompt": { "text": "string", "media": [] },',
     '    "standardAnswer": { "text": "string", "media": [] },',
+    '    "options": [{ "id": "A", "text": "string" }],',
+    '    "correctOptionIds": ["A"],',
+    '    "allowPartial": false,',
     '    "defaultScore": 5,',
     '    "rubric": "string"',
     '  }',
