@@ -1,5 +1,4 @@
 ﻿import type { Response } from 'express'
-import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -34,6 +33,16 @@ import {
   normalizeQuestionType,
 } from './domains/question-json/question-types'
 import {
+  batchId,
+  ensureDir,
+  isSupportedImageFileName,
+  normalizeJsonFileName,
+  parsePageIndex,
+  sanitizeFileName,
+  sanitizeFolderName,
+  sortImageFileNames,
+} from './shared/file-utils'
+import {
   getChapterSession,
   getQuestionSession,
   setChapterSession,
@@ -60,35 +69,6 @@ import type {
   RangeMismatchCheckResult,
   TextbookJsonPayload,
 } from './types'
-
-function ensureDir(dirPath: string) {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true })
-  }
-}
-
-function sanitizeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
-}
-
-function sanitizeFolderName(name: string) {
-  return name
-    .replace(/[^\p{L}\p{N}_-]/gu, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
-
-function batchId() {
-  const now = new Date()
-  const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-  const rand = Math.random().toString(16).slice(2, 10)
-  return `${ts}_${rand}`
-}
-
-function parsePageIndex(fileName: string) {
-  const match = fileName.match(/(?:-|_)(\d+)\.(?:jpg|jpeg)$/i)
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER
-}
 
 function normalizeJsonPath(filePath: string) {
   return path.resolve(String(filePath || '').trim())
@@ -1666,14 +1646,6 @@ async function appendPendingReviewLogs(sessionId: string, logs: Array<Record<str
   await fsp.appendFile(logFile, `${lines.join('\n')}\n`, { encoding: 'utf8' })
 }
 
-function isSupportedImageFileName(fileName: string) {
-  return /\.(jpg|jpeg|png|webp)$/i.test(fileName)
-}
-
-function sortImageFileNames(fileNames: string[]) {
-  return [...fileNames].sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true, sensitivity: 'base' }))
-}
-
 async function appendAutoProcessFailureLog(params: {
   sessionId: string
   imagePath: string
@@ -1692,12 +1664,6 @@ async function appendAutoProcessFailureLog(params: {
 
 function writeNdjson(res: Response, payload: Record<string, unknown>) {
   res.write(`${JSON.stringify(payload)}\n`)
-}
-
-function normalizeJsonFileName(fileName: string) {
-  const safe = sanitizeFileName(path.basename(fileName || ''))
-  const finalName = safe || `textbook_${batchId()}`
-  return finalName.toLowerCase().endsWith('.json') ? finalName : `${finalName}.json`
 }
 
 async function loadTextbookJson(filePath: string): Promise<TextbookJsonPayload> {
