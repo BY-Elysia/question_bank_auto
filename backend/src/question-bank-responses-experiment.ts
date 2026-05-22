@@ -12,20 +12,22 @@ import {
   requestArkResponsesPrefixCompletion,
 } from './ark-responses-prefix-experiment-service'
 import { getPayloadAnswerHandlingMode } from './domains/question-json/payload'
+import {
+  ensureSectionChapter,
+  ensureTopChapter,
+  normalizeTitle,
+} from './domains/question-json/chapter-tree'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildQuestionDisplayTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,
-  ensureSectionChapter,
-  ensureTopChapter,
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
   loadTextbookJson,
   normalizeQuestionItem,
-  normalizeTitle,
   parseModelJsonObject,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,

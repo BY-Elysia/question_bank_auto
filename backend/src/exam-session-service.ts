@@ -3,6 +3,7 @@ import {
   MAX_PENDING_QUEUE_PAGES,
 } from './config'
 import { getPayloadDocumentType, getPayloadSourceMeta } from './domains/question-json/payload'
+import { normalizeTitle } from './domains/question-json/chapter-tree'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   batchId,
@@ -13,7 +14,6 @@ import {
   extractFirstJsonObject,
   loadTextbookJson,
   normalizeQuestionItem,
-  normalizeTitle,
   parseModelJsonObject,
   saveTextbookJson,
   upsertQuestionsById,

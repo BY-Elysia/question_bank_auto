@@ -8,14 +8,16 @@ import {
   processChapterSessionImageWithResponsesPrefixCache,
 } from '../question-bank-responses-experiment'
 import {
+  ensureSectionChapter,
+  ensureTopChapter,
+  normalizeTitle,
+} from '../domains/question-json/chapter-tree'
+import {
   appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
   batchId,
-  ensureSectionChapter,
-  ensureTopChapter,
   isSupportedImageFileName,
   loadTextbookJson,
-  normalizeTitle,
   processChapterSessionImage,
   saveTextbookJson,
   sortImageFileNames,

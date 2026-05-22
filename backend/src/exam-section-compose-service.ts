@@ -7,6 +7,7 @@ import {
   getPayloadSourceMeta,
   payloadExpectsAnswer,
 } from './domains/question-json/payload'
+import { normalizeTitle } from './domains/question-json/chapter-tree'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   QUESTION_TYPE_OPTIONS,
@@ -16,7 +17,6 @@ import {
   loadTextbookJson,
   normalizeQuestionItem,
   normalizeQuestionType,
-  normalizeTitle,
   parseModelJsonObject,
   saveTextbookJson,
   upsertQuestionsById,
