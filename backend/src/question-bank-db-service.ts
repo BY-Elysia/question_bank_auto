@@ -3,13 +3,15 @@ import { Pool, type PoolClient } from 'pg'
 import { QUESTION_BANK_DATABASE_URL, QUESTION_BANK_DB_SCHEMA } from './config'
 import { questionBankMigrations } from './question-bank-db-migrations'
 import {
-  QUESTION_TYPE_OPTIONS,
   getPayloadAnswerHandlingMode,
   getPayloadSourceMeta,
   isValidTextbookPayload,
+  payloadExpectsAnswer,
+} from './domains/question-json/payload'
+import {
+  QUESTION_TYPE_OPTIONS,
   normalizeQuestionItem,
   normalizeQuestionType,
-  payloadExpectsAnswer,
 } from './question-bank-service'
 import type { ChapterItem, QuestionItem, TextbookJsonPayload } from './types'
 

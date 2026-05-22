@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { batchId, isSupportedImageFileName, isValidTextbookPayload, sanitizeFolderName } from '../question-bank-service'
+import { isValidTextbookPayload } from '../domains/question-json/payload'
+import { batchId, isSupportedImageFileName, sanitizeFolderName } from '../question-bank-service'
 import { cleanupUploadedFiles, normalizeUploadedOriginalName, upload } from '../upload'
 import {
   browseWorkspaceDirectory,

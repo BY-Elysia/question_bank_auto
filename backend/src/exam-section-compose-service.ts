@@ -2,20 +2,22 @@ import { ARK_MODEL } from './config'
 import {
   loadQuestionBankTopLevelQuestionsByIds,
 } from './question-bank-db-service'
+import {
+  getPayloadAnswerHandlingMode,
+  getPayloadSourceMeta,
+  payloadExpectsAnswer,
+} from './domains/question-json/payload'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   QUESTION_TYPE_OPTIONS,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   extractFirstJsonObject,
-  getPayloadAnswerHandlingMode,
-  getPayloadSourceMeta,
   loadTextbookJson,
   normalizeQuestionItem,
   normalizeQuestionType,
   normalizeTitle,
   parseModelJsonObject,
-  payloadExpectsAnswer,
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'

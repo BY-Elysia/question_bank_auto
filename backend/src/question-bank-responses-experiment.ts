@@ -11,10 +11,10 @@ import {
   type ArkResponsesPrefixUsage,
   requestArkResponsesPrefixCompletion,
 } from './ark-responses-prefix-experiment-service'
+import { getPayloadAnswerHandlingMode } from './domains/question-json/payload'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildQuestionDisplayTitle,
-  getPayloadAnswerHandlingMode,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,

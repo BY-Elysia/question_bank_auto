@@ -2,6 +2,7 @@ import {
   ARK_MODEL,
   MAX_PENDING_QUEUE_PAGES,
 } from './config'
+import { getPayloadDocumentType, getPayloadSourceMeta } from './domains/question-json/payload'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   batchId,
@@ -10,8 +11,6 @@ import {
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,
   extractFirstJsonObject,
-  getPayloadDocumentType,
-  getPayloadSourceMeta,
   loadTextbookJson,
   normalizeQuestionItem,
   normalizeTitle,

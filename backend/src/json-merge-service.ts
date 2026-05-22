@@ -1,10 +1,9 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { MERGED_JSON_DIR } from './config'
+import { getPayloadSourceMeta, isValidTextbookPayload } from './domains/question-json/payload'
 import {
   batchId,
-  getPayloadSourceMeta,
-  isValidTextbookPayload,
   normalizeJsonFileName,
 } from './question-bank-service'
 import type { ChapterItem, TextbookJsonPayload } from './types'

@@ -3,10 +3,9 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { OUTPUT_JSON_DIR } from '../config'
 import { runWithArkApiKey } from '../ark-request-context'
+import { getPayloadDocumentType, isValidTextbookPayload } from '../domains/question-json/payload'
 import {
   batchId,
-  getPayloadDocumentType,
-  isValidTextbookPayload,
   normalizeJsonFileName,
   sanitizeFileName,
   toImageDataUrlFromFile,

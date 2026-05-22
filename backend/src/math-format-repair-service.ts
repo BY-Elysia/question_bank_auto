@@ -5,11 +5,11 @@ import {
   resolveQuestionTarget,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
+import { payloadExpectsAnswer } from './domains/question-json/payload'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   extractFirstJsonObject,
   loadTextbookJson,
-  payloadExpectsAnswer,
   parseModelJsonObject,
   repairModelJsonByDoubao,
   saveTextbookJson,

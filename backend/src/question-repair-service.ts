@@ -6,6 +6,7 @@ import {
   resolveChapterTitles,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
+import { getPayloadAnswerHandlingMode, getPayloadSourceMeta } from './domains/question-json/payload'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildCanonicalQuestionTitle,
@@ -17,8 +18,6 @@ import {
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
-  getPayloadAnswerHandlingMode,
-  getPayloadSourceMeta,
   loadTextbookJson,
   normalizeQuestionItem,
   parseModelJsonObject,
