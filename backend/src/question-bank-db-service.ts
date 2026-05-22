@@ -10,8 +10,10 @@ import {
 } from './domains/question-json/payload'
 import {
   QUESTION_TYPE_OPTIONS,
-  normalizeQuestionItem,
   normalizeQuestionType,
+} from './domains/question-json/question-types'
+import {
+  normalizeQuestionItem,
 } from './question-bank-service'
 import type { ChapterItem, QuestionItem, TextbookJsonPayload } from './types'
 

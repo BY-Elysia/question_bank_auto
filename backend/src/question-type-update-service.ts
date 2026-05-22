@@ -1,8 +1,10 @@
 import { resolveQuestionTarget } from './question-json-target'
 import {
   QUESTION_TYPE_OPTIONS,
-  loadTextbookJson,
   normalizeQuestionType,
+} from './domains/question-json/question-types'
+import {
+  loadTextbookJson,
   saveTextbookJson,
 } from './question-bank-service'
 

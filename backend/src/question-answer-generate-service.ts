@@ -2,10 +2,10 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { ARK_MODEL, UPLOAD_DIR, WORKSPACES_DIR } from './config'
 import { isObject, resolveQuestionTarget } from './question-json-target'
+import { normalizeQuestionType } from './domains/question-json/question-types'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   loadTextbookJson,
-  normalizeQuestionType,
   saveTextbookJson,
   toImageDataUrl,
 } from './question-bank-service'
