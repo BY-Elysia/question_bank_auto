@@ -9,6 +9,7 @@ import {
 } from '../question-bank-db-service'
 import { cleanupUploadedFiles, readUploadedFileText, upload } from '../upload'
 import { readWorkspaceJsonText } from '../workspace-store'
+import { readQueryString, sendJsonError, sendJsonSuccess } from '../shared/http'
 
 const router = Router()
 
@@ -30,10 +31,6 @@ function resolveErrorStatus(error: unknown) {
   return 500
 }
 
-function readQueryString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
 router.post('/api/question-bank-db/import-upload', upload.array('jsonFiles', 50), async (req: Request, res: Response) => {
   try {
     const files = ((req.files as Express.Multer.File[] | undefined) || []).filter((file) =>
@@ -49,13 +46,11 @@ router.post('/api/question-bank-db/import-upload', upload.array('jsonFiles', 50)
       ),
     )
 
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       ...result,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Import question bank db failed: ${msg}` })
+    return sendJsonError(res, error, 'Import question bank db failed', resolveErrorStatus)
   } finally {
     await cleanupUploadedFiles(req)
   }
@@ -78,8 +73,7 @@ router.post('/api/question-bank-db/import-workspace-json', async (req: Request, 
       },
     ])
 
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       workspaceId: data.workspaceId,
       jsonAssetId: data.jsonAssetId,
       jsonFilePath: data.jsonFilePath,
@@ -87,33 +81,28 @@ router.post('/api/question-bank-db/import-workspace-json', async (req: Request, 
       ...result,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Import workspace question bank json failed: ${msg}` })
+    return sendJsonError(res, error, 'Import workspace question bank json failed', resolveErrorStatus)
   }
 })
 
 router.get('/api/question-bank-db/summary', async (_req: Request, res: Response) => {
   try {
     const result = await getQuestionBankDatabaseSummary()
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       ...result,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Read question bank db summary failed: ${msg}` })
+    return sendJsonError(res, error, 'Read question bank db summary failed', resolveErrorStatus)
   }
 })
 
 router.get('/api/question-bank-db/question-types', async (_req: Request, res: Response) => {
   try {
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       items: getQuestionBankQuestionTypeOptions(),
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Read question bank question types failed: ${msg}` })
+    return sendJsonError(res, error, 'Read question bank question types failed', resolveErrorStatus)
   }
 })
 
@@ -123,13 +112,11 @@ router.get('/api/question-bank-db/sources', async (req: Request, res: Response) 
       courseId: readQueryString(req.query?.courseId),
       documentType: readQueryString(req.query?.documentType),
     })
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       items,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Read question bank sources failed: ${msg}` })
+    return sendJsonError(res, error, 'Read question bank sources failed', resolveErrorStatus)
   }
 })
 
@@ -140,13 +127,11 @@ router.get('/api/question-bank-db/sources/:sourceId/chapters', async (req: Reque
       courseId: readQueryString(req.query?.courseId),
       documentType: readQueryString(req.query?.documentType),
     })
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       items,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Read question bank chapters failed: ${msg}` })
+    return sendJsonError(res, error, 'Read question bank chapters failed', resolveErrorStatus)
   }
 })
 
@@ -161,13 +146,11 @@ router.post('/api/question-bank-db/questions/search', async (req: Request, res: 
       questionType: req.body?.questionType,
       limit: req.body?.limit,
     })
-    return res.json({
-      message: 'success',
+    return sendJsonSuccess(res, {
       items,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return res.status(resolveErrorStatus(error)).json({ message: `Search question bank questions failed: ${msg}` })
+    return sendJsonError(res, error, 'Search question bank questions failed', resolveErrorStatus)
   }
 })
 
