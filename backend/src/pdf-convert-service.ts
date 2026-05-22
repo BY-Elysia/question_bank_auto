@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { JPEG_QUALITY, PDF_RENDER_DPI } from './config'
-import { parsePageIndex } from './question-bank-service'
+import { parsePageIndex } from './shared/file-utils'
 
 const execFileAsync = promisify(execFile)
 let cachedPdftocairoBinary = ''

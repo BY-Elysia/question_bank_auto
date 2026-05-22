@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { QUESTION_MEDIA_DIR } from './config'
-import { normalizeJsonFileName, sanitizeFileName } from './question-bank-service'
+import { normalizeJsonFileName, sanitizeFileName } from './shared/file-utils'
 import { getWorkspaceDir } from './workspace-store'
 
 export type QuestionMediaBufferItem = {

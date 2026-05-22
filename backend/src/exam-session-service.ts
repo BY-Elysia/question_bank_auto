@@ -4,9 +4,9 @@ import {
 } from './config'
 import { getPayloadDocumentType, getPayloadSourceMeta } from './domains/question-json/payload'
 import { normalizeTitle } from './domains/question-json/chapter-tree'
+import { batchId } from './shared/file-utils'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
-  batchId,
   buildCanonicalQuestionTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,

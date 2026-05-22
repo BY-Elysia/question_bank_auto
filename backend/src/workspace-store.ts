@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { WORKSPACES_DIR } from './config'
-import { batchId, normalizeJsonFileName, sanitizeFileName } from './question-bank-service'
+import { batchId, normalizeJsonFileName, sanitizeFileName } from './shared/file-utils'
 
 export type WorkspaceAssetType = 'json' | 'pdf' | 'image_batch'
 export type WorkspaceKind = 'textbook' | 'exam'

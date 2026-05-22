@@ -5,7 +5,7 @@ import { getPayloadSourceMeta, isValidTextbookPayload } from './domains/question
 import {
   batchId,
   normalizeJsonFileName,
-} from './question-bank-service'
+} from './shared/file-utils'
 import type { ChapterItem, TextbookJsonPayload } from './types'
 import { writeWorkspaceJsonAsset } from './workspace-store'
 

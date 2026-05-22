@@ -13,16 +13,18 @@ import {
   getExamSession,
 } from '../state'
 import {
+  toImageDataUrl,
+  toImageDataUrlFromFile,
+  writeNdjson,
+} from '../question-bank-service'
+import {
   batchId,
   ensureDir,
   isSupportedImageFileName,
   sanitizeFileName,
   sanitizeFolderName,
   sortImageFileNames,
-  toImageDataUrl,
-  toImageDataUrlFromFile,
-  writeNdjson,
-} from '../question-bank-service'
+} from '../shared/file-utils'
 import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
 import { cleanupUploadedFiles, upload } from '../upload'
 import { ensureWorkspace, resolveManagedJsonInput } from '../workspace-store'

@@ -4,10 +4,8 @@ import path from 'node:path'
 import { OUTPUT_JSON_DIR } from '../config'
 import { runWithArkApiKey } from '../ark-request-context'
 import { getPayloadDocumentType, isValidTextbookPayload } from '../domains/question-json/payload'
+import { batchId, normalizeJsonFileName, sanitizeFileName } from '../shared/file-utils'
 import {
-  batchId,
-  normalizeJsonFileName,
-  sanitizeFileName,
   toImageDataUrlFromFile,
 } from '../question-bank-service'
 import { mergeTextbookJsonFiles } from '../json-merge-service'

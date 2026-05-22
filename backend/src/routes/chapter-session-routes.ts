@@ -15,16 +15,14 @@ import {
 import {
   appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
-  batchId,
-  isSupportedImageFileName,
   loadTextbookJson,
   processChapterSessionImage,
   saveTextbookJson,
-  sortImageFileNames,
   toImageDataUrl,
   toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
+import { batchId, isSupportedImageFileName, sortImageFileNames } from '../shared/file-utils'
 import {
   getChapterSession,
   getQuestionSession,

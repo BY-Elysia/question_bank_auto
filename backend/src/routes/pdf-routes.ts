@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { batchId, ensureDir, sanitizeFolderName } from '../question-bank-service'
+import { batchId, ensureDir, sanitizeFolderName } from '../shared/file-utils'
 import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
 import { cleanupUploadedFiles, normalizeUploadedOriginalName, upload } from '../upload'
 import { ensureWorkspace, registerWorkspaceAsset, writeWorkspaceBinaryAsset } from '../workspace-store'
