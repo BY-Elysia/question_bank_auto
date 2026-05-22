@@ -6,6 +6,7 @@ import {
   resolveChapterTitles,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildCanonicalQuestionTitle,
   buildQuestionDisplayTitle,
@@ -13,7 +14,6 @@ import {
   buildSharedQuestionStructureInstructionLines,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
-  extractArkText,
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
@@ -24,7 +24,6 @@ import {
   parseModelJsonObject,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-  requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
 import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'

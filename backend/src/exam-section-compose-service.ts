@@ -2,11 +2,11 @@ import { ARK_MODEL } from './config'
 import {
   loadQuestionBankTopLevelQuestionsByIds,
 } from './question-bank-db-service'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   QUESTION_TYPE_OPTIONS,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  extractArkText,
   extractFirstJsonObject,
   getPayloadAnswerHandlingMode,
   getPayloadSourceMeta,
@@ -16,7 +16,6 @@ import {
   normalizeTitle,
   parseModelJsonObject,
   payloadExpectsAnswer,
-  requestArkRawWithRetry,
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'

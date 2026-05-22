@@ -1,12 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { ARK_MODEL } from './config'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
-  extractArkText,
   extractFirstJsonObject,
   normalizeQuestionType,
   parseModelJsonObject,
-  requestArkRawWithRetry,
 } from './question-bank-service'
 import {
   getQuestionBankDatabaseSummary,

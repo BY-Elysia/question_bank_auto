@@ -2,13 +2,13 @@ import {
   ARK_MODEL,
   MAX_PENDING_QUEUE_PAGES,
 } from './config'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   batchId,
   buildCanonicalQuestionTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,
-  extractArkText,
   extractFirstJsonObject,
   getPayloadDocumentType,
   getPayloadSourceMeta,
@@ -16,7 +16,6 @@ import {
   normalizeQuestionItem,
   normalizeTitle,
   parseModelJsonObject,
-  requestArkRawWithRetry,
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'

@@ -5,14 +5,13 @@ import {
   resolveQuestionTarget,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
-  extractArkText,
   extractFirstJsonObject,
   loadTextbookJson,
   payloadExpectsAnswer,
   parseModelJsonObject,
   repairModelJsonByDoubao,
-  requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
 

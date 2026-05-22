@@ -11,6 +11,7 @@ import {
   type ArkResponsesPrefixUsage,
   requestArkResponsesPrefixCompletion,
 } from './ark-responses-prefix-experiment-service'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildQuestionDisplayTitle,
   getPayloadAnswerHandlingMode,
@@ -19,7 +20,6 @@ import {
   detectQuestionIntegrityIssue,
   ensureSectionChapter,
   ensureTopChapter,
-  extractArkText,
   extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
@@ -29,7 +29,6 @@ import {
   parseModelJsonObject,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-  requestArkRawWithRetry,
   saveTextbookJson,
 } from './question-bank-service'
 import {
