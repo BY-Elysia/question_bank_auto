@@ -30,10 +30,12 @@ import {
   normalizeTitle,
 } from './domains/question-json/chapter-tree'
 import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
+} from './domains/question-json/extraction-instructions'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
+import {
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
 } from './question-bank-service'

@@ -15,12 +15,12 @@ import {
   normalizeQuestionItem,
 } from './domains/question-json/question-normalize'
 import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
-import { batchId } from './shared/file-utils'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-} from './question-bank-service'
+} from './domains/question-json/extraction-instructions'
+import { batchId } from './shared/file-utils'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   getExamQuestionSession,
   getExamSession,

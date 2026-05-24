@@ -2289,8 +2289,6 @@ export {
   appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
   appendPendingReviewLogs,
-  buildSharedQuestionContentRuleLines,
-  buildSharedQuestionStructureInstructionLines,
   normalizeJsonPath,
   processChapterSessionImage,
   readByDoubao,
