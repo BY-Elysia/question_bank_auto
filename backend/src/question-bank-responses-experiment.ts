@@ -18,20 +18,22 @@ import {
 } from './domains/question-json/model-json'
 import { upsertQuestionsById } from './domains/question-json/question-upsert'
 import {
+  detectQuestionIntegrityIssue,
+  extractQuestionNoFromId,
+  extractQuestionNoFromText,
+  normalizeQuestionItem,
+  rewriteQuestionTitlesByResolvedChapter,
+} from './domains/question-json/question-normalize'
+import {
   ensureSectionChapter,
   ensureTopChapter,
   normalizeTitle,
 } from './domains/question-json/chapter-tree'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
-  buildQuestionDisplayTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  detectQuestionIntegrityIssue,
-  extractQuestionNoFromId,
-  extractQuestionNoFromText,
   loadTextbookJson,
-  normalizeQuestionItem,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   saveTextbookJson,
@@ -48,7 +50,6 @@ import type {
   LastQuestionLookaheadResult,
   QuestionBoundaryResult,
   QuestionExtractResult,
-  QuestionGroupChild,
   QuestionItem,
   TextbookJsonPayload,
 } from './types'
@@ -87,12 +88,6 @@ function extractQuestionNoFromPrompt(promptText: string) {
   const normalized = normalizeDigits(String(promptText || ''))
   const match = normalized.match(/^\s*[\(（]?(\d+)[\)）]?/)
   return match?.[1] || ''
-}
-
-function extractSubQuestionNoFromQuestionId(questionId: string) {
-  const normalized = normalizeDigits(String(questionId || ''))
-  const match = normalized.match(/^q_(\d+)_(\d+)_(\d+)_(\d+)$/)
-  return match?.[4] || ''
 }
 
 function extractTopQuestionNoFromKey(value: string) {
@@ -452,36 +447,6 @@ function buildCrossPageContext(params: {
     '- 如果当前处理起点题号为 null，则从队列第一页图片中实际出现的第一个题开始。',
     '- 你应先判断“从当前处理起点开始，哪些题已经完整可入库”，再判断“最后一张图的最后一题是否跨页”。',
   ].join(' ')
-}
-
-function rewriteQuestionTitlesByResolvedChapter(payload: TextbookJsonPayload, items: QuestionItem[]) {
-  return items.map((item) => {
-    const sectionTitle = payload.chapters.find((chapter) => chapter.chapterId === item.chapterId)?.title || ''
-    const mainQuestionNo = extractQuestionNoFromId(item.questionId) || extractQuestionNoFromText(item.title)
-    const subQuestionNo = item.nodeType === 'LEAF' ? extractSubQuestionNoFromQuestionId(item.questionId) : ''
-    if (item.nodeType === 'GROUP') {
-      return {
-        ...item,
-        title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo) || item.title,
-        children: item.children.map((child) => {
-          const childSubQuestionNo =
-            extractSubQuestionNoFromQuestionId(child.questionId) ||
-            extractQuestionNoFromPrompt(child.prompt.text) ||
-            String(child.orderNo)
-          return {
-            ...child,
-            title:
-              buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, childSubQuestionNo) ||
-              (child as QuestionGroupChild).title,
-          }
-        }),
-      } as QuestionItem
-    }
-    return {
-      ...item,
-      title: buildQuestionDisplayTitle(sectionTitle, item.title, mainQuestionNo, subQuestionNo) || item.title,
-    } as QuestionItem
-  })
 }
 
 function collectPendingReviewLogs(questions: QuestionItem[]) {

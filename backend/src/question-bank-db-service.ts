@@ -12,9 +12,7 @@ import {
   QUESTION_TYPE_OPTIONS,
   normalizeQuestionType,
 } from './domains/question-json/question-types'
-import {
-  normalizeQuestionItem,
-} from './question-bank-service'
+import { normalizeQuestionItem } from './domains/question-json/question-normalize'
 import type { ChapterItem, QuestionItem, TextbookJsonPayload } from './types'
 
 type UploadedJsonSource = {

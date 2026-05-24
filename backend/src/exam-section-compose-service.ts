@@ -17,12 +17,12 @@ import {
   QUESTION_TYPE_OPTIONS,
   normalizeQuestionType,
 } from './domains/question-json/question-types'
+import { normalizeQuestionItem } from './domains/question-json/question-normalize'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   loadTextbookJson,
-  normalizeQuestionItem,
   saveTextbookJson,
 } from './question-bank-service'
 import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'

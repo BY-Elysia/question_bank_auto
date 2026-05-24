@@ -11,18 +11,20 @@ import {
   extractFirstJsonObject,
   parseModelJsonObject,
 } from './domains/question-json/model-json'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildCanonicalQuestionTitle,
   buildQuestionDisplayTitle,
-  buildSharedQuestionContentRuleLines,
-  buildSharedQuestionStructureInstructionLines,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
-  loadTextbookJson,
   normalizeQuestionItem,
+} from './domains/question-json/question-normalize'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
+import {
+  buildSharedQuestionContentRuleLines,
+  buildSharedQuestionStructureInstructionLines,
+  loadTextbookJson,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   saveTextbookJson,

@@ -9,15 +9,17 @@ import {
 } from './domains/question-json/model-json'
 import { upsertQuestionsById } from './domains/question-json/question-upsert'
 import { normalizeTitle } from './domains/question-json/chapter-tree'
+import {
+  buildCanonicalQuestionTitle,
+  detectQuestionIntegrityIssue,
+  normalizeQuestionItem,
+} from './domains/question-json/question-normalize'
 import { batchId } from './shared/file-utils'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
-  buildCanonicalQuestionTitle,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  detectQuestionIntegrityIssue,
   loadTextbookJson,
-  normalizeQuestionItem,
   saveTextbookJson,
 } from './question-bank-service'
 import {
