@@ -43,12 +43,15 @@ import {
   sortImageFileNames,
 } from './shared/file-utils'
 import {
+  toImageDataUrl,
+  toImageDataUrlFromFile,
+} from './shared/image-data-url'
+import {
   getChapterSession,
   getQuestionSession,
   setChapterSession,
   setQuestionSession,
 } from './state'
-import { readUploadedFileBuffer } from './upload'
 import type {
   AnswerHandlingMode,
   ChapterDetectResult,
@@ -1701,44 +1704,6 @@ async function saveTextbookJson(filePath: string, payload: TextbookJsonPayload) 
   stripMediaCaptionsDeep(payload)
   const text = `${JSON.stringify(payload, null, 2)}\n`
   await fsp.writeFile(filePath, text, { encoding: 'utf8' })
-}
-
-function getImageMimeByPath(filePath: string) {
-  const ext = path.extname(filePath).toLowerCase()
-  if (ext === '.png') return 'image/png'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
-  return ''
-}
-
-function getImageMimeByFile(file: Express.Multer.File) {
-  const fromMime = String(file.mimetype || '').toLowerCase()
-  if (fromMime === 'image/png' || fromMime === 'image/webp' || fromMime === 'image/jpeg') {
-    return fromMime
-  }
-  const ext = path.extname(file.originalname || '').toLowerCase()
-  if (ext === '.png') return 'image/png'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
-  return ''
-}
-
-async function toImageDataUrl(imagePath: string) {
-  const mime = getImageMimeByPath(imagePath)
-  if (!mime) {
-    throw new Error(`Unsupported image type: ${imagePath}`)
-  }
-  const bytes = await fsp.readFile(imagePath)
-  return `data:${mime};base64,${bytes.toString('base64')}`
-}
-
-async function toImageDataUrlFromFile(file: Express.Multer.File) {
-  const mime = getImageMimeByFile(file)
-  if (!mime) {
-    throw new Error(`Unsupported image file: ${file.originalname || 'unknown'}`)
-  }
-  const bytes = await readUploadedFileBuffer(file)
-  return `data:${mime};base64,${bytes.toString('base64')}`
 }
 
 async function readByDoubao(dataUrls: string[]) {
