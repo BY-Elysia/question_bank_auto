@@ -5,7 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { UPLOAD_DIR, WORKSPACES_DIR } from './config'
 import { sanitizeFileName } from './shared/file-utils'
-import { loadTextbookJson } from './question-bank-service'
+import { loadTextbookJson } from './domains/question-json/textbook-store'
 import type { QuestionItem, QuestionTextBlock, TextbookJsonPayload } from './types'
 import { getWorkspaceDir, resolveWorkspaceEntry } from './workspace-store'
 

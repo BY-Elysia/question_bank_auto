@@ -3,10 +3,7 @@ import {
   QUESTION_TYPE_OPTIONS,
   normalizeQuestionType,
 } from './domains/question-json/question-types'
-import {
-  loadTextbookJson,
-  saveTextbookJson,
-} from './question-bank-service'
+import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 
 function getQuestionTypeMeta(questionTypeInput: string) {
   const questionType = normalizeQuestionType(questionTypeInput)

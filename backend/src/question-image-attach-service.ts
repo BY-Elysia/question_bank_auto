@@ -5,7 +5,7 @@ import {
   resolveQuestionTarget,
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
-import { loadTextbookJson, saveTextbookJson } from './question-bank-service'
+import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 import { readUploadedFileBuffer } from './upload'
 import { ensureWorkspace } from './workspace-store'
 import { writeQuestionMediaBuffers } from './question-media-store'

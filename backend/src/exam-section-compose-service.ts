@@ -18,12 +18,11 @@ import {
   normalizeQuestionType,
 } from './domains/question-json/question-types'
 import { normalizeQuestionItem } from './domains/question-json/question-normalize'
+import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  loadTextbookJson,
-  saveTextbookJson,
 } from './question-bank-service'
 import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'
 import { resolveQuestionMediaCrops, type QuestionMediaCropSource } from './question-media-crop-service'

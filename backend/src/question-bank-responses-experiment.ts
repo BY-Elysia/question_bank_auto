@@ -29,14 +29,13 @@ import {
   ensureTopChapter,
   normalizeTitle,
 } from './domains/question-json/chapter-tree'
+import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  loadTextbookJson,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-  saveTextbookJson,
 } from './question-bank-service'
 import {
   getChapterSession,

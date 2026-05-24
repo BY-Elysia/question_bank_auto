@@ -15,10 +15,9 @@ import {
 import {
   appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
-  loadTextbookJson,
   processChapterSessionImage,
-  saveTextbookJson,
 } from '../question-bank-service'
+import { loadTextbookJson, saveTextbookJson } from '../domains/question-json/textbook-store'
 import { batchId, isSupportedImageFileName, sortImageFileNames } from '../shared/file-utils'
 import { toImageDataUrl, toImageDataUrlFromFile } from '../shared/image-data-url'
 import { writeNdjson } from '../shared/ndjson'

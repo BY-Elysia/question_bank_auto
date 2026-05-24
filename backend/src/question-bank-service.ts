@@ -2391,12 +2391,10 @@ export {
   appendPendingReviewLogs,
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  loadTextbookJson,
   normalizeJsonPath,
   processChapterSessionImage,
   readByDoubao,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-  saveTextbookJson,
 }
 

@@ -14,13 +14,12 @@ import {
   detectQuestionIntegrityIssue,
   normalizeQuestionItem,
 } from './domains/question-json/question-normalize'
+import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 import { batchId } from './shared/file-utils'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  loadTextbookJson,
-  saveTextbookJson,
 } from './question-bank-service'
 import {
   getExamQuestionSession,
