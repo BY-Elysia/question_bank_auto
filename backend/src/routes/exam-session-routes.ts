@@ -13,9 +13,6 @@ import {
   getExamSession,
 } from '../state'
 import {
-  writeNdjson,
-} from '../question-bank-service'
-import {
   batchId,
   ensureDir,
   isSupportedImageFileName,
@@ -23,6 +20,7 @@ import {
   sanitizeFolderName,
   sortImageFileNames,
 } from '../shared/file-utils'
+import { writeNdjson } from '../shared/ndjson'
 import { toImageDataUrl, toImageDataUrlFromFile } from '../shared/image-data-url'
 import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
 import { cleanupUploadedFiles, upload } from '../upload'

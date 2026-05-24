@@ -1,4 +1,3 @@
-﻿import type { Response } from 'express'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -1659,10 +1658,6 @@ async function appendAutoProcessFailureLog(params: {
     error,
   })
   await fsp.appendFile(logFile, `${line}\n`, { encoding: 'utf8' })
-}
-
-function writeNdjson(res: Response, payload: Record<string, unknown>) {
-  res.write(`${JSON.stringify(payload)}\n`)
 }
 
 async function loadTextbookJson(filePath: string): Promise<TextbookJsonPayload> {
@@ -3438,6 +3433,5 @@ export {
   rewriteQuestionTitlesByResolvedChapter,
   saveTextbookJson,
   upsertQuestionsById,
-  writeNdjson,
 }
 

@@ -18,10 +18,10 @@ import {
   loadTextbookJson,
   processChapterSessionImage,
   saveTextbookJson,
-  writeNdjson,
 } from '../question-bank-service'
 import { batchId, isSupportedImageFileName, sortImageFileNames } from '../shared/file-utils'
 import { toImageDataUrl, toImageDataUrlFromFile } from '../shared/image-data-url'
+import { writeNdjson } from '../shared/ndjson'
 import {
   getChapterSession,
   getQuestionSession,
