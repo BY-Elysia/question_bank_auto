@@ -6,11 +6,13 @@ import {
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import { payloadExpectsAnswer } from './domains/question-json/payload'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   extractFirstJsonObject,
-  loadTextbookJson,
   parseModelJsonObject,
+} from './domains/question-json/model-json'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
+import {
+  loadTextbookJson,
   repairModelJsonByDoubao,
   saveTextbookJson,
 } from './question-bank-service'

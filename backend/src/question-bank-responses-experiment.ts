@@ -13,6 +13,10 @@ import {
 } from './ark-responses-prefix-experiment-service'
 import { getPayloadAnswerHandlingMode } from './domains/question-json/payload'
 import {
+  extractFirstJsonObject,
+  parseModelJsonObject,
+} from './domains/question-json/model-json'
+import {
   ensureSectionChapter,
   ensureTopChapter,
   normalizeTitle,
@@ -23,12 +27,10 @@ import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,
-  extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
   loadTextbookJson,
   normalizeQuestionItem,
-  parseModelJsonObject,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   saveTextbookJson,

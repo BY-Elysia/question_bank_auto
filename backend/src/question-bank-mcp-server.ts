@@ -6,7 +6,7 @@ import { normalizeQuestionType } from './domains/question-json/question-types'
 import {
   extractFirstJsonObject,
   parseModelJsonObject,
-} from './question-bank-service'
+} from './domains/question-json/model-json'
 import {
   getQuestionBankDatabaseSummary,
   getQuestionBankDbSchemaName,

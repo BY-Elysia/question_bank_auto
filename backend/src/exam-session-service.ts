@@ -3,6 +3,10 @@ import {
   MAX_PENDING_QUEUE_PAGES,
 } from './config'
 import { getPayloadDocumentType, getPayloadSourceMeta } from './domains/question-json/payload'
+import {
+  extractFirstJsonObject,
+  parseModelJsonObject,
+} from './domains/question-json/model-json'
 import { normalizeTitle } from './domains/question-json/chapter-tree'
 import { batchId } from './shared/file-utils'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
@@ -11,10 +15,8 @@ import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
   detectQuestionIntegrityIssue,
-  extractFirstJsonObject,
   loadTextbookJson,
   normalizeQuestionItem,
-  parseModelJsonObject,
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'

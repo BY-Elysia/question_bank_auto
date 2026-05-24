@@ -9,6 +9,10 @@ import {
 } from './domains/question-json/payload'
 import { normalizeTitle } from './domains/question-json/chapter-tree'
 import {
+  extractFirstJsonObject,
+  parseModelJsonObject,
+} from './domains/question-json/model-json'
+import {
   QUESTION_TYPE_OPTIONS,
   normalizeQuestionType,
 } from './domains/question-json/question-types'
@@ -16,10 +20,8 @@ import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark
 import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
-  extractFirstJsonObject,
   loadTextbookJson,
   normalizeQuestionItem,
-  parseModelJsonObject,
   saveTextbookJson,
   upsertQuestionsById,
 } from './question-bank-service'

@@ -7,6 +7,10 @@ import {
 } from './question-json-target'
 import type { TextbookJsonPayload } from './types'
 import { getPayloadAnswerHandlingMode, getPayloadSourceMeta } from './domains/question-json/payload'
+import {
+  extractFirstJsonObject,
+  parseModelJsonObject,
+} from './domains/question-json/model-json'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   buildCanonicalQuestionTitle,
@@ -15,12 +19,10 @@ import {
   buildSharedQuestionStructureInstructionLines,
   detectQuestionEmptyAnswerIssue,
   detectQuestionIntegrityIssue,
-  extractFirstJsonObject,
   extractQuestionNoFromId,
   extractQuestionNoFromText,
   loadTextbookJson,
   normalizeQuestionItem,
-  parseModelJsonObject,
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
   saveTextbookJson,
