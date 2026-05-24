@@ -5,9 +5,7 @@ import { OUTPUT_JSON_DIR } from '../config'
 import { runWithArkApiKey } from '../ark-request-context'
 import { getPayloadDocumentType, isValidTextbookPayload } from '../domains/question-json/payload'
 import { batchId, normalizeJsonFileName, sanitizeFileName } from '../shared/file-utils'
-import {
-  toImageDataUrlFromFile,
-} from '../question-bank-service'
+import { toImageDataUrlFromFile } from '../shared/image-data-url'
 import { mergeTextbookJsonFiles } from '../json-merge-service'
 import { repairMathFormatInTextbookJson } from '../math-format-repair-service'
 import { generateQuestionAnswerInTextbookJson } from '../question-answer-generate-service'

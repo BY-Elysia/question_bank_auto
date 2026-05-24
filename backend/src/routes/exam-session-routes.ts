@@ -13,8 +13,6 @@ import {
   getExamSession,
 } from '../state'
 import {
-  toImageDataUrl,
-  toImageDataUrlFromFile,
   writeNdjson,
 } from '../question-bank-service'
 import {
@@ -25,6 +23,7 @@ import {
   sanitizeFolderName,
   sortImageFileNames,
 } from '../shared/file-utils'
+import { toImageDataUrl, toImageDataUrlFromFile } from '../shared/image-data-url'
 import { convertPdfToImages, listConvertedFilesByPrefix } from '../pdf-convert-service'
 import { cleanupUploadedFiles, upload } from '../upload'
 import { ensureWorkspace, resolveManagedJsonInput } from '../workspace-store'

@@ -4,10 +4,10 @@ import { ARK_MODEL, UPLOAD_DIR, WORKSPACES_DIR } from './config'
 import { isObject, resolveQuestionTarget } from './question-json-target'
 import { normalizeQuestionType } from './domains/question-json/question-types'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
+import { toImageDataUrl } from './shared/image-data-url'
 import {
   loadTextbookJson,
   saveTextbookJson,
-  toImageDataUrl,
 } from './question-bank-service'
 
 type JsonNode = Record<string, unknown>

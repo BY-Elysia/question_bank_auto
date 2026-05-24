@@ -43,10 +43,6 @@ import {
   sortImageFileNames,
 } from './shared/file-utils'
 import {
-  toImageDataUrl,
-  toImageDataUrlFromFile,
-} from './shared/image-data-url'
-import {
   getChapterSession,
   getQuestionSession,
   setChapterSession,
@@ -3441,8 +3437,6 @@ export {
   repairModelJsonByDoubao,
   rewriteQuestionTitlesByResolvedChapter,
   saveTextbookJson,
-  toImageDataUrl,
-  toImageDataUrlFromFile,
   upsertQuestionsById,
   writeNdjson,
 }
