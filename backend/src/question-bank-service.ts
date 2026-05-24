@@ -3291,6 +3291,5 @@ export {
   repairModelJsonByDoubao,
   rewriteQuestionTitlesByResolvedChapter,
   saveTextbookJson,
-  upsertQuestionsById,
 }
 

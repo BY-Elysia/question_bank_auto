@@ -12,6 +12,7 @@ import {
   extractFirstJsonObject,
   parseModelJsonObject,
 } from './domains/question-json/model-json'
+import { upsertQuestionsById } from './domains/question-json/question-upsert'
 import {
   QUESTION_TYPE_OPTIONS,
   normalizeQuestionType,
@@ -23,7 +24,6 @@ import {
   loadTextbookJson,
   normalizeQuestionItem,
   saveTextbookJson,
-  upsertQuestionsById,
 } from './question-bank-service'
 import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'
 import { resolveQuestionMediaCrops, type QuestionMediaCropSource } from './question-media-crop-service'
