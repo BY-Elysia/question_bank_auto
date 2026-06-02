@@ -15,7 +15,7 @@ import {
 import {
   appendChapterSegmentFromImages,
   processChapterSessionImage,
-} from '../question-bank-service'
+} from '../chapter-extraction-service'
 import { loadTextbookJson, saveTextbookJson } from '../domains/question-json/textbook-store'
 import { appendAutoProcessFailureLog } from '../domains/question-json/review-logs'
 import { batchId, isSupportedImageFileName, sortImageFileNames } from '../shared/file-utils'
