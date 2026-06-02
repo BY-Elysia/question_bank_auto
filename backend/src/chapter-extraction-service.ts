@@ -521,55 +521,6 @@ function resolveSectionChapterId(payload: TextbookJsonPayload, chapterTitle: str
 
 
 
-async function readByDoubao(dataUrls: string[]) {
-  if (!getEffectiveArkApiKey()) {
-    throw new Error('ARK_API_KEY is missing')
-  }
-
-  const userContent: Array<Record<string, string>> = [
-    {
-      type: 'input_text',
-      text:
-        '请读取图片中的可见内容并逐字输出。不要总结，不要解释，不要补充，不要改写。保留原有顺序、换行和标点。',
-    },
-  ]
-
-  for (const dataUrl of dataUrls) {
-    userContent.push({
-      type: 'input_image',
-      image_url: dataUrl,
-    })
-  }
-
-  const body = {
-    model: ARK_MODEL,
-    input: [
-      {
-        role: 'system',
-        content: [
-          {
-            type: 'input_text',
-            text: '你是一个只做逐字转写的视觉模型助手。',
-          },
-        ],
-      },
-      {
-        role: 'user',
-        content: userContent,
-      },
-    ],
-    temperature: 0,
-  }
-
-  const raw = await requestArkRawWithRetry(body as Record<string, unknown>)
-  const parsed = JSON.parse(raw) as unknown
-  const text = extractArkText(parsed)
-  if (!text) {
-    throw new Error('Ark response has no text output')
-  }
-  return text
-}
-
 
 async function detectChapterBoundaryAndPendingByDoubao(params: {
   imageDataUrls: string[]
@@ -2145,8 +2096,6 @@ ensureDir(READ_RESULTS_DIR)
 
 export {
   appendChapterSegmentFromImages,
-  normalizeJsonPath,
   processChapterSessionImage,
-  readByDoubao,
 }
 
