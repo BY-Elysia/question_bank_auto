@@ -25,11 +25,11 @@ import {
   buildSharedQuestionContentRuleLines,
   buildSharedQuestionStructureInstructionLines,
 } from './domains/question-json/extraction-instructions'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-} from './question-bank-service'
+} from './domains/question-json/model-json-repair'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import { buildRelativeMediaCropInstructionLines } from './question-media-crop-instructions'
 import { resolveQuestionMediaCrops, type QuestionMediaCropSource } from './question-media-crop-service'
 

@@ -2148,7 +2148,5 @@ export {
   normalizeJsonPath,
   processChapterSessionImage,
   readByDoubao,
-  regenerateModelJsonWithImagesByDoubao,
-  repairModelJsonByDoubao,
 }
 

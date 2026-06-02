@@ -10,11 +10,9 @@ import {
   extractFirstJsonObject,
   parseModelJsonObject,
 } from './domains/question-json/model-json'
+import { repairModelJsonByDoubao } from './domains/question-json/model-json-repair'
 import { loadTextbookJson, saveTextbookJson } from './domains/question-json/textbook-store'
 import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
-import {
-  repairModelJsonByDoubao,
-} from './question-bank-service'
 
 type MathFormatRepairTargetType =
   | 'stem'

@@ -32,11 +32,11 @@ import {
   buildSharedQuestionStructureInstructionLines,
 } from './domains/question-json/extraction-instructions'
 import { appendPendingReviewLogs, collectPendingReviewLogs } from './domains/question-json/review-logs'
-import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   regenerateModelJsonWithImagesByDoubao,
   repairModelJsonByDoubao,
-} from './question-bank-service'
+} from './domains/question-json/model-json-repair'
+import { extractArkText, requestArkRawWithRetry } from './infrastructure/ark/ark-client'
 import {
   getChapterSession,
   getQuestionSession,
