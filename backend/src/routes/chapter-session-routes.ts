@@ -13,11 +13,11 @@ import {
   normalizeTitle,
 } from '../domains/question-json/chapter-tree'
 import {
-  appendAutoProcessFailureLog,
   appendChapterSegmentFromImages,
   processChapterSessionImage,
 } from '../question-bank-service'
 import { loadTextbookJson, saveTextbookJson } from '../domains/question-json/textbook-store'
+import { appendAutoProcessFailureLog } from '../domains/question-json/review-logs'
 import { batchId, isSupportedImageFileName, sortImageFileNames } from '../shared/file-utils'
 import { toImageDataUrl, toImageDataUrlFromFile } from '../shared/image-data-url'
 import { writeNdjson } from '../shared/ndjson'
