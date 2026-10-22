@@ -1,0 +1,23 @@
+{
+  "name": "@question-bank/backend-next-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Contract-only foundation for the rebuilt backend. No server implementation.",
+  "engines": { "node": ">=22.21.0" },
+  "scripts": {
+    "lint": "redocly lint contracts/openapi.json",
+    "generate": "openapi-typescript contracts/openapi.json -o src/contracts/api.d.ts",
+    "check:generated": "node scripts/check-generated.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run lint && npm run check:generated && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.67.1",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.8.3"
+  }
+}

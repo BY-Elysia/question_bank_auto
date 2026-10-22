@@ -1,0 +1,6 @@
+extends:
+  - recommended
+rules:
+  # Private contract; repository licensing is not changed by this API design.
+  info-license: off
+  no-unused-components: off
