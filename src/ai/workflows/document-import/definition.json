@@ -1,8 +1,0 @@
-{
-  "id": "document-import",
-  "version": "1.0.0",
-  "description": "document-import 工作流",
-  "skills": [],
-  "inputSchemaRef": "openapi.json#/components/schemas/DocumentImportRequest",
-  "status": "planned"
-}

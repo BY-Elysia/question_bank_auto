@@ -1,30 +1,42 @@
-import type { ExecutionPlan } from './execution-plan.js';
-import type { JobProgress } from './job-progress.js';
-import type { JobResult } from './job-result.js';
-import type { JobState } from './job-state.js';
-import type { Problem } from '../../../shared/errors/problem.js';
-import type { Usage } from '../../model-config/domain/usage.js';
-import type { WorkflowRequest } from '../../../ai/workflows/contracts/workflow-request.js';
-
-/** Job contract. */
-export type Job = {
-  /** Format: uuid */
-  id: string;
-  /** Format: uuid */
-  projectId: string;
-  /** Format: uuid */
-  workspaceId: string;
-  state: JobState;
-  request: WorkflowRequest;
-  plan: ExecutionPlan;
-  progress: JobProgress;
-  result: JobResult;
-  usage: Usage;
-  error: Problem | null;
-  retryOfJobId: string | null;
-  /** Format: date-time */
-  createdAt: string;
-  /** Format: date-time */
-  updatedAt: string;
-  finishedAt: string | null;
-};
+import { z } from 'zod';
+import { Id, Document, Issue } from '../../textbooks/domain/content.js';
+import { Range } from '../../../ai/workflows/textbook-extraction/contracts.js';
+export const JobRequest = z.strictObject({
+  kind: z.enum(['parse', 'verify', 'repair', 'answers']),
+  startPage: z.number().int().positive().optional(),
+  endPage: z.number().int().positive().optional(),
+  contentIds: z.array(Id).max(10000).optional(),
+  sectionId: Id.optional(),
+  instruction: z.string().min(1).max(8000).optional(),
+  generateAnswers: z.boolean().optional(),
+});
+export const Job = z.strictObject({
+  id: Id,
+  kind: JobRequest.shape.kind,
+  status: z.enum([
+    'queued',
+    'running',
+    'completed',
+    'needs_review',
+    'failed',
+    'cancelled',
+    'interrupted',
+  ]),
+  request: JobRequest,
+  phase: z.enum(['parse', 'review']),
+  baseRevision: z.number().int(),
+  cursor: z.number().int(),
+  startPage: z.number().int(),
+  endPage: z.number().int(),
+  pending: z.array(Range),
+  activeSectionId: Id.nullable(),
+  stage: Document.nullable(),
+  processedIds: z.array(Id),
+  issues: z.array(Issue),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  events: z.array(z.strictObject({ at: z.string(), message: z.string() })),
+});
+export type Job = z.infer<typeof Job>;
+export type JobRequest = z.infer<typeof JobRequest>;

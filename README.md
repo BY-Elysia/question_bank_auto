@@ -1,84 +1,64 @@
-# 题库后端：模块化架构骨架
+# 课本 PDF 结构化后端
 
-当前分支包含 **NestJS 模块、Controller、DTO、应用服务接口、领域类型及外部依赖端口**。63 个 HTTP 操作已注册，业务实现全部返回 `501 NOT_IMPLEMENTED`。尚未实现鉴权、DTO 运行时校验、数据库、Docker 调度、队列消费或模型调用。
+将一整本课本 PDF 转为可追溯的 JSON：章节、正文、公式、表格、图片、例题、习题和原文答案。提供原图与内容坐标、校对、修复候选、缺失答案生成、版本恢复和 JSON/ZIP 导出。当前版本 0.3.0，22 个业务/健康接口均有实现。
 
-## 源码结构
+本轮只运行一个工作区，不包含前端、用户管理、题库、组卷或通用 Agent 平台。每个实例独占一个工作目录；可将实例作为一个 Docker 工作区部署。
 
-```text
-src/
-├── apps/
-│   ├── control-api/          # 公开 API 与独立的内部执行 API 入口
-│   ├── workspace-worker/     # 用户容器的 Nest 应用上下文
-│   └── model-gateway/        # 独立模型/工具调用入口
-├── modules/
-│   ├── identity/
-│   ├── workspaces/
-│   ├── projects/
-│   ├── assets/
-│   ├── documents/
-│   ├── proposals/
-│   ├── jobs/
-│   ├── job-execution/
-│   ├── library/
-│   └── model-config/
-├── ai/
-│   ├── workflows/            # 8 个工作流的定义和执行接口
-│   ├── skills/               # 10 个 Skill，各自维护输入输出
-│   ├── tools/                # 6 个 Tool，各自维护参数、结果和权限
-│   ├── registry/             # 能力注册表查询模块
-│   ├── runtime/              # Workflow/Skill/Tool 执行端口
-│   ├── gateway/              # 模型调用与工具执行 HTTP 模块
-│   └── providers/            # 模型供应商适配接口
-└── shared/                   # 基础上下文、错误和 HTTP 启动代码
-```
+## 运行
 
-以文档模块为阅读入口：
-
-- [模块注册](src/modules/documents/documents.module.ts)
-- [Controller](src/modules/documents/presentation/documents.controller.ts)
-- [应用服务接口](src/modules/documents/application/documents.service.interface.ts)
-- [文档领域类型](src/modules/documents/domain/document.ts)
-- [仓储接口](src/modules/documents/ports/document.repository.ts)
-- [501 占位适配器](src/modules/documents/infrastructure/documents.unimplemented.service.ts)
-
-完整说明见 [源码架构](docs/architecture.md)、[业务接口约定](docs/contract-guide.md)、[接口索引](docs/endpoints.md)、[用户工作目录](docs/workspace-layout.md)。
-
-## 分模块契约
-
-每个模块自己维护 `contracts/operations/` 和 `contracts/schemas/`。Skill、Tool 和 Workflow 分别维护自己的 `definition.json`。源码中没有完整 OpenAPI 大文件，也没有几千行的生成类型。
-
-执行 `npm run contracts:build` 后汇总为：
-
-```text
-dist/contracts/
-├── openapi.json              # 交给文档工具或客户端生成器
-├── api.d.ts                  # 客户端所需的完整类型
-├── catalog.json              # 汇总后的能力目录
-└── type-compatibility.ts     # 源码 DTO 与协议类型的一致性检查
-```
-
-`dist/` 被 Git 忽略。服务端源码不依赖生成目录；源类型与 schema 不一致会在类型检查中失败。JSON Schema 中的长度、范围及条件约束另由契约测试覆盖，它们不是 TypeScript 静态类型能完全表达的。
-
-## 构建与运行
-
-要求 Node.js >= 22.21.0。依赖使用 lockfile 固定。
+要求 Node.js >= 22.21.0，以及 Poppler 的 `pdfinfo`、`pdftoppm`。macOS 可通过 `brew install poppler` 安装，Debian/Ubuntu 使用 `apt-get install poppler-utils`。模型需要支持视觉输入和 JSON 输出。
 
 ```bash
 npm ci
+cp .env.example .env
+# 编辑 .env，配置模型服务地址、密钥和模型名称
+npm run build
+node --env-file=.env dist/app/apps/control-api/main.js
+```
+
+也可先向进程环境导出配置，再运行 `npm run start:api`。启动不会自动加载 `.env`；上面的 Node 命令会显式加载。
+
+```bash
+# 或使用 Docker Compose；端口默认只发布到宿主机回环地址
+# 按 .env.example 配置 .env 后执行
+docker compose up --build
+```
+
+默认地址 `http://127.0.0.1:5002`，工作目录 `./workspace`。未接入鉴权，当前作为本地/受控工作区服务使用，不要通过修改监听地址将其直接公开。
+
+## 最短使用路径
+
+```bash
+curl -X POST 'http://127.0.0.1:5002/api/textbooks?title=Mathematics' \
+  -H 'Content-Type: application/pdf' --data-binary @textbook.pdf
+
+# 将 BOOK_ID 替换为上传返回的 id；解析含集中答案页后才会补全缺失答案
+curl -X POST 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/jobs' \
+  -H 'Content-Type: application/json' \
+  -d '{"kind":"parse","generateAnswers":true}'
+
+curl 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/jobs'
+curl 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/proposals'
+curl 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/export.zip' -o textbook.zip
+```
+
+上传只检查 PDF 并建立页清单；图像按需渲染并缓存，不需要等待整本书渲染后才拿到课本 ID。任务异步运行，GET 任务接口提供状态、当前页、范围、事件、错误和检查点。需要人工处理的结果标为 `needs_review`，不会冒充完全解析成功。导出仅包含已接受的正式内容，同时保留校验结果和待审核数量。
+
+## 架构与工作流
+
+- [架构与目录](docs/architecture.md)
+- [与旧版对应的识题工作流](docs/extraction-workflow.md)
+- [接口使用与审核流程](docs/api.md)
+- [模型 Skill 指令](src/ai/skills/README.md)
+
+领域对象和 HTTP 请求通过 Zod 做运行时校验；同一套 schema 生成 `dist/contracts/openapi.json`。大规格只作为构建产物存在。SKILL.md 会复制进构建目录，由执行器实际读取、锁定版本和哈希。
+
+## 验证与当前边界
+
+```bash
 npm run check
 ```
 
-`check` 执行构建、OpenAPI lint、类型兼容检查、契约测试、架构依赖检查，以及 63 个实际路由的 501 和入口隔离测试。
+检查包括 TypeScript、OpenAPI、模块依赖、真实 PDF/PNG/HTTP/ZIP 链路，以及跨页、漏题重试、恢复、取消、答案来源、候选冲突等回归测试。测试中的模型返回使用可控响应；另有本地 HTTP 模拟服务验证 Responses/Chat Completions 协议、重试和取消。它们验证业务与协议，不代表真实模型的 OCR 准确率或学科解题质量。
 
-构建后可分别启动：
-
-```bash
-npm run start:api        # 127.0.0.1:5002，仅公开 API
-npm run start:internal   # 127.0.0.1:5003，仅任务租约/步骤/产物接口
-npm run start:gateway    # 127.0.0.1:5004，仅模型/工具调用接口
-npm run start:worker     # 验证 Worker 装配后退出，尚无队列消费者
-```
-
-端口分别支持 `PORT`、`INTERNAL_PORT`、`GATEWAY_PORT`。当前只监听回环地址，业务占位响应不表示认证、租户隔离和资源访问已经实现。启动不会连接数据库、Redis、Docker 或外部模型。
-
-下一阶段按模块实现 use case 与 adapter，替换 `*.module.ts` 中对应的 UnimplementedService provider。仓储和外部依赖端口目前仅有声明，未提供虚构成功的内存实现。
+持久化使用原子文件替换和进程内互斥；一个数据卷只允许一个后端进程使用。没有引入 PostgreSQL、Redis 或分布式队列。进程重启后运行中的任务标记 `interrupted`，通过 resume 接口从检查点恢复。长题超过待处理页预算会失败并保留检查点，不丢弃旧页。

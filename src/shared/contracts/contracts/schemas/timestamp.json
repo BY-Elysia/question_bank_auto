@@ -1,8 +1,0 @@
-{
-  "name": "Timestamp",
-  "typeFile": "src/shared/contracts/timestamp.ts",
-  "schema": {
-    "type": "string",
-    "format": "date-time"
-  }
-}

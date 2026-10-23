@@ -1,0 +1,9 @@
+{
+  "id": "cross-page-reconcile",
+  "version": "1.0.0",
+  "description": "判定内容和题目跨页边界",
+  "modelRole": "vision",
+  "allowedTools": [],
+  "status": "implemented",
+  "maxStructuredAttempts": 2
+}

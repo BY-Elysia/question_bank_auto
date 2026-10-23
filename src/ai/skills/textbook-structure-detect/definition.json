@@ -1,0 +1,9 @@
+{
+  "id": "textbook-structure-detect",
+  "version": "1.0.0",
+  "description": "识别课本章节结构",
+  "modelRole": "vision",
+  "allowedTools": [],
+  "status": "implemented",
+  "maxStructuredAttempts": 2
+}

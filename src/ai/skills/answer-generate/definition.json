@@ -1,18 +1,9 @@
 {
   "id": "answer-generate",
   "version": "1.0.0",
-  "description": "生成有明确来源标记的答案",
-  "mode": "single-call",
+  "description": "补全缺失答案及必要解析",
   "modelRole": "reasoning",
-  "inputSchemaRef": "openapi.json#/components/schemas/AnswerGenerateInput",
-  "outputSchemaRef": "openapi.json#/components/schemas/AnswerGenerateOutput",
   "allowedTools": [],
-  "maxModelCalls": 1,
-  "maxToolCalls": 0,
-  "status": "planned",
-  "requiredCapabilities": {
-    "vision": true,
-    "tools": false,
-    "structuredOutput": true
-  }
+  "status": "implemented",
+  "maxStructuredAttempts": 2
 }

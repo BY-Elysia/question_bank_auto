@@ -1,0 +1,9 @@
+{
+  "id": "content-repair",
+  "version": "1.0.0",
+  "description": "按指定要求修复课本内容",
+  "modelRole": "vision",
+  "allowedTools": [],
+  "status": "implemented",
+  "maxStructuredAttempts": 2
+}

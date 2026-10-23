@@ -1,76 +1,123 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import openapiTS, { astToString } from 'openapi-typescript';
-
-const root = fileURLToPath(new URL('../', import.meta.url));
-const read = async (file) => JSON.parse(await fs.readFile(path.join(root, file), 'utf8'));
-async function files(dir) {
-  const entries = await fs.readdir(path.join(root, dir), { withFileTypes: true });
-  return (
-    await Promise.all(
-      entries.map((e) => (e.isDirectory() ? files(`${dir}/${e.name}`) : [`${dir}/${e.name}`])),
-    )
-  )
-    .flat()
-    .sort();
+import { z } from 'zod';
+import { Book, Proposal } from '../dist/app/modules/textbooks/domain/book.js';
+import { Document, Issue, Page } from '../dist/app/modules/textbooks/domain/content.js';
+import { Job, JobRequest } from '../dist/app/modules/jobs/domain/job.js';
+import * as requests from '../dist/app/modules/textbooks/presentation/contracts.js';
+import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
+import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
+const schemas = {
+  Book,
+  Job,
+  JobRequest,
+  ...requests,
+  BookList: z.array(
+    Book.pick({ id: true, title: true, revision: true, updatedAt: true }).extend({
+      pageCount: z.number().int(),
+    }),
+  ),
+  DocumentResponse: z.object({ revision: z.number().int(), document: Document }),
+  ProposalList: z.array(Proposal),
+  JobList: z.array(Job.omit({ stage: true })),
+  Validation: z.object({ issues: z.array(Issue) }),
+  Revisions: z.array(z.object({ revision: z.number().int() })),
+  Health: z.object({
+    status: z.literal('ok'),
+    mode: z.literal('single-workspace'),
+    modelConfigured: z.boolean(),
+  }),
+  ExportDocument: Document.extend({
+    schemaVersion: z.literal('1.0'),
+    id: z.string(),
+    title: z.string(),
+    revision: z.number().int(),
+    pages: z.array(Page.extend({ image: z.string() })),
+    validation: z.array(Issue),
+    reviewIssues: z.array(Issue),
+    pendingProposalCount: z.number().int(),
+  }),
+};
+const components = { schemas: {} };
+for (const [name, schema] of Object.entries(schemas)) {
+  const json = z.toJSONSchema(schema);
+  delete json.$schema;
+  components.schemas[name] = json;
 }
-const spec = await read('contracts/api.json');
-spec.paths = {};
-spec.components = { schemas: {} };
-for (const file of await files('contracts/common')) {
-  spec.components[path.basename(file, '.json')] = await read(file);
+const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
+function content(name) {
+  return binaries[name]
+    ? { [binaries[name]]: { schema: { type: 'string', format: 'binary' } } }
+    : { 'application/json': { schema: { $ref: `#/components/schemas/${name}` } } };
 }
-const catalog = { schemaVersion: '1.0', skills: [], tools: [], workflows: [] };
-const typeFiles = {};
-const operations = new Set();
-for (const file of await files('src')) {
-  if (!file.endsWith('.json')) continue;
-  const data = await read(file);
-  if (file.includes('/contracts/schemas/')) {
-    if (spec.components.schemas[data.name]) throw new Error(`Duplicate schema: ${data.name}`);
-    spec.components.schemas[data.name] = data.schema;
-    typeFiles[data.name] = data.typeFile;
-  } else if (file.includes('/contracts/operations/')) {
-    if (operations.has(data.operation.operationId) || spec.paths[data.path]?.[data.method]) {
-      throw new Error(`Duplicate operation: ${file}`);
-    }
-    operations.add(data.operation.operationId);
-    (spec.paths[data.path] ??= {})[data.method] = data.operation;
-  } else if (file.endsWith('/definition.json')) {
-    const category = file.split('/')[2];
-    if (!(category in catalog)) throw new Error(`Unknown catalog: ${file}`);
-    if (catalog[category].some((item) => item.id === data.id))
-      throw new Error(`Duplicate definition: ${file}`);
-    catalog[category].push(data);
-  }
+const paths = {};
+for (const [method, path, operationId, input, output, status] of [
+  ...textbookRoutes,
+  ...jobRoutes,
+  ['get', '/api/health', 'health', null, 'Health', 200],
+]) {
+  const parameters = [...path.matchAll(/\{([^}]+)\}/g)].map(([, name]) => ({
+    name,
+    in: 'path',
+    required: true,
+    schema: name === 'page' ? { type: 'integer', minimum: 1 } : { type: 'string' },
+  }));
+  if (operationId === 'uploadTextbook')
+    parameters.push({
+      name: 'title',
+      in: 'query',
+      required: true,
+      schema: { type: 'string', minLength: 1, maxLength: 300 },
+    });
+  (paths[path] ??= {})[method] = {
+    operationId,
+    summary: operationId,
+    parameters,
+    security: [],
+    ...(input ? { requestBody: { required: true, content: content(input) } } : {}),
+    responses: {
+      [status]: { description: 'Success', ...(output ? { content: content(output) } : {}) },
+      400: { description: 'Invalid request' },
+      404: { description: 'Not found' },
+      409: { description: 'Revision conflict or active task' },
+      500: { description: 'Operation failed' },
+    },
+  };
 }
-catalog.deferredSkills = await read('contracts/deferred-skills.json');
-await fs.mkdir(path.join(root, 'dist/contracts'), { recursive: true });
-const emit = (name, data) =>
-  fs.writeFile(path.join(root, `dist/contracts/${name}`), JSON.stringify(data, null, 2) + '\n');
-await emit('openapi.json', spec);
-await emit('catalog.json', catalog);
-await emit('type-files.json', typeFiles);
-await fs.writeFile(path.join(root, 'dist/contracts/api.d.ts'), astToString(await openapiTS(spec)));
-
-// Verify source DTOs against generated wire types in both directions during tsc.
-// Generated declarations and these assertions stay outside the source tree.
-const assertions = [
-  "import type { components } from './api.js';",
-  'type Assert<T extends true> = T;',
-  'type Compatible<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
-];
-for (const [name, file] of Object.entries(typeFiles).sort()) {
-  assertions.push(`import type { ${name} } from '../../${file.replace(/\.ts$/, '.js')}';`);
-  assertions.push(
-    `type Check${name} = Assert<Compatible<${name}, components['schemas']['${name}']>>;`,
-  );
-}
+await fs.mkdir('dist/contracts', { recursive: true });
 await fs.writeFile(
-  path.join(root, 'dist/contracts/type-compatibility.ts'),
-  assertions.join('\n') + '\n',
+  'dist/contracts/openapi.json',
+  JSON.stringify(
+    {
+      openapi: '3.1.0',
+      info: {
+        title: 'Textbook workspace backend',
+        version: '0.3.0',
+        description:
+          'Single-workspace backend, no user authentication. Model-backed work runs as resumable jobs.',
+      },
+      servers: [{ url: 'http://127.0.0.1:5002' }],
+      paths,
+      components,
+    },
+    null,
+    2,
+  ),
 );
+const catalog = [];
+for (const entry of await fs.readdir('src/ai/skills', { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const source = `src/ai/skills/${entry.name}`,
+    target = `dist/app/ai/skills/${entry.name}`;
+  const definition = JSON.parse(await fs.readFile(`${source}/definition.json`, 'utf8'));
+  const markdown = await fs.readFile(`${source}/SKILL.md`, 'utf8');
+  if (!markdown.includes(`name: ${definition.id}\n`))
+    throw new Error(`Missing/mismatched Skill: ${entry.name}`);
+  await fs.mkdir(target, { recursive: true });
+  for (const file of ['SKILL.md', 'definition.json'])
+    await fs.copyFile(`${source}/${file}`, `${target}/${file}`);
+  catalog.push(definition);
+}
+await fs.writeFile('dist/contracts/skills.json', JSON.stringify(catalog, null, 2));
 console.log(
-  `Bundled ${operations.size} operations, ${Object.keys(typeFiles).length} schemas into dist/contracts.`,
+  `Built ${Object.values(paths).reduce((n, p) => n + Object.keys(p).length, 0)} endpoints and ${catalog.length} Skill packages.`,
 );

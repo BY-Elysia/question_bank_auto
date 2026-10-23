@@ -1,0 +1,9 @@
+{
+  "id": "page-content-extract",
+  "version": "1.0.0",
+  "description": "忠实提取课本内容及题目",
+  "modelRole": "vision",
+  "allowedTools": [],
+  "status": "implemented",
+  "maxStructuredAttempts": 2
+}

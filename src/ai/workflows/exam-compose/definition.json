@@ -1,8 +1,0 @@
-{
-  "id": "exam-compose",
-  "version": "1.0.0",
-  "description": "exam-compose 工作流",
-  "skills": [],
-  "inputSchemaRef": "openapi.json#/components/schemas/ExamComposeRequest",
-  "status": "planned"
-}

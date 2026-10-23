@@ -1,0 +1,9 @@
+{
+  "id": "source-verify",
+  "version": "1.0.0",
+  "description": "核对原文与解析结果",
+  "modelRole": "vision",
+  "allowedTools": [],
+  "status": "implemented",
+  "maxStructuredAttempts": 2
+}

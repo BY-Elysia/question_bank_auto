@@ -8,7 +8,11 @@
     "noEmit": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "skipLibCheck": false
+    "skipLibCheck": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "dist/contracts/type-compatibility.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
