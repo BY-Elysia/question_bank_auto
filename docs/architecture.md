@@ -45,6 +45,7 @@ modules/documents/
 
 ```text
 ai/skills/question-extract/
+├── SKILL.md                                # 模型任务指令与行为边界
 ├── definition.json                         # ID、版本、模型能力与工具允许列表
 ├── skill.interface.ts                      # 执行输入、输出、上下文
 └── contracts/
@@ -54,7 +55,7 @@ ai/skills/question-extract/
     └── schemas/
 ```
 
-每个 Skill、Tool 和 Workflow 拥有独立目录。definition.json 均为 planned，本轮没有实现 prompt、模型执行循环或 PDF 流水线。
+每个 Skill、Tool 和 Workflow 拥有独立目录。definition.json 均为 planned，每个 Skill 的 SKILL.md 定义任务指令草案；本轮没有实现指令加载、模型执行循环或 PDF 流水线。加载和版本约定见 [Skill 包说明](../src/ai/skills/README.md)。
 
 - workflow.interface.ts：业务处理流程边界。
 - skill.interface.ts：一次模型工作的输入输出。
