@@ -1,0 +1,42 @@
+{
+  "name": "PdfRenderRequest",
+  "typeFile": "src/ai/workflows/pdf-render/contracts/pdf-render-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "pdf-render"
+        ]
+      },
+      "sourceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 1
+      },
+      "dpi": {
+        "type": "integer",
+        "minimum": 72,
+        "maximum": 300
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "png",
+          "jpeg"
+        ]
+      }
+    },
+    "required": [
+      "kind",
+      "sourceAssetIds",
+      "dpi",
+      "format"
+    ]
+  }
+}

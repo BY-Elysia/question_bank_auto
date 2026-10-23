@@ -1,0 +1,23 @@
+{
+  "name": "DocumentsReadQuestionCall",
+  "typeFile": "src/ai/tools/documents-read-question/contracts/documents-read-question-call.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "toolId": {
+        "type": "string",
+        "enum": [
+          "documents.read-question"
+        ]
+      },
+      "input": {
+        "$ref": "#/components/schemas/ReadQuestionInput"
+      }
+    },
+    "required": [
+      "toolId",
+      "input"
+    ]
+  }
+}

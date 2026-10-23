@@ -1,0 +1,71 @@
+{
+  "name": "MathRepairOutput",
+  "typeFile": "src/ai/skills/math-format-repair/contracts/math-repair-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "math-format-repair"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "needs_input"
+        ]
+      },
+      "text": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 200000
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "explanation": {
+        "type": "string",
+        "maxLength": 200000
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillIssue"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "status",
+      "text",
+      "explanation",
+      "issues"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "completed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "text": {
+              "not": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

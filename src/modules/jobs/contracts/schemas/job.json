@@ -1,0 +1,96 @@
+{
+  "name": "Job",
+  "typeFile": "src/modules/jobs/domain/job.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "projectId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "workspaceId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "state": {
+        "$ref": "#/components/schemas/JobState"
+      },
+      "request": {
+        "$ref": "#/components/schemas/WorkflowRequest"
+      },
+      "plan": {
+        "$ref": "#/components/schemas/ExecutionPlan"
+      },
+      "progress": {
+        "$ref": "#/components/schemas/JobProgress"
+      },
+      "result": {
+        "$ref": "#/components/schemas/JobResult"
+      },
+      "usage": {
+        "$ref": "#/components/schemas/Usage"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Problem"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "retryOfJobId": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "finishedAt": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "workspaceId",
+      "state",
+      "request",
+      "plan",
+      "progress",
+      "result",
+      "usage",
+      "error",
+      "retryOfJobId",
+      "createdAt",
+      "updatedAt",
+      "finishedAt"
+    ]
+  }
+}

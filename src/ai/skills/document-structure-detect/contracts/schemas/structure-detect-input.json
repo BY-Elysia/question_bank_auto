@@ -1,0 +1,43 @@
+{
+  "name": "StructureDetectInput",
+  "typeFile": "src/ai/skills/document-structure-detect/contracts/structure-detect-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "document-structure-detect"
+        ]
+      },
+      "documentKind": {
+        "type": "string",
+        "enum": [
+          "textbook",
+          "exam"
+        ]
+      },
+      "pageAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 1
+      },
+      "existingNodes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/StructureNode"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "documentKind",
+      "pageAssetIds",
+      "existingNodes"
+    ]
+  }
+}

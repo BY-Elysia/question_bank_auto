@@ -1,0 +1,23 @@
+{
+  "name": "QuestionPage",
+  "typeFile": "src/modules/library/application/dto/question-page.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/LibraryQuestion"
+        }
+      },
+      "page": {
+        "$ref": "#/components/schemas/PageInfo"
+      }
+    },
+    "required": [
+      "items",
+      "page"
+    ]
+  }
+}

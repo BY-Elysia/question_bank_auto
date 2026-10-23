@@ -1,0 +1,84 @@
+{
+  "path": "/api/v1/library/questions/search",
+  "method": "post",
+  "operation": {
+    "operationId": "searchLibraryQuestions",
+    "tags": [
+      "Library"
+    ],
+    "summary": "按确定性条件检索题库",
+    "description": "按确定性条件检索题库",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/QuestionPage"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/LibraryQuery"
+          }
+        }
+      }
+    }
+  }
+}

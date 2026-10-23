@@ -1,0 +1,37 @@
+{
+  "name": "ToolCall",
+  "typeFile": "src/ai/runtime/contracts/tool-call.ts",
+  "schema": {
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/AssetsReadPageCall"
+      },
+      {
+        "$ref": "#/components/schemas/AssetsCropImageCall"
+      },
+      {
+        "$ref": "#/components/schemas/LibraryListSourcesCall"
+      },
+      {
+        "$ref": "#/components/schemas/LibraryListNodesCall"
+      },
+      {
+        "$ref": "#/components/schemas/LibrarySearchQuestionsCall"
+      },
+      {
+        "$ref": "#/components/schemas/DocumentsReadQuestionCall"
+      }
+    ],
+    "discriminator": {
+      "propertyName": "toolId",
+      "mapping": {
+        "assets.read-page": "#/components/schemas/AssetsReadPageCall",
+        "assets.crop-image": "#/components/schemas/AssetsCropImageCall",
+        "library.list-sources": "#/components/schemas/LibraryListSourcesCall",
+        "library.list-nodes": "#/components/schemas/LibraryListNodesCall",
+        "library.search-questions": "#/components/schemas/LibrarySearchQuestionsCall",
+        "documents.read-question": "#/components/schemas/DocumentsReadQuestionCall"
+      }
+    }
+  }
+}

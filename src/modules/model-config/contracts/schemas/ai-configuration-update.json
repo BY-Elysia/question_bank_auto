@@ -1,0 +1,19 @@
+{
+  "name": "AiConfigurationUpdate",
+  "typeFile": "src/modules/model-config/application/dto/ai-configuration-update.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "bindings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillBinding"
+        }
+      }
+    },
+    "required": [
+      "bindings"
+    ]
+  }
+}

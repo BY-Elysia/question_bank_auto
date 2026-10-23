@@ -1,0 +1,23 @@
+{
+  "name": "ValidationReport",
+  "typeFile": "src/modules/documents/domain/validation-report.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "valid": {
+        "type": "boolean"
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ValidationIssue"
+        }
+      }
+    },
+    "required": [
+      "valid",
+      "issues"
+    ]
+  }
+}

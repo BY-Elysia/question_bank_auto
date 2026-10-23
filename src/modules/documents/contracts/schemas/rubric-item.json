@@ -1,0 +1,27 @@
+{
+  "name": "RubricItem",
+  "typeFile": "src/modules/documents/domain/rubric-item.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "maxScore": {
+        "type": "number",
+        "minimum": 0
+      },
+      "criteria": {
+        "type": "string",
+        "maxLength": 200000
+      }
+    },
+    "required": [
+      "id",
+      "maxScore",
+      "criteria"
+    ]
+  }
+}

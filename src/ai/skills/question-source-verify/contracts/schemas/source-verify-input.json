@@ -1,0 +1,32 @@
+{
+  "name": "SourceVerifyInput",
+  "typeFile": "src/ai/skills/question-source-verify/contracts/source-verify-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-source-verify"
+        ]
+      },
+      "question": {
+        "$ref": "#/components/schemas/Question"
+      },
+      "sourceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "kind",
+      "question",
+      "sourceAssetIds"
+    ]
+  }
+}

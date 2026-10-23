@@ -1,0 +1,28 @@
+{
+  "name": "User",
+  "typeFile": "src/modules/identity/domain/user.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "displayName",
+      "createdAt"
+    ]
+  }
+}

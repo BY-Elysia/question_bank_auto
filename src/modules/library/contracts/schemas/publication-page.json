@@ -1,0 +1,23 @@
+{
+  "name": "PublicationPage",
+  "typeFile": "src/modules/library/application/dto/publication-page.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Publication"
+        }
+      },
+      "page": {
+        "$ref": "#/components/schemas/PageInfo"
+      }
+    },
+    "required": [
+      "items",
+      "page"
+    ]
+  }
+}

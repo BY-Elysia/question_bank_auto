@@ -1,0 +1,11 @@
+{
+  "id": "assets.read-page",
+  "version": "1.0.0",
+  "description": "读取当前任务获授权的页图",
+  "sideEffect": "none",
+  "inputSchemaRef": "openapi.json#/components/schemas/ReadPageInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/ReadPageOutput",
+  "requiredScopes": [
+    "assets:read"
+  ]
+}

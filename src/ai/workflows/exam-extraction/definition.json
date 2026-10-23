@@ -1,0 +1,15 @@
+{
+  "id": "exam-extraction",
+  "version": "1.0.0",
+  "description": "exam-extraction 工作流",
+  "skills": [
+    "document-structure-detect",
+    "question-boundary-detect",
+    "question-extract",
+    "question-source-verify",
+    "structured-output-repair",
+    "answer-generate"
+  ],
+  "inputSchemaRef": "openapi.json#/components/schemas/ExamExtractionRequest",
+  "status": "planned"
+}

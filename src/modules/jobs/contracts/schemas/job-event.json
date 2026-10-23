@@ -1,0 +1,54 @@
+{
+  "name": "JobEvent",
+  "typeFile": "src/modules/jobs/domain/job-event.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]*$"
+      },
+      "jobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "job.state",
+          "job.progress",
+          "step.completed",
+          "proposal.created",
+          "job.finished"
+        ]
+      },
+      "occurredAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "state": {
+        "$ref": "#/components/schemas/JobState"
+      },
+      "progress": {
+        "$ref": "#/components/schemas/JobProgress"
+      },
+      "stepId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "proposalId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "id",
+      "jobId",
+      "type",
+      "occurredAt",
+      "state"
+    ],
+    "description": "每个任务递增的事件 ID；SSE event 字段等于 type，id 等于 id，data 是此对象。终态为 succeeded/failed/cancelled/needs_input。"
+  }
+}

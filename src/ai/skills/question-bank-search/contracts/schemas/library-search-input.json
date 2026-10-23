@@ -1,0 +1,39 @@
+{
+  "name": "LibrarySearchInput",
+  "typeFile": "src/ai/skills/question-bank-search/contracts/library-search-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-bank-search"
+        ]
+      },
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "sourceIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": [
+      "kind",
+      "query",
+      "sourceIds",
+      "limit"
+    ]
+  }
+}

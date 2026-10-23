@@ -1,0 +1,24 @@
+{
+  "name": "ModelCapabilities",
+  "typeFile": "src/modules/model-config/domain/model-capabilities.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "vision": {
+        "type": "boolean"
+      },
+      "tools": {
+        "type": "boolean"
+      },
+      "structuredOutput": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "vision",
+      "tools",
+      "structuredOutput"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "PageInfo",
+  "typeFile": "src/shared/contracts/page-info.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 2048
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "hasMore": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "nextCursor",
+      "hasMore"
+    ]
+  }
+}

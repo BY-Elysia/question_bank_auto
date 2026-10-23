@@ -1,0 +1,10 @@
+{
+  "id": "library-search",
+  "version": "1.0.0",
+  "description": "library-search 工作流",
+  "skills": [
+    "question-bank-search"
+  ],
+  "inputSchemaRef": "openapi.json#/components/schemas/LibrarySearchRequest",
+  "status": "planned"
+}

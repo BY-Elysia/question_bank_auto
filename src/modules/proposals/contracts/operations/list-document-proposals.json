@@ -1,0 +1,86 @@
+{
+  "path": "/api/v1/documents/{documentId}/proposals",
+  "method": "get",
+  "operation": {
+    "operationId": "listDocumentProposals",
+    "tags": [
+      "Proposals"
+    ],
+    "summary": "列出模型或组卷修改建议",
+    "description": "列出模型或组卷修改建议",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "documentId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/Cursor"
+      },
+      {
+        "$ref": "#/components/parameters/Limit"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProposalPage"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    }
+  }
+}

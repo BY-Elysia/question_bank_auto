@@ -1,0 +1,42 @@
+{
+  "name": "ModelInvalidResponse",
+  "typeFile": "src/ai/gateway/application/dto/model-invalid-response.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "invalid_output"
+        ]
+      },
+      "invocationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "rawOutputArtifactId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ValidationIssue"
+        },
+        "minItems": 1
+      },
+      "usage": {
+        "$ref": "#/components/schemas/Usage"
+      }
+    },
+    "required": [
+      "kind",
+      "invocationId",
+      "rawOutputArtifactId",
+      "issues",
+      "usage"
+    ],
+    "description": "HTTP 成功仅表示完成调用。无效模型内容以此分支返回，由工作流读取原始产物并进入受预算约束的修复步骤。"
+  }
+}

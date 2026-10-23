@@ -1,0 +1,109 @@
+{
+  "path": "/api/v1/projects/{projectId}",
+  "method": "patch",
+  "operation": {
+    "operationId": "updateProject",
+    "tags": [
+      "Projects"
+    ],
+    "summary": "更新项目名称或归档状态",
+    "description": "更新项目名称或归档状态",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "projectId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      },
+      {
+        "$ref": "#/components/parameters/IfMatch"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          },
+          "ETag": {
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[1-9][0-9]*\"$"
+            },
+            "description": "当前资源 revision；runtime 使用 generation。"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Project"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "412": {
+        "$ref": "#/components/responses/E412"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "428": {
+        "$ref": "#/components/responses/E428"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/ProjectUpdate"
+          }
+        }
+      }
+    }
+  }
+}

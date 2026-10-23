@@ -1,0 +1,32 @@
+{
+  "name": "ModelStructuredResponse",
+  "typeFile": "src/ai/gateway/application/dto/model-structured-response.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "structured"
+        ]
+      },
+      "invocationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "output": {
+        "$ref": "#/components/schemas/SkillOutput"
+      },
+      "usage": {
+        "$ref": "#/components/schemas/Usage"
+      }
+    },
+    "required": [
+      "kind",
+      "invocationId",
+      "output",
+      "usage"
+    ]
+  }
+}

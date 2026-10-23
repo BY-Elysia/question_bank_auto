@@ -1,0 +1,99 @@
+{
+  "path": "/api/v1/projects/{projectId}/assets",
+  "method": "post",
+  "operation": {
+    "operationId": "uploadAsset",
+    "tags": [
+      "Assets"
+    ],
+    "summary": "上传原始资料或附件",
+    "description": "流式落到 inbox，校验成功后登记；单文件最大 250 MiB。支持 PDF、PNG、JPEG、WebP、JSON，校验内容签名而非仅扩展名。owner 由 token 决定。",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "projectId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "201": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Asset"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "413": {
+        "$ref": "#/components/responses/E413"
+      },
+      "415": {
+        "$ref": "#/components/responses/E415"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "multipart/form-data": {
+          "schema": {
+            "$ref": "#/components/schemas/AssetUpload"
+          }
+        }
+      }
+    }
+  }
+}

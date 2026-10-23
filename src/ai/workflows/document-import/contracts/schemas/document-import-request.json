@@ -1,0 +1,32 @@
+{
+  "name": "DocumentImportRequest",
+  "typeFile": "src/ai/workflows/document-import/contracts/document-import-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "document-import"
+        ]
+      },
+      "sourceAssetId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "question-bank-v1",
+          "legacy-textbook-json"
+        ]
+      }
+    },
+    "required": [
+      "kind",
+      "sourceAssetId",
+      "format"
+    ]
+  }
+}

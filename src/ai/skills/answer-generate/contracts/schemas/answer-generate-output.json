@@ -1,0 +1,72 @@
+{
+  "name": "AnswerGenerateOutput",
+  "typeFile": "src/ai/skills/answer-generate/contracts/answer-generate-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "answer-generate"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "needs_input"
+        ]
+      },
+      "answer": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GeneratedAnswer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "rubric": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RubricItem"
+        }
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillIssue"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "status",
+      "answer",
+      "rubric",
+      "issues"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "completed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "answer": {
+              "not": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

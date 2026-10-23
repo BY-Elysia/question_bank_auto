@@ -1,0 +1,11 @@
+{
+  "id": "library.search-questions",
+  "version": "1.0.0",
+  "description": "按条件查询当前用户题库",
+  "sideEffect": "none",
+  "inputSchemaRef": "openapi.json#/components/schemas/LibraryQuery",
+  "outputSchemaRef": "openapi.json#/components/schemas/QuestionPage",
+  "requiredScopes": [
+    "library:read"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "ModelImagePart",
+  "typeFile": "src/ai/gateway/domain/model-image-part.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "asset"
+        ]
+      },
+      "assetId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "type",
+      "assetId"
+    ]
+  }
+}

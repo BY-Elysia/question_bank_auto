@@ -1,0 +1,18 @@
+{
+  "id": "question-repair",
+  "version": "1.0.0",
+  "description": "按限定字段定向修题",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/QuestionRepairInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/QuestionRepairOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "HeartbeatResult",
+  "typeFile": "src/modules/job-execution/application/dto/heartbeat-result.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "cancelRequested": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "expiresAt",
+      "cancelRequested"
+    ]
+  }
+}

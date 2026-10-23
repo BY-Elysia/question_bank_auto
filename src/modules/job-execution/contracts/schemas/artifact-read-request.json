@@ -1,0 +1,21 @@
+{
+  "name": "ArtifactReadRequest",
+  "typeFile": "src/modules/job-execution/application/dto/artifact-read-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lease": {
+        "$ref": "#/components/schemas/LeaseContext"
+      },
+      "artifactId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "lease",
+      "artifactId"
+    ]
+  }
+}

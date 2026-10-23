@@ -1,0 +1,30 @@
+{
+  "name": "BoundaryResult",
+  "typeFile": "src/ai/skills/question-boundary-detect/contracts/boundary-result.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "completeRanges": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/QuestionRange"
+        }
+      },
+      "pendingRanges": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/QuestionRange"
+        }
+      },
+      "continuesPrevious": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "completeRanges",
+      "pendingRanges",
+      "continuesPrevious"
+    ]
+  }
+}

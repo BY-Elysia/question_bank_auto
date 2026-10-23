@@ -1,0 +1,55 @@
+{
+  "name": "QuestionRepairInput",
+  "typeFile": "src/ai/skills/question-repair/contracts/question-repair-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-repair"
+        ]
+      },
+      "question": {
+        "$ref": "#/components/schemas/Question"
+      },
+      "sourceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "instruction": {
+        "type": "string",
+        "maxLength": 200000
+      },
+      "allowedFields": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "answer",
+            "options",
+            "title",
+            "score",
+            "rubric",
+            "stem",
+            "children"
+          ]
+        },
+        "minItems": 1,
+        "uniqueItems": true
+      }
+    },
+    "required": [
+      "kind",
+      "question",
+      "sourceAssetIds",
+      "instruction",
+      "allowedFields"
+    ]
+  }
+}

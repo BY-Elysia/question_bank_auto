@@ -1,0 +1,14 @@
+{
+  "UserBearer": {
+    "type": "http",
+    "scheme": "bearer",
+    "bearerFormat": "JWT",
+    "description": "外部身份服务签发，aud=question-bank-api。owner 从 sub 解析。"
+  },
+  "WorkspaceBearer": {
+    "type": "http",
+    "scheme": "bearer",
+    "bearerFormat": "JWT",
+    "description": "控制服务签发短期工作区令牌，aud=question-bank-internal，绑定 workspaceId、containerGeneration 和 scopes。"
+  }
+}

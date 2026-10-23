@@ -1,0 +1,19 @@
+{
+  "name": "WorkflowCatalog",
+  "typeFile": "src/ai/registry/application/dto/workflow-catalog.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/WorkflowDefinition"
+        }
+      }
+    },
+    "required": [
+      "items"
+    ]
+  }
+}

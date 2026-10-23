@@ -1,0 +1,18 @@
+{
+  "id": "question-extract",
+  "version": "1.0.0",
+  "description": "从指定范围提取题目及可见答案",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/QuestionExtractInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/QuestionExtractOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

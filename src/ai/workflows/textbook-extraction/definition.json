@@ -1,0 +1,15 @@
+{
+  "id": "textbook-extraction",
+  "version": "1.0.0",
+  "description": "textbook-extraction 工作流",
+  "skills": [
+    "document-structure-detect",
+    "question-boundary-detect",
+    "question-extract",
+    "question-source-verify",
+    "structured-output-repair",
+    "answer-generate"
+  ],
+  "inputSchemaRef": "openapi.json#/components/schemas/TextbookExtractionRequest",
+  "status": "planned"
+}

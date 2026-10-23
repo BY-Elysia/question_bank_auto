@@ -1,0 +1,36 @@
+{
+  "name": "StepCommit",
+  "typeFile": "src/modules/job-execution/application/dto/step-commit.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lease": {
+        "$ref": "#/components/schemas/LeaseContext"
+      },
+      "step": {
+        "$ref": "#/components/schemas/JobStep"
+      },
+      "checkpoint": {
+        "$ref": "#/components/schemas/Checkpoint"
+      },
+      "artifactIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "output": {
+        "$ref": "#/components/schemas/SkillOutput"
+      }
+    },
+    "required": [
+      "lease",
+      "step",
+      "checkpoint",
+      "artifactIds"
+    ],
+    "description": "Skill 步骤要求 output.kind 与计划一致并按 Skill schema 校验；确定性步骤可省略 output。stepId+attempt 幂等，检查点 sequence 单调递增。"
+  }
+}

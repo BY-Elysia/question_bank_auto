@@ -1,0 +1,23 @@
+{
+  "name": "ReplaceDocumentChange",
+  "typeFile": "src/modules/proposals/domain/replace-document-change.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "replace_document"
+        ]
+      },
+      "content": {
+        "$ref": "#/components/schemas/DocumentContent"
+      }
+    },
+    "required": [
+      "kind",
+      "content"
+    ]
+  }
+}

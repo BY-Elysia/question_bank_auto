@@ -1,0 +1,97 @@
+{
+  "path": "/internal/v1/jobs/{jobId}/artifacts/read",
+  "method": "post",
+  "operation": {
+    "operationId": "readJobArtifactContent",
+    "tags": [
+      "Worker"
+    ],
+    "summary": "读取当前任务的暂存产物",
+    "description": "读取模型原始响应或步骤产物，校验租约和 artifactId 归属。过期 Worker 不再获得读取权限。 内部端点不得暴露到公网入口；工作区令牌还需具备该操作 scope。",
+    "x-audience": "workspace",
+    "security": [
+      {
+        "WorkspaceBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "jobId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/octet-stream": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/ArtifactReadRequest"
+          }
+        }
+      }
+    },
+    "x-required-scopes": [
+      "artifacts:read"
+    ]
+  }
+}

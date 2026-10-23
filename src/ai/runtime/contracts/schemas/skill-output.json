@@ -1,0 +1,53 @@
+{
+  "name": "SkillOutput",
+  "typeFile": "src/ai/runtime/contracts/skill-output.ts",
+  "schema": {
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/StructureDetectOutput"
+      },
+      {
+        "$ref": "#/components/schemas/BoundaryDetectOutput"
+      },
+      {
+        "$ref": "#/components/schemas/QuestionExtractOutput"
+      },
+      {
+        "$ref": "#/components/schemas/SourceVerifyOutput"
+      },
+      {
+        "$ref": "#/components/schemas/StructuredRepairOutput"
+      },
+      {
+        "$ref": "#/components/schemas/QuestionRepairOutput"
+      },
+      {
+        "$ref": "#/components/schemas/MathRepairOutput"
+      },
+      {
+        "$ref": "#/components/schemas/AnswerGenerateOutput"
+      },
+      {
+        "$ref": "#/components/schemas/QuestionTypeOutput"
+      },
+      {
+        "$ref": "#/components/schemas/LibrarySearchOutput"
+      }
+    ],
+    "discriminator": {
+      "propertyName": "kind",
+      "mapping": {
+        "document-structure-detect": "#/components/schemas/StructureDetectOutput",
+        "question-boundary-detect": "#/components/schemas/BoundaryDetectOutput",
+        "question-extract": "#/components/schemas/QuestionExtractOutput",
+        "question-source-verify": "#/components/schemas/SourceVerifyOutput",
+        "structured-output-repair": "#/components/schemas/StructuredRepairOutput",
+        "question-repair": "#/components/schemas/QuestionRepairOutput",
+        "math-format-repair": "#/components/schemas/MathRepairOutput",
+        "answer-generate": "#/components/schemas/AnswerGenerateOutput",
+        "question-type-classify": "#/components/schemas/QuestionTypeOutput",
+        "question-bank-search": "#/components/schemas/LibrarySearchOutput"
+      }
+    }
+  }
+}

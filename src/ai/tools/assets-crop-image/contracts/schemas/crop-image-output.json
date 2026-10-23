@@ -1,0 +1,26 @@
+{
+  "name": "CropImageOutput",
+  "typeFile": "src/ai/tools/assets-crop-image/contracts/crop-image-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "artifactId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "sourceAssetId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "region": {
+        "$ref": "#/components/schemas/CropBox"
+      }
+    },
+    "required": [
+      "artifactId",
+      "sourceAssetId",
+      "region"
+    ]
+  }
+}

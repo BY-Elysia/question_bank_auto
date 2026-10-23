@@ -1,0 +1,76 @@
+{
+  "path": "/api/v1/publications/{publicationId}",
+  "method": "delete",
+  "operation": {
+    "operationId": "withdrawPublication",
+    "tags": [
+      "Library"
+    ],
+    "summary": "撤回已发布快照",
+    "description": "从后续搜索中隐藏，历史引用仍保留；已冻结的组卷任务可继续读取其获授权版本。重复撤回返回成功。",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "publicationId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "204": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "BoundaryDetectInput",
+  "typeFile": "src/ai/skills/question-boundary-detect/contracts/boundary-detect-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-boundary-detect"
+        ]
+      },
+      "currentPageAssetId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "pendingPageAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "lookaheadPageAssetId": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "currentNodeId": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "previousPendingRanges": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/QuestionRange"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "currentPageAssetId",
+      "pendingPageAssetIds",
+      "lookaheadPageAssetId",
+      "currentNodeId",
+      "previousPendingRanges"
+    ]
+  }
+}

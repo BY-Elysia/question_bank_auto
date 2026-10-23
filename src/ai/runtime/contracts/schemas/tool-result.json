@@ -1,0 +1,37 @@
+{
+  "name": "ToolResult",
+  "typeFile": "src/ai/runtime/contracts/tool-result.ts",
+  "schema": {
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/AssetsReadPageResult"
+      },
+      {
+        "$ref": "#/components/schemas/AssetsCropImageResult"
+      },
+      {
+        "$ref": "#/components/schemas/LibraryListSourcesResult"
+      },
+      {
+        "$ref": "#/components/schemas/LibraryListNodesResult"
+      },
+      {
+        "$ref": "#/components/schemas/LibrarySearchQuestionsResult"
+      },
+      {
+        "$ref": "#/components/schemas/DocumentsReadQuestionResult"
+      }
+    ],
+    "discriminator": {
+      "propertyName": "toolId",
+      "mapping": {
+        "assets.read-page": "#/components/schemas/AssetsReadPageResult",
+        "assets.crop-image": "#/components/schemas/AssetsCropImageResult",
+        "library.list-sources": "#/components/schemas/LibraryListSourcesResult",
+        "library.list-nodes": "#/components/schemas/LibraryListNodesResult",
+        "library.search-questions": "#/components/schemas/LibrarySearchQuestionsResult",
+        "documents.read-question": "#/components/schemas/DocumentsReadQuestionResult"
+      }
+    }
+  }
+}

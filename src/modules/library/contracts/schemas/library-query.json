@@ -1,0 +1,46 @@
+{
+  "name": "LibraryQuery",
+  "typeFile": "src/modules/library/application/dto/library-query.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 4000
+      },
+      "publicationIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "nodeIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "choice",
+          "free_response",
+          "group"
+        ]
+      },
+      "cursor": {
+        "type": "string",
+        "maxLength": 2048
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": []
+  }
+}

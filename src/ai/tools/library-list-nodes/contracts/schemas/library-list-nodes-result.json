@@ -1,0 +1,23 @@
+{
+  "name": "LibraryListNodesResult",
+  "typeFile": "src/ai/tools/library-list-nodes/contracts/library-list-nodes-result.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "toolId": {
+        "type": "string",
+        "enum": [
+          "library.list-nodes"
+        ]
+      },
+      "output": {
+        "$ref": "#/components/schemas/NodePage"
+      }
+    },
+    "required": [
+      "toolId",
+      "output"
+    ]
+  }
+}

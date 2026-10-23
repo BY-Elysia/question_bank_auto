@@ -1,0 +1,18 @@
+{
+  "id": "question-boundary-detect",
+  "version": "1.0.0",
+  "description": "判定跨页续题和完整题范围",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/BoundaryDetectInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/BoundaryDetectOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

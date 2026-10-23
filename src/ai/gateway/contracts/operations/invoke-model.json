@@ -1,0 +1,96 @@
+{
+  "path": "/internal/v1/jobs/{jobId}/model-invocations",
+  "method": "post",
+  "operation": {
+    "operationId": "invokeModel",
+    "tags": [
+      "Gateway"
+    ],
+    "summary": "通过冻结配置调用外部模型",
+    "description": "短期令牌和活跃租约双重校验；网关解析凭证并限制当前 Skill 的模型能力、调用数与预算。供应商超时无法确认结果时记录 unknown，不保证供应商端 exactly-once。结构或语义无效的响应登记为模型错误，由工作流决定修复。 内部端点不得暴露到公网入口；工作区令牌还需具备该操作 scope。",
+    "x-audience": "workspace",
+    "security": [
+      {
+        "WorkspaceBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "jobId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ModelInvocationResponse"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/ModelInvocationRequest"
+          }
+        }
+      }
+    },
+    "x-required-scopes": [
+      "models:invoke"
+    ]
+  }
+}

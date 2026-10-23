@@ -1,0 +1,99 @@
+{
+  "path": "/api/v1/jobs/{jobId}/events/stream",
+  "method": "get",
+  "operation": {
+    "operationId": "streamJobEvents",
+    "tags": [
+      "Jobs"
+    ],
+    "summary": "订阅可恢复的任务事件",
+    "description": "使用支持 Authorization 的 fetch 流式读取。SSE id 为单任务递增 ID，event 为 JobEvent.type，data 为 JSON 编码 JobEvent。每 15 秒发送注释心跳，支持 Last-Event-ID 回放，至少保留至任务结束后 7 天；过期在建立流前返回 410。终态发送 job.finished 并关闭连接。断开连接不取消任务。",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "jobId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "in": "header",
+        "name": "Last-Event-ID",
+        "schema": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "const": "no-cache"
+            },
+            "description": "禁止缓存事件流"
+          }
+        },
+        "content": {
+          "text/event-stream": {
+            "schema": {
+              "type": "string"
+            },
+            "example": "id: 1\nevent: job.state\ndata: {\"id\":\"1\",\"jobId\":\"11111111-1111-4111-8111-111111111111\",\"type\":\"job.state\",\"occurredAt\":\"2026-10-22T08:00:00Z\",\"state\":\"running\"}\n\n"
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "410": {
+        "$ref": "#/components/responses/E410"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    }
+  }
+}

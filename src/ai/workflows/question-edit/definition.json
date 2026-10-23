@@ -1,0 +1,15 @@
+{
+  "id": "question-edit",
+  "version": "1.0.0",
+  "description": "question-edit 工作流",
+  "skills": [
+    "question-source-verify",
+    "structured-output-repair",
+    "question-repair",
+    "math-format-repair",
+    "answer-generate",
+    "question-type-classify"
+  ],
+  "inputSchemaRef": "openapi.json#/components/schemas/QuestionEditRequest",
+  "status": "planned"
+}

@@ -1,4 +1,7 @@
-import type { CreateJobBody, Question, SkillInput, ToolCall } from '../src/contracts/index.js';
+import type { JobCreate as CreateJobBody } from '../src/modules/jobs/application/dto/job-create.js';
+import type { Question } from '../src/modules/documents/domain/question.js';
+import type { SkillInput } from '../src/ai/runtime/contracts/skill-input.js';
+import type { ToolCall } from '../src/ai/runtime/contracts/tool-call.js';
 
 const renderRequest: CreateJobBody = {
   request: { kind: 'pdf-render', sourceAssetIds: [], dpi: 180, format: 'png' },
@@ -6,7 +9,7 @@ const renderRequest: CreateJobBody = {
 void renderRequest;
 
 function questionOptions(question: Question): string[] {
-  if (question.kind === 'choice') return question.options.map(option => option.id);
+  if (question.kind === 'choice') return question.options.map((option) => option.id);
   if (question.kind === 'group') return question.children.flatMap(questionOptions);
   return [];
 }

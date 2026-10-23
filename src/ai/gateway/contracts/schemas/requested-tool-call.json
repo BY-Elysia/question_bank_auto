@@ -1,0 +1,22 @@
+{
+  "name": "RequestedToolCall",
+  "typeFile": "src/ai/gateway/domain/requested-tool-call.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "call": {
+        "$ref": "#/components/schemas/ToolCall"
+      }
+    },
+    "required": [
+      "id",
+      "call"
+    ]
+  }
+}

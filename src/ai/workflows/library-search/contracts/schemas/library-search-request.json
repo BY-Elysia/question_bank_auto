@@ -1,0 +1,23 @@
+{
+  "name": "LibrarySearchRequest",
+  "typeFile": "src/ai/workflows/library-search/contracts/library-search-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "library-search"
+        ]
+      },
+      "input": {
+        "$ref": "#/components/schemas/LibrarySearchInput"
+      }
+    },
+    "required": [
+      "kind",
+      "input"
+    ]
+  }
+}

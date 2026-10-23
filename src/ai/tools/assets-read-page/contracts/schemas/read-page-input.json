@@ -1,0 +1,17 @@
+{
+  "name": "ReadPageInput",
+  "typeFile": "src/ai/tools/assets-read-page/contracts/read-page-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "assetId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "assetId"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "ExecutionPlan",
+  "typeFile": "src/modules/jobs/domain/execution-plan.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "workflow": {
+        "$ref": "#/components/schemas/VersionReference"
+      },
+      "applicationBuild": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "directoryLayoutVersion": {
+        "type": "string",
+        "enum": [
+          "1"
+        ]
+      },
+      "skillBindings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillBinding"
+        }
+      },
+      "tools": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VersionReference"
+        }
+      },
+      "maxModelCalls": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxToolCalls": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxInputTokens": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxOutputTokens": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxAttemptsPerStep": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "deadlineAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "credentialPolicy": {
+        "type": "string",
+        "enum": [
+          "current-secret-with-frozen-reference"
+        ]
+      }
+    },
+    "required": [
+      "workflow",
+      "applicationBuild",
+      "directoryLayoutVersion",
+      "skillBindings",
+      "tools",
+      "maxModelCalls",
+      "maxToolCalls",
+      "maxInputTokens",
+      "maxOutputTokens",
+      "maxAttemptsPerStep",
+      "deadlineAt",
+      "credentialPolicy"
+    ],
+    "description": "配置和版本冻结；凭证引用不变但读取该凭证当前有效密钥，轮换立即生效，撤销后禁止调用。"
+  }
+}

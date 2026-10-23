@@ -1,0 +1,43 @@
+{
+  "name": "ExportManifest",
+  "typeFile": "src/ai/workflows/document-export/contracts/export-manifest.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "schemaVersion": {
+        "type": "string",
+        "enum": [
+          "1.0"
+        ]
+      },
+      "documentId": {
+        "$ref": "#/components/schemas/Id"
+      },
+      "documentRevision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "documentFile": {
+        "type": "string",
+        "enum": [
+          "question-bank.json"
+        ]
+      },
+      "media": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ExportMediaEntry"
+        }
+      }
+    },
+    "required": [
+      "schemaVersion",
+      "documentId",
+      "documentRevision",
+      "documentFile",
+      "media"
+    ],
+    "description": "导出 ZIP 的 manifest.json。文档保留稳定 assetId，manifest 映射包内媒体路径，导入时重新登记资产并统一改写 ID。"
+  }
+}

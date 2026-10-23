@@ -1,0 +1,23 @@
+{
+  "name": "LibrarySearchQuestionsCall",
+  "typeFile": "src/ai/tools/library-search-questions/contracts/library-search-questions-call.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "toolId": {
+        "type": "string",
+        "enum": [
+          "library.search-questions"
+        ]
+      },
+      "input": {
+        "$ref": "#/components/schemas/LibraryQuery"
+      }
+    },
+    "required": [
+      "toolId",
+      "input"
+    ]
+  }
+}

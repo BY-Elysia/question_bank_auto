@@ -1,0 +1,8 @@
+{
+  "id": "pdf-render",
+  "version": "1.0.0",
+  "description": "pdf-render 工作流",
+  "skills": [],
+  "inputSchemaRef": "openapi.json#/components/schemas/PdfRenderRequest",
+  "status": "planned"
+}

@@ -1,0 +1,47 @@
+{
+  "name": "StructuredRepairInput",
+  "typeFile": "src/ai/skills/structured-output-repair/contracts/structured-repair-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "structured-output-repair"
+        ]
+      },
+      "targetSchemaRef": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "rawOutput": {
+        "type": "string",
+        "maxLength": 200000
+      },
+      "errors": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ValidationIssue"
+        },
+        "minItems": 1
+      },
+      "sourceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "targetSchemaRef",
+      "rawOutput",
+      "errors",
+      "sourceAssetIds"
+    ],
+    "description": "targetSchemaRef 仅允许当前计划中非 structured-output-repair Skill 的输出 schema；修复预算继承父步骤。"
+  }
+}

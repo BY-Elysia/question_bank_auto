@@ -6,7 +6,9 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "skipLibCheck": false
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "dist/contracts/type-compatibility.ts"]
 }

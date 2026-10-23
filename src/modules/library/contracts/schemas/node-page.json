@@ -1,0 +1,23 @@
+{
+  "name": "NodePage",
+  "typeFile": "src/modules/library/application/dto/node-page.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/StructureNode"
+        }
+      },
+      "page": {
+        "$ref": "#/components/schemas/PageInfo"
+      }
+    },
+    "required": [
+      "items",
+      "page"
+    ]
+  }
+}

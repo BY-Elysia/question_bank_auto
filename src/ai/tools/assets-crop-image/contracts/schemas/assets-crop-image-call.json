@@ -1,0 +1,23 @@
+{
+  "name": "AssetsCropImageCall",
+  "typeFile": "src/ai/tools/assets-crop-image/contracts/assets-crop-image-call.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "toolId": {
+        "type": "string",
+        "enum": [
+          "assets.crop-image"
+        ]
+      },
+      "input": {
+        "$ref": "#/components/schemas/CropImageInput"
+      }
+    },
+    "required": [
+      "toolId",
+      "input"
+    ]
+  }
+}

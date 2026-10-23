@@ -1,0 +1,42 @@
+{
+  "name": "Quota",
+  "typeFile": "src/modules/workspaces/domain/quota.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "storageLimitBytes": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "storageUsedBytes": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxConcurrentJobs": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "modelTokenLimit": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "modelTokensUsed": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "periodEndsAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "storageLimitBytes",
+      "storageUsedBytes",
+      "maxConcurrentJobs",
+      "modelTokenLimit",
+      "modelTokensUsed",
+      "periodEndsAt"
+    ]
+  }
+}

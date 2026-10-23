@@ -1,0 +1,22 @@
+{
+  "name": "LeaseContext",
+  "typeFile": "src/modules/job-execution/domain/lease-context.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "leaseId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "fencingToken": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "leaseId",
+      "fencingToken"
+    ]
+  }
+}

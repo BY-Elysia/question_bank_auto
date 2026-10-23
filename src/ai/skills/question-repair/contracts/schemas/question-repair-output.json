@@ -1,0 +1,74 @@
+{
+  "name": "QuestionRepairOutput",
+  "typeFile": "src/ai/skills/question-repair/contracts/question-repair-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-repair"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "needs_input"
+        ]
+      },
+      "question": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Question"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "changedFields": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillIssue"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "status",
+      "question",
+      "changedFields",
+      "issues"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "completed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "question": {
+              "not": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

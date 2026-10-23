@@ -1,0 +1,18 @@
+{
+  "id": "document-structure-detect",
+  "version": "1.0.0",
+  "description": "识别教材或试卷结构",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/StructureDetectInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/StructureDetectOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

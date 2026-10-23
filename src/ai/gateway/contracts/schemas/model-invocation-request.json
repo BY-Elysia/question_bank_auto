@@ -1,0 +1,51 @@
+{
+  "name": "ModelInvocationRequest",
+  "typeFile": "src/ai/gateway/application/dto/model-invocation-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lease": {
+        "$ref": "#/components/schemas/LeaseContext"
+      },
+      "stepId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "skillId": {
+        "$ref": "#/components/schemas/SkillId"
+      },
+      "skillVersion": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "callIndex": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "messages": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ModelMessage"
+        },
+        "minItems": 1
+      },
+      "schemaRef": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "lease",
+      "stepId",
+      "skillId",
+      "skillVersion",
+      "callIndex",
+      "messages",
+      "schemaRef"
+    ],
+    "description": "配置、密钥、允许工具、Token 预算从冻结 plan 解析。schemaRef 必须匹配 Skill 输出（结构修复例外受目标白名单约束）。禁止客户端提供 baseUrl、密钥、ownerId 或任意工具定义。callIndex 纳入幂等键。"
+  }
+}

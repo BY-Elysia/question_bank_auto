@@ -1,0 +1,19 @@
+{
+  "name": "ProviderCatalog",
+  "typeFile": "src/modules/model-config/application/dto/provider-catalog.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Provider"
+        }
+      }
+    },
+    "required": [
+      "items"
+    ]
+  }
+}

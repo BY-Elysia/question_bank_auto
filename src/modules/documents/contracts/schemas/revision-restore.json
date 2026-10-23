@@ -1,0 +1,17 @@
+{
+  "name": "RevisionRestore",
+  "typeFile": "src/modules/documents/application/dto/revision-restore.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "revision"
+    ]
+  }
+}

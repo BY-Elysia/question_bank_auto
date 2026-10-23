@@ -4,15 +4,15 @@ import test from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 
-const read = file => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
-const spec = read('../contracts/openapi.json');
-const catalog = read('../contracts/catalog.json');
+const read = (file) => JSON.parse(fs.readFileSync(new URL(file, import.meta.url), 'utf8'));
+const spec = read('../dist/contracts/openapi.json');
+const catalog = read('../dist/contracts/catalog.json');
 const examples = read('../contracts/examples.json');
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
 ajv.addSchema({ $id: 'urn:question-bank:contracts', components: spec.components });
-const validate = name => ajv.getSchema(`urn:question-bank:contracts#/components/schemas/${name}`);
-const sample = name => structuredClone(examples.find(e => e.name === name).value);
+const validate = (name) => ajv.getSchema(`urn:question-bank:contracts#/components/schemas/${name}`);
+const sample = (name) => structuredClone(examples.find((e) => e.name === name).value);
 
 test('Every schema compiles as JSON Schema 2020-12', () => {
   for (const name of Object.keys(spec.components.schemas)) assert.ok(validate(name), name);
@@ -47,7 +47,11 @@ test('Completed skills require usable output; needs_input can carry null', () =>
 });
 
 test('Job submission cannot select a filesystem path, owner or arbitrary tool', () => {
-  for (const [key, value] of [['ownerId', 'other-user'], ['jsonFilePath', '/etc/passwd'], ['tool', 'shell.execute']]) {
+  for (const [key, value] of [
+    ['ownerId', 'other-user'],
+    ['jsonFilePath', '/etc/passwd'],
+    ['tool', 'shell.execute'],
+  ]) {
     const job = sample('教材提取任务');
     job.request[key] = value;
     assert.equal(validate('JobCreate')(job), false, key);
@@ -93,12 +97,19 @@ test('Public and workspace routes cannot accidentally share authentication', () 
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const [method, op] of Object.entries(methods)) {
       const internal = path.startsWith('/internal/v1/');
-      assert.deepEqual(op.security, [{ [internal ? 'WorkspaceBearer' : 'UserBearer']: [] }], op.operationId);
+      assert.deepEqual(
+        op.security,
+        [{ [internal ? 'WorkspaceBearer' : 'UserBearer']: [] }],
+        op.operationId,
+      );
       assert.equal(op['x-audience'], internal ? 'workspace' : 'public');
       assert.equal(operationIds.has(op.operationId), false);
       operationIds.add(op.operationId);
       if (['post', 'put', 'patch', 'delete'].includes(method)) {
-        assert.ok(op.parameters.some(p => p.$ref?.endsWith('/IdempotencyKey')), op.operationId);
+        assert.ok(
+          op.parameters.some((p) => p.$ref?.endsWith('/IdempotencyKey')),
+          op.operationId,
+        );
       }
     }
   }
@@ -106,18 +117,35 @@ test('Public and workspace routes cannot accidentally share authentication', () 
 
 test('All existing-document mutations require explicit revision preconditions', () => {
   for (const id of ['replaceDocumentContent', 'restoreDocumentRevision', 'decideProposal']) {
-    const op = Object.values(spec.paths).flatMap(Object.values).find(o => o.operationId === id);
-    assert.ok(op.parameters.some(p => p.$ref?.endsWith('/IfMatch')), id);
+    const op = Object.values(spec.paths)
+      .flatMap(Object.values)
+      .find((o) => o.operationId === id);
+    assert.ok(
+      op.parameters.some((p) => p.$ref?.endsWith('/IfMatch')),
+      id,
+    );
     assert.ok(op.responses['412']);
     assert.ok(op.responses['428']);
   }
-  for (const schema of ['TextbookExtractionRequest', 'ExamExtractionRequest', 'QuestionEditRequest', 'ExamComposeRequest']) {
+  for (const schema of [
+    'TextbookExtractionRequest',
+    'ExamExtractionRequest',
+    'QuestionEditRequest',
+    'ExamComposeRequest',
+  ]) {
     assert.ok(spec.components.schemas[schema].required.includes('baseRevision'), schema);
   }
 });
 
 test('Worker writes and model calls carry fencing context', () => {
-  for (const schema of ['Heartbeat', 'StepCommit', 'JobComplete', 'ModelInvocationRequest', 'ToolExecutionRequest', 'ArtifactReadRequest']) {
+  for (const schema of [
+    'Heartbeat',
+    'StepCommit',
+    'JobComplete',
+    'ModelInvocationRequest',
+    'ToolExecutionRequest',
+    'ArtifactReadRequest',
+  ]) {
     assert.ok(spec.components.schemas[schema].required.includes('lease'), schema);
   }
   assert.ok(spec.components.schemas.ArtifactUpload.required.includes('fencingToken'));
@@ -127,19 +155,23 @@ test('Worker writes and model calls carry fencing context', () => {
 test('Core Skill and Tool catalogs resolve to declared schemas', () => {
   assert.equal(catalog.skills.length, 10);
   assert.equal(catalog.deferredSkills.length, 3);
-  const toolIds = new Set(catalog.tools.map(t => t.id));
-  for (const [items, schema] of [[catalog.skills, 'SkillDefinition'], [catalog.tools, 'ToolDefinition'], [catalog.workflows, 'WorkflowDefinition']]) {
+  const toolIds = new Set(catalog.tools.map((t) => t.id));
+  for (const [items, schema] of [
+    [catalog.skills, 'SkillDefinition'],
+    [catalog.tools, 'ToolDefinition'],
+    [catalog.workflows, 'WorkflowDefinition'],
+  ]) {
     for (const item of items) {
       const check = validate(schema);
       assert.equal(check(item), true, JSON.stringify(check.errors));
-      for (const key of ['inputSchemaRef', 'outputSchemaRef'].filter(k => k in item)) {
+      for (const key of ['inputSchemaRef', 'outputSchemaRef'].filter((k) => k in item)) {
         const name = item[key].split('/').at(-1);
         assert.ok(spec.components.schemas[name], item[key]);
       }
     }
   }
   for (const skill of catalog.skills) {
-    assert.ok(skill.allowedTools.every(id => toolIds.has(id)));
+    assert.ok(skill.allowedTools.every((id) => toolIds.has(id)));
     if (skill.mode === 'single-call') assert.equal(skill.maxToolCalls, 0);
     for (const key of ['inputSchemaRef', 'outputSchemaRef']) {
       const schema = spec.components.schemas[skill[key].split('/').at(-1)];
@@ -151,8 +183,13 @@ test('Core Skill and Tool catalogs resolve to declared schemas', () => {
 test('SSE wire example parses as the typed event contract and declares replay expiry', () => {
   const op = spec.paths['/api/v1/jobs/{jobId}/events/stream'].get;
   const wire = op.responses['200'].content['text/event-stream'].example;
-  const event = JSON.parse(wire.split('\n').find(line => line.startsWith('data: ')).slice(6));
+  const event = JSON.parse(
+    wire
+      .split('\n')
+      .find((line) => line.startsWith('data: '))
+      .slice(6),
+  );
   assert.equal(validate('JobEvent')(event), true);
-  assert.ok(op.parameters.some(p => p.name === 'Last-Event-ID'));
+  assert.ok(op.parameters.some((p) => p.name === 'Last-Event-ID'));
   assert.ok(op.responses['410']);
 });

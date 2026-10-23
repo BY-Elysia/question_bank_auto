@@ -1,23 +1,40 @@
 {
-  "name": "@question-bank/backend-next-contracts",
-  "version": "0.1.0",
+  "name": "@question-bank/backend",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Contract-only foundation for the rebuilt backend. No server implementation.",
-  "engines": { "node": ">=22.21.0" },
+  "description": "Modular NestJS backend skeleton; business operations intentionally return 501.",
+  "engines": {
+    "node": ">=22.21.0"
+  },
   "scripts": {
-    "lint": "redocly lint contracts/openapi.json",
-    "generate": "openapi-typescript contracts/openapi.json -o src/contracts/api.d.ts",
-    "check:generated": "node scripts/check-generated.mjs",
+    "contracts:build": "node scripts/build-contracts.mjs",
+    "generate": "npm run contracts:build",
+    "lint": "redocly lint dist/contracts/openapi.json",
     "typecheck": "tsc --noEmit",
+    "build": "node scripts/clean-app.mjs && npm run contracts:build && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.mjs",
-    "check": "npm run lint && npm run check:generated && npm run typecheck && npm test"
+    "check": "npm run build && npm run lint && npm run typecheck && npm test",
+    "start:api": "node dist/app/apps/control-api/main.js",
+    "start:internal": "node dist/app/apps/control-api/internal-main.js",
+    "start:gateway": "node dist/app/apps/model-gateway/main.js",
+    "start:worker": "node dist/app/apps/workspace-worker/main.js",
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/*.{mjs,ts}\""
   },
   "devDependencies": {
     "@redocly/cli": "2.67.1",
+    "@types/node": "22.20.5",
     "ajv": "8.17.1",
     "ajv-formats": "3.0.1",
     "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
     "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
   }
 }

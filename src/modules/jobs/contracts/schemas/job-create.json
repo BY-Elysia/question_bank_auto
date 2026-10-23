@@ -1,0 +1,55 @@
+{
+  "name": "JobCreate",
+  "typeFile": "src/modules/jobs/application/dto/job-create.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "request": {
+        "$ref": "#/components/schemas/WorkflowRequest"
+      },
+      "aiConfigurationRevision": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "request"
+    ],
+    "description": "包含模型步骤时必须指定已配置的 aiConfigurationRevision；纯转图、导入、组卷、导出无需该字段。",
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "request": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "textbook-extraction",
+                    "exam-extraction",
+                    "question-edit",
+                    "library-search"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "aiConfigurationRevision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "request": {
+              "$ref": "#/components/schemas/WorkflowRequest"
+            }
+          },
+          "required": [
+            "aiConfigurationRevision"
+          ]
+        }
+      }
+    ]
+  }
+}

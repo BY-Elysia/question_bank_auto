@@ -1,0 +1,23 @@
+{
+  "name": "EventPage",
+  "typeFile": "src/modules/jobs/application/dto/event-page.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/JobEvent"
+        }
+      },
+      "page": {
+        "$ref": "#/components/schemas/PageInfo"
+      }
+    },
+    "required": [
+      "items",
+      "page"
+    ]
+  }
+}

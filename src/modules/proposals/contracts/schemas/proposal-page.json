@@ -1,0 +1,23 @@
+{
+  "name": "ProposalPage",
+  "typeFile": "src/modules/proposals/application/dto/proposal-page.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Proposal"
+        }
+      },
+      "page": {
+        "$ref": "#/components/schemas/PageInfo"
+      }
+    },
+    "required": [
+      "items",
+      "page"
+    ]
+  }
+}

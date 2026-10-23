@@ -1,0 +1,23 @@
+{
+  "name": "WorkerClaim",
+  "typeFile": "src/modules/job-execution/application/dto/worker-claim.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "workerBuild": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "jobId",
+      "workerBuild"
+    ]
+  }
+}

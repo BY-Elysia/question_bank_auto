@@ -1,0 +1,17 @@
+{
+  "name": "ReadQuestionInput",
+  "typeFile": "src/ai/tools/documents-read-question/contracts/read-question-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "questionVersionId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "questionVersionId"
+    ]
+  }
+}

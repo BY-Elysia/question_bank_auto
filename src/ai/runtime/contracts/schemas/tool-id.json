@@ -1,0 +1,15 @@
+{
+  "name": "ToolId",
+  "typeFile": "src/ai/runtime/contracts/tool-id.ts",
+  "schema": {
+    "type": "string",
+    "enum": [
+      "assets.read-page",
+      "assets.crop-image",
+      "library.list-sources",
+      "library.list-nodes",
+      "library.search-questions",
+      "documents.read-question"
+    ]
+  }
+}

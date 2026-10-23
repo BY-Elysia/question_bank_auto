@@ -1,0 +1,8 @@
+{
+  "name": "Id",
+  "typeFile": "src/shared/contracts/id.ts",
+  "schema": {
+    "type": "string",
+    "format": "uuid"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "AnswerGenerateInput",
+  "typeFile": "src/ai/skills/answer-generate/contracts/answer-generate-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "answer-generate"
+        ]
+      },
+      "question": {
+        "$ref": "#/components/schemas/Question"
+      },
+      "subject": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "instruction": {
+        "type": "string",
+        "maxLength": 8000
+      },
+      "includeRubric": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "kind",
+      "question",
+      "subject",
+      "includeRubric"
+    ]
+  }
+}

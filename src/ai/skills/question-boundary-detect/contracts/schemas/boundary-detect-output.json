@@ -1,0 +1,65 @@
+{
+  "name": "BoundaryDetectOutput",
+  "typeFile": "src/ai/skills/question-boundary-detect/contracts/boundary-detect-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-boundary-detect"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "needs_input"
+        ]
+      },
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BoundaryResult"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillIssue"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "status",
+      "result",
+      "issues"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "completed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "result": {
+              "not": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "math-format-repair",
+  "version": "1.0.0",
+  "description": "修复数学排版并保留语义",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/MathRepairInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/MathRepairOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

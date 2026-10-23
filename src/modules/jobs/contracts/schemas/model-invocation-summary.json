@@ -1,0 +1,79 @@
+{
+  "name": "ModelInvocationSummary",
+  "typeFile": "src/modules/jobs/domain/model-invocation-summary.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "jobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "stepId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "skillId": {
+        "$ref": "#/components/schemas/SkillId"
+      },
+      "providerId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "modelId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "profileRevision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "running",
+          "succeeded",
+          "failed",
+          "unknown"
+        ]
+      },
+      "usage": {
+        "$ref": "#/components/schemas/Usage"
+      },
+      "startedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "finishedAt": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "jobId",
+      "stepId",
+      "skillId",
+      "providerId",
+      "modelId",
+      "profileRevision",
+      "status",
+      "usage",
+      "startedAt",
+      "finishedAt"
+    ]
+  }
+}

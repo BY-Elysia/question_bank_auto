@@ -1,0 +1,23 @@
+{
+  "name": "AssetsReadPageCall",
+  "typeFile": "src/ai/tools/assets-read-page/contracts/assets-read-page-call.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "toolId": {
+        "type": "string",
+        "enum": [
+          "assets.read-page"
+        ]
+      },
+      "input": {
+        "$ref": "#/components/schemas/ReadPageInput"
+      }
+    },
+    "required": [
+      "toolId",
+      "input"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "QuestionTypeOutput",
+  "typeFile": "src/ai/skills/question-type-classify/contracts/question-type-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "question-type-classify"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "needs_input"
+        ]
+      },
+      "suggestedType": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "single_choice",
+              "multiple_choice",
+              "fill_blank",
+              "short_answer",
+              "proof",
+              "calculation",
+              "code",
+              "other",
+              "group"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 200000
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SkillIssue"
+        }
+      }
+    },
+    "required": [
+      "kind",
+      "status",
+      "suggestedType",
+      "reason",
+      "issues"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "completed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "suggestedType": {
+              "not": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

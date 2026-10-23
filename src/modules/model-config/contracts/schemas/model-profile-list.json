@@ -1,0 +1,19 @@
+{
+  "name": "ModelProfileList",
+  "typeFile": "src/modules/model-config/application/dto/model-profile-list.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ModelProfile"
+        }
+      }
+    },
+    "required": [
+      "items"
+    ]
+  }
+}

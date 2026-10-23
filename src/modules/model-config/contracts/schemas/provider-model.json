@@ -1,0 +1,28 @@
+{
+  "name": "ProviderModel",
+  "typeFile": "src/modules/model-config/domain/provider-model.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "capabilities": {
+        "$ref": "#/components/schemas/ModelCapabilities"
+      }
+    },
+    "required": [
+      "id",
+      "displayName",
+      "capabilities"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "ExamComposeRequest",
+  "typeFile": "src/ai/workflows/exam-compose/contracts/exam-compose-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "exam-compose"
+        ]
+      },
+      "documentId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "baseRevision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "sections": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ExamSectionSelection"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "kind",
+      "documentId",
+      "baseRevision",
+      "sections"
+    ]
+  }
+}

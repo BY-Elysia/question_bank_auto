@@ -1,0 +1,58 @@
+{
+  "name": "WorkspaceRuntime",
+  "typeFile": "src/modules/workspaces/domain/workspace-runtime.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "desiredState": {
+        "type": "string",
+        "enum": [
+          "running",
+          "stopped"
+        ]
+      },
+      "state": {
+        "type": "string",
+        "enum": [
+          "unprovisioned",
+          "starting",
+          "running",
+          "stopping",
+          "stopped",
+          "failed"
+        ]
+      },
+      "generation": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "observedGeneration": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Problem"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "desiredState",
+      "state",
+      "generation",
+      "observedGeneration",
+      "updatedAt",
+      "error"
+    ]
+  }
+}

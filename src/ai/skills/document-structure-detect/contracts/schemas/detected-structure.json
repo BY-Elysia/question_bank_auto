@@ -1,0 +1,44 @@
+{
+  "name": "DetectedStructure",
+  "typeFile": "src/ai/skills/document-structure-detect/contracts/detected-structure.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/StructureNode"
+        }
+      },
+      "switches": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "assetId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nodeId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "region": {
+              "$ref": "#/components/schemas/CropBox"
+            }
+          },
+          "required": [
+            "assetId",
+            "nodeId"
+          ]
+        }
+      }
+    },
+    "required": [
+      "nodes",
+      "switches"
+    ]
+  }
+}

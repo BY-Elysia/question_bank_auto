@@ -1,0 +1,29 @@
+{
+  "name": "DocumentChange",
+  "typeFile": "src/modules/proposals/domain/document-change.ts",
+  "schema": {
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/ReplaceDocumentChange"
+      },
+      {
+        "$ref": "#/components/schemas/UpsertQuestionChange"
+      },
+      {
+        "$ref": "#/components/schemas/DeleteQuestionChange"
+      },
+      {
+        "$ref": "#/components/schemas/ReplaceStructureChange"
+      }
+    ],
+    "discriminator": {
+      "propertyName": "kind",
+      "mapping": {
+        "replace_document": "#/components/schemas/ReplaceDocumentChange",
+        "upsert_question": "#/components/schemas/UpsertQuestionChange",
+        "delete_question": "#/components/schemas/DeleteQuestionChange",
+        "replace_structure": "#/components/schemas/ReplaceStructureChange"
+      }
+    }
+  }
+}

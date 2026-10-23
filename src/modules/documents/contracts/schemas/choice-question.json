@@ -1,0 +1,90 @@
+{
+  "name": "ChoiceQuestion",
+  "typeFile": "src/modules/documents/domain/choice-question.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "nodeId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "title": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "prompt": {
+        "$ref": "#/components/schemas/TextBlock"
+      },
+      "answer": {
+        "$ref": "#/components/schemas/Answer"
+      },
+      "score": {
+        "type": "number",
+        "minimum": 0
+      },
+      "rubric": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RubricItem"
+        }
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SourceEvidence"
+        }
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "choice"
+        ]
+      },
+      "selectionMode": {
+        "type": "string",
+        "enum": [
+          "single",
+          "multiple"
+        ]
+      },
+      "options": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ChoiceOption"
+        },
+        "minItems": 2
+      },
+      "correctOptionIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,15}$"
+        },
+        "uniqueItems": true
+      },
+      "allowPartial": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "nodeId",
+      "title",
+      "prompt",
+      "answer",
+      "score",
+      "rubric",
+      "evidence",
+      "kind",
+      "selectionMode",
+      "options",
+      "correctOptionIds",
+      "allowPartial"
+    ]
+  }
+}

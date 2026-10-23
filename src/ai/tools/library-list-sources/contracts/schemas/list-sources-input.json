@@ -1,0 +1,27 @@
+{
+  "name": "ListSourcesInput",
+  "typeFile": "src/ai/tools/library-list-sources/contracts/list-sources-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "textbook",
+          "exam"
+        ]
+      },
+      "cursor": {
+        "type": "string",
+        "maxLength": 2048
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      }
+    },
+    "required": []
+  }
+}

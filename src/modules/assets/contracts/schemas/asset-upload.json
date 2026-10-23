@@ -1,0 +1,30 @@
+{
+  "name": "AssetUpload",
+  "typeFile": "src/modules/assets/application/dto/asset-upload.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "source",
+          "attachment"
+        ]
+      },
+      "file": {
+        "type": "string",
+        "format": "binary"
+      },
+      "originalName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "kind",
+      "file"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "LeafQuestion",
+  "typeFile": "src/modules/documents/domain/leaf-question.ts",
+  "schema": {
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/ChoiceQuestion"
+      },
+      {
+        "$ref": "#/components/schemas/FreeResponseQuestion"
+      }
+    ],
+    "discriminator": {
+      "propertyName": "kind",
+      "mapping": {
+        "choice": "#/components/schemas/ChoiceQuestion",
+        "free_response": "#/components/schemas/FreeResponseQuestion"
+      }
+    }
+  }
+}

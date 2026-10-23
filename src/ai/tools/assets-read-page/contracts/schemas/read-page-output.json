@@ -1,0 +1,28 @@
+{
+  "name": "ReadPageOutput",
+  "typeFile": "src/ai/tools/assets-read-page/contracts/read-page-output.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "asset": {
+        "$ref": "#/components/schemas/Asset"
+      },
+      "contentHandle": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "asset",
+      "contentHandle",
+      "expiresAt"
+    ],
+    "description": "contentHandle 仅供当前任务模型网关使用，不是磁盘路径或跨用户公共 URL。"
+  }
+}

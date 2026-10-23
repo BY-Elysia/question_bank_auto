@@ -1,0 +1,20 @@
+{
+  "name": "RuntimeRequest",
+  "typeFile": "src/modules/workspaces/application/dto/runtime-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "desiredState": {
+        "type": "string",
+        "enum": [
+          "running",
+          "stopped"
+        ]
+      }
+    },
+    "required": [
+      "desiredState"
+    ]
+  }
+}

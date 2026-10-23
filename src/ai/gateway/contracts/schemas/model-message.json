@@ -1,0 +1,35 @@
+{
+  "name": "ModelMessage",
+  "typeFile": "src/ai/gateway/domain/model-message.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "type": "string",
+        "enum": [
+          "system",
+          "user",
+          "assistant",
+          "tool"
+        ]
+      },
+      "parts": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ModelPart"
+        },
+        "minItems": 1
+      },
+      "toolCallId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "role",
+      "parts"
+    ]
+  }
+}

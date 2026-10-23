@@ -1,0 +1,86 @@
+{
+  "name": "JobStep",
+  "typeFile": "src/modules/jobs/domain/job-step.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "jobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "skillId": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SkillId"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "state": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "skipped",
+          "needs_input"
+        ]
+      },
+      "attempt": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "inputAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "outputAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "invocationIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ValidationIssue"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "jobId",
+      "sequence",
+      "skillId",
+      "state",
+      "attempt",
+      "inputAssetIds",
+      "outputAssetIds",
+      "invocationIds",
+      "issues"
+    ]
+  }
+}

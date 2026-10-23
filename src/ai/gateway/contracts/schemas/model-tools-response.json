@@ -1,0 +1,36 @@
+{
+  "name": "ModelToolsResponse",
+  "typeFile": "src/ai/gateway/application/dto/model-tools-response.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "tool_calls"
+        ]
+      },
+      "invocationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "calls": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RequestedToolCall"
+        },
+        "minItems": 1
+      },
+      "usage": {
+        "$ref": "#/components/schemas/Usage"
+      }
+    },
+    "required": [
+      "kind",
+      "invocationId",
+      "calls",
+      "usage"
+    ]
+  }
+}

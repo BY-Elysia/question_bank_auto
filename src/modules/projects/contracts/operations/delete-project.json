@@ -1,0 +1,85 @@
+{
+  "path": "/api/v1/projects/{projectId}",
+  "method": "delete",
+  "operation": {
+    "operationId": "deleteProject",
+    "tags": [
+      "Projects"
+    ],
+    "summary": "软删除项目",
+    "description": "有非终态任务或未撤回发布快照时 409。软删除立即隐藏用户入口，已有跨项目引用保留至引用释放；物理回收遵守保留策略，不接受任意路径。",
+    "x-audience": "public",
+    "security": [
+      {
+        "UserBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "in": "path",
+        "name": "projectId",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      },
+      {
+        "$ref": "#/components/parameters/IfMatch"
+      }
+    ],
+    "responses": {
+      "204": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "412": {
+        "$ref": "#/components/responses/E412"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "428": {
+        "$ref": "#/components/responses/E428"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    }
+  }
+}

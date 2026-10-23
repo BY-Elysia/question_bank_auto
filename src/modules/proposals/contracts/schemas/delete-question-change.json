@@ -1,0 +1,24 @@
+{
+  "name": "DeleteQuestionChange",
+  "typeFile": "src/modules/proposals/domain/delete-question-change.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "delete_question"
+        ]
+      },
+      "questionId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "kind",
+      "questionId"
+    ]
+  }
+}

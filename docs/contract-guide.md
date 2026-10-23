@@ -1,8 +1,8 @@
 # 新版后端接口约定
 
-版本：0.1.0。日期：2026-10-22。状态：设计契约，未实现。
+版本：0.2.0。日期：2026-10-23。状态：模块化架构骨架；HTTP 路由已注册，业务接口返回 501。
 
-结构与字段以 `contracts/openapi.json` 为准；本文定义 JSON Schema 无法完整表达的授权、跨资源一致性和事务语义。`contracts/catalog.json` 的 planned 标记明确表示能力尚未上线；实现并通过验收后才能发布 active 版本。
+结构与字段在各模块的 contracts 目录维护，构建汇总为 `dist/contracts/openapi.json`；本文定义 JSON Schema 无法完整表达的授权、跨资源一致性和事务语义。`dist/contracts/catalog.json` 的 planned 标记明确表示能力尚未上线；实现并通过验收后才能发布 active 版本。
 
 ## 1. 运行边界
 
@@ -57,6 +57,8 @@ Project、Document、ModelProfile、Credential、AiConfiguration 使用递增 `r
 - 不接受 `If-Match: *`。
 
 ### 错误
+
+当前骨架的已注册操作统一返回 501 `NOT_IMPLEMENTED`，不执行业务、鉴权或运行时参数验证。下面的其他错误码描述未来实现的目标行为。
 
 使用 `application/problem+json`，包含 `type/title/status/code/detail/requestId/retryable`，字段错误可附 `errors[{pointer,message}]`。
 
@@ -208,7 +210,7 @@ Provider 为平台登记端点；模型配置选择 providerId/modelId/credentia
 
 ## 8. 实现时必须补的集成验收
 
-本轮契约测试不能证明以下运行行为，后续实现需逐项测试：
+当前路由测试只证明入口装配和 501 响应，不能证明以下运行行为，后续实现需逐项测试：
 
 - 两个真实用户互相无法读取、修改、下载、检索或调用对方资产。
 - 用户令牌不能调用内部接口；过期租约和旧容器 generation 不能写回。

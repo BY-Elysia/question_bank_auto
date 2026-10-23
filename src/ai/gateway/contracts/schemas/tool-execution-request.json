@@ -1,0 +1,41 @@
+{
+  "name": "ToolExecutionRequest",
+  "typeFile": "src/ai/gateway/application/dto/tool-execution-request.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "lease": {
+        "$ref": "#/components/schemas/LeaseContext"
+      },
+      "stepId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "skillId": {
+        "$ref": "#/components/schemas/SkillId"
+      },
+      "invocationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "toolCallId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "call": {
+        "$ref": "#/components/schemas/ToolCall"
+      }
+    },
+    "required": [
+      "lease",
+      "stepId",
+      "skillId",
+      "invocationId",
+      "toolCallId",
+      "call"
+    ],
+    "description": "调用必须匹配该 invocation 实际返回且尚未执行的 toolCallId；校验 Skill allowlist 和资源归属。确定性 Workflow 直接调用应用服务，不伪造模型 tool call。"
+  }
+}

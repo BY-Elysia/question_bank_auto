@@ -1,0 +1,18 @@
+{
+  "id": "question-source-verify",
+  "version": "1.0.0",
+  "description": "对照原始页图核对候选题目",
+  "mode": "single-call",
+  "modelRole": "vision-extraction",
+  "inputSchemaRef": "openapi.json#/components/schemas/SourceVerifyInput",
+  "outputSchemaRef": "openapi.json#/components/schemas/SourceVerifyOutput",
+  "allowedTools": [],
+  "maxModelCalls": 1,
+  "maxToolCalls": 0,
+  "status": "planned",
+  "requiredCapabilities": {
+    "vision": true,
+    "tools": false,
+    "structuredOutput": true
+  }
+}

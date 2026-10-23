@@ -1,59 +1,84 @@
-# 新版后端：接口定义
+# 题库后端：模块化架构骨架
 
-本分支是独立重建的后端起点，当前交付 **仅包含新版接口契约、类型、示例和契约检查**。没有 HTTP 服务、NestJS Controller、数据库实现、容器调度器、Worker、提示词实现或真实模型调用。旧项目文件已从本分支移除，可从原分支和 Git 历史查阅。
+当前分支包含 **NestJS 模块、Controller、DTO、应用服务接口、领域类型及外部依赖端口**。63 个 HTTP 操作已注册，业务实现全部返回 `501 NOT_IMPLEMENTED`。尚未实现鉴权、DTO 运行时校验、数据库、Docker 调度、队列消费或模型调用。
 
-## 交付入口
+## 源码结构
 
-| 文件 | 用途 |
-| --- | --- |
-| [contracts/openapi.json](contracts/openapi.json) | OpenAPI 3.1.1，公开 API 和内部 API 的唯一结构契约来源 |
-| [docs/contract-guide.md](docs/contract-guide.md) | 中文设计说明：身份、工作区、数据版本、任务、模型、Skill/Tool、错误与实现验收 |
-| [docs/endpoints.md](docs/endpoints.md) | 完整接口索引，按公开/内部边界列出 |
-| [contracts/catalog.json](contracts/catalog.json) | 10 个核心 Skill、6 个 Tool、8 个 Workflow 的版本和 schema 映射；均标记 planned |
-| [contracts/examples.json](contracts/examples.json) | 可校验请求、输出和事件样例 |
-| [src/contracts/api.d.ts](src/contracts/api.d.ts) | 从 OpenAPI 生成的 TypeScript 类型，不手写修改 |
-| [src/contracts/index.ts](src/contracts/index.ts) | 常用类型导出入口 |
-| [docs/workspace-layout.md](docs/workspace-layout.md) | 单用户容器的持久化目录与资源 ID 映射 |
+```text
+src/
+├── apps/
+│   ├── control-api/          # 公开 API 与独立的内部执行 API 入口
+│   ├── workspace-worker/     # 用户容器的 Nest 应用上下文
+│   └── model-gateway/        # 独立模型/工具调用入口
+├── modules/
+│   ├── identity/
+│   ├── workspaces/
+│   ├── projects/
+│   ├── assets/
+│   ├── documents/
+│   ├── proposals/
+│   ├── jobs/
+│   ├── job-execution/
+│   ├── library/
+│   └── model-config/
+├── ai/
+│   ├── workflows/            # 8 个工作流的定义和执行接口
+│   ├── skills/               # 10 个 Skill，各自维护输入输出
+│   ├── tools/                # 6 个 Tool，各自维护参数、结果和权限
+│   ├── registry/             # 能力注册表查询模块
+│   ├── runtime/              # Workflow/Skill/Tool 执行端口
+│   ├── gateway/              # 模型调用与工具执行 HTTP 模块
+│   └── providers/            # 模型供应商适配接口
+└── shared/                   # 基础上下文、错误和 HTTP 启动代码
+```
 
-规划运行栈：TypeScript、NestJS、PostgreSQL、Prisma、Redis/BullMQ。控制服务和模型网关共享管理能力，每个用户一个工作区 Worker 容器。本轮不安装这些运行依赖，不创建数据库，不启动 Docker。
+以文档模块为阅读入口：
 
-## 验证与生成
+- [模块注册](src/modules/documents/documents.module.ts)
+- [Controller](src/modules/documents/presentation/documents.controller.ts)
+- [应用服务接口](src/modules/documents/application/documents.service.interface.ts)
+- [文档领域类型](src/modules/documents/domain/document.ts)
+- [仓储接口](src/modules/documents/ports/document.repository.ts)
+- [501 占位适配器](src/modules/documents/infrastructure/documents.unimplemented.service.ts)
 
-要求 Node.js >= 22.21.0。
+完整说明见 [源码架构](docs/architecture.md)、[业务接口约定](docs/contract-guide.md)、[接口索引](docs/endpoints.md)、[用户工作目录](docs/workspace-layout.md)。
+
+## 分模块契约
+
+每个模块自己维护 `contracts/operations/` 和 `contracts/schemas/`。Skill、Tool 和 Workflow 分别维护自己的 `definition.json`。源码中没有完整 OpenAPI 大文件，也没有几千行的生成类型。
+
+执行 `npm run contracts:build` 后汇总为：
+
+```text
+dist/contracts/
+├── openapi.json              # 交给文档工具或客户端生成器
+├── api.d.ts                  # 客户端所需的完整类型
+├── catalog.json              # 汇总后的能力目录
+└── type-compatibility.ts     # 源码 DTO 与协议类型的一致性检查
+```
+
+`dist/` 被 Git 忽略。服务端源码不依赖生成目录；源类型与 schema 不一致会在类型检查中失败。JSON Schema 中的长度、范围及条件约束另由契约测试覆盖，它们不是 TypeScript 静态类型能完全表达的。
+
+## 构建与运行
+
+要求 Node.js >= 22.21.0。依赖使用 lockfile 固定。
 
 ```bash
 npm ci
 npm run check
 ```
 
-修改 OpenAPI 后：
+`check` 执行构建、OpenAPI lint、类型兼容检查、契约测试、架构依赖检查，以及 63 个实际路由的 501 和入口隔离测试。
+
+构建后可分别启动：
 
 ```bash
-npm run generate
-npm run check
+npm run start:api        # 127.0.0.1:5002，仅公开 API
+npm run start:internal   # 127.0.0.1:5003，仅任务租约/步骤/产物接口
+npm run start:gateway    # 127.0.0.1:5004，仅模型/工具调用接口
+npm run start:worker     # 验证 Worker 装配后退出，尚无队列消费者
 ```
 
-`check` 包含 OpenAPI lint、生成类型一致性、TypeScript 编译检查、JSON Schema 与契约样例测试。`no-unused-components` 关闭是因为 Skill、Tool 和 SSE 的协议 schema 也由注册表引用，不一定直接出现在 HTTP 请求体中；这些引用由契约测试核对。
+端口分别支持 `PORT`、`INTERNAL_PORT`、`GATEWAY_PORT`。当前只监听回环地址，业务占位响应不表示认证、租户隔离和资源访问已经实现。启动不会连接数据库、Redis、Docker 或外部模型。
 
-检查只证明契约的结构、示例和所覆盖的约束一致，**不代表服务器、租户隔离、取消、重试或数据库事务已实现**。
-
-## 约定摘要
-
-- 用户和 Agent 调用 `/api/v1`；工作区容器调用隔离的 `/internal/v1`。
-- 用户工作区唯一，身份来自认证令牌；公开请求不能指定其他 ownerId 或文件系统路径。
-- PostgreSQL 是文档、题目、版本、任务和资产索引的权威来源；磁盘存放二进制、日志及导出快照。
-- 提取、修题、组卷产生候选修改 Proposal；应用时检查文档版本。AI 不直接覆盖现有文档。
-- 所有写请求使用 `Idempotency-Key`；修改可变资源使用 `If-Match`。
-- 后台任务通过 REST 查询与 SSE 查看进度，断开前端不取消任务。
-- Skill、Tool、Workflow、模型配置版本在任务创建时冻结；凭证密钥不进入用户目录或执行计划。
-- 3 个后续 Skill（知识点标注、答案复核、组卷规划）只列为待办，当前无可调用契约。
-
-## 后续实现顺序
-
-1. 身份解析、工作区资源、文档与资产仓储。
-2. 用户容器生命周期与任务租约、检查点和事件流。
-3. 模型网关、凭证、Skill 执行器及允许列表。
-4. PDF → 提取 → 候选修改 → 人工应用 → JSON 导出闭环。
-5. 题库发布检索、编辑类 Skill 与组卷。
-
-参考：[OpenAPI 3.1.1](https://spec.openapis.org/oas/v3.1.1.html)、[openapi-typescript](https://openapi-ts.dev/introduction)、[Redocly lint](https://redocly.com/docs/cli/commands/lint)。
+下一阶段按模块实现 use case 与 adapter，替换 `*.module.ts` 中对应的 UnimplementedService provider。仓储和外部依赖端口目前仅有声明，未提供虚构成功的内存实现。

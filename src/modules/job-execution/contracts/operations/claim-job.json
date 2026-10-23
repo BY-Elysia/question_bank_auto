@@ -1,0 +1,87 @@
+{
+  "path": "/internal/v1/leases/claim",
+  "method": "post",
+  "operation": {
+    "operationId": "claimJob",
+    "tags": [
+      "Worker"
+    ],
+    "summary": "领取分配给当前工作区的任务",
+    "description": "Worker 仅从自己的队列获取 jobId；服务再次校验 workspaceId/containerGeneration。相同幂等键重放同一租约，新领取要求 queued 或旧租约已过期，fencingToken 单调递增。 内部端点不得暴露到公网入口；工作区令牌还需具备该操作 scope。",
+    "x-audience": "workspace",
+    "security": [
+      {
+        "WorkspaceBearer": []
+      }
+    ],
+    "parameters": [
+      {
+        "$ref": "#/components/parameters/IdempotencyKey"
+      }
+    ],
+    "responses": {
+      "200": {
+        "description": "请求成功",
+        "headers": {
+          "X-Request-Id": {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "请求追踪 ID"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Lease"
+            }
+          }
+        }
+      },
+      "400": {
+        "$ref": "#/components/responses/E400"
+      },
+      "401": {
+        "$ref": "#/components/responses/E401"
+      },
+      "403": {
+        "$ref": "#/components/responses/E403"
+      },
+      "404": {
+        "$ref": "#/components/responses/E404"
+      },
+      "409": {
+        "$ref": "#/components/responses/E409"
+      },
+      "422": {
+        "$ref": "#/components/responses/E422"
+      },
+      "429": {
+        "$ref": "#/components/responses/E429"
+      },
+      "501": {
+        "$ref": "#/components/responses/NotImplemented"
+      },
+      "503": {
+        "$ref": "#/components/responses/E503"
+      },
+      "default": {
+        "$ref": "#/components/responses/Unexpected"
+      }
+    },
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkerClaim"
+          }
+        }
+      }
+    },
+    "x-required-scopes": [
+      "jobs:claim"
+    ]
+  }
+}

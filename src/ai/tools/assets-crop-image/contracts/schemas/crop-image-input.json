@@ -1,0 +1,21 @@
+{
+  "name": "CropImageInput",
+  "typeFile": "src/ai/tools/assets-crop-image/contracts/crop-image-input.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "assetId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "region": {
+        "$ref": "#/components/schemas/CropBox"
+      }
+    },
+    "required": [
+      "assetId",
+      "region"
+    ]
+  }
+}

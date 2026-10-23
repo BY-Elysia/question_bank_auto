@@ -1,0 +1,75 @@
+{
+  "name": "Proposal",
+  "typeFile": "src/modules/proposals/domain/proposal.ts",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "projectId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "documentId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "baseRevision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "jobId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "applied",
+          "rejected"
+        ]
+      },
+      "changes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/DocumentChange"
+        },
+        "minItems": 1
+      },
+      "validation": {
+        "$ref": "#/components/schemas/ValidationReport"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "appliedRevision": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "documentId",
+      "baseRevision",
+      "jobId",
+      "status",
+      "changes",
+      "validation",
+      "createdAt",
+      "appliedRevision"
+    ]
+  }
+}
