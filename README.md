@@ -47,6 +47,7 @@ curl 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/export.zip' -o textbook.zip
 ## 架构与工作流
 
 - [架构与目录](docs/architecture.md)
+- [可用性、测试与架构检查报告](docs/backend-audit-2026-10-25.md)
 - [与旧版对应的识题工作流](docs/extraction-workflow.md)
 - [接口使用与审核流程](docs/api.md)
 - [模型 Skill 指令](src/ai/skills/README.md)
@@ -59,6 +60,15 @@ curl 'http://127.0.0.1:5002/api/textbooks/BOOK_ID/export.zip' -o textbook.zip
 npm run check
 ```
 
-检查包括 TypeScript、OpenAPI、模块依赖、真实 PDF/PNG/HTTP/ZIP 链路，以及跨页、漏题重试、恢复、取消、答案来源、候选冲突等回归测试。测试中的模型返回使用可控响应；另有本地 HTTP 模拟服务验证 Responses/Chat Completions 协议、重试和取消。它们验证业务与协议，不代表真实模型的 OCR 准确率或学科解题质量。
+检查包括 TypeScript、OpenAPI、模块依赖、真实 PDF/PNG/HTTP/ZIP 链路，以及跨页、漏题重试、恢复、取消、答案来源、候选冲突等回归测试。默认测试中的模型返回使用可控响应；本地 HTTP 模拟服务验证 Responses/Chat Completions 协议、重试和取消。另有真实 SQLite 仓储替换测试，以及新增 Skill/任务处理器的扩展测试。
+
+真实模型端测需要已配置的密钥，会产生模型调用费用，默认不会随 `npm test` 运行：
+
+```bash
+# 先 npm run build；环境变量已导出时也可用 npm run test:live
+node --env-file=.env scripts/live-e2e.mjs
+```
+
+它通过 HTTP 上传原创两页 PDF，检查跨页大题、原文答案、AI 补答案、候选审批、原文核对、OCR 修复、版本恢复、PNG 和 JSON/ZIP 导出。默认最多 40 次模型执行器调用、20 分钟工作时间，可用 LIVE_MAX_CALLS / LIVE_TIMEOUT_MS 调整。结果、用量和文件存放于打印出的临时目录，不记录密钥。小样本端测不代表整本复杂教材的 OCR 或解题准确率。
 
 持久化使用原子文件替换和进程内互斥；一个数据卷只允许一个后端进程使用。没有引入 PostgreSQL、Redis 或分布式队列。进程重启后运行中的任务标记 `interrupted`，通过 resume 接口从检查点恢复。长题超过待处理页预算会失败并保留检查点，不丢弃旧页。

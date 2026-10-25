@@ -1,36 +1,17 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { ModelClient } from '../providers/model-client.js';
-import type { PageImagePort } from '../../modules/textbooks/ports/workspace.repository.js';
-import type { WorkspaceRepository } from '../../modules/textbooks/ports/workspace.repository.js';
-export type SkillId =
-  | 'textbook-structure-detect'
-  | 'cross-page-reconcile'
-  | 'page-content-extract'
-  | 'source-verify'
-  | 'content-repair'
-  | 'answer-generate';
-export interface SkillContext {
-  bookId: string;
-  jobId: string;
-  signal: AbortSignal;
-}
-export interface Skills {
-  run<T extends z.ZodType>(
-    id: SkillId,
-    input: unknown,
-    schema: T,
-    pages: number[],
-    context: SkillContext,
-  ): Promise<z.infer<T>>;
-}
+import type { ModelClient } from '../ports/model-client.js';
+import type { PageImagePort } from '../../modules/textbooks/ports/assets.port.js';
+import type { BookRepository } from '../../modules/textbooks/ports/book.repository.js';
+import type { SkillId, SkillCatalog, RunRecords } from '../ports/skill-catalog.js';
+import type { Skills, SkillContext } from '../ports/skills.js';
 export class SkillRunner implements Skills {
   constructor(
-    private store: WorkspaceRepository,
+    private store: BookRepository,
     private model: ModelClient,
     private images: PageImagePort,
+    private catalog: SkillCatalog,
+    private records: RunRecords,
   ) {}
   async run<T extends z.ZodType>(
     id: SkillId,
@@ -39,22 +20,13 @@ export class SkillRunner implements Skills {
     pages: number[],
     context: SkillContext,
   ): Promise<z.infer<T>> {
-    const base = new URL(`../skills/${id}/`, import.meta.url);
-    const definition = JSON.parse(await fs.readFile(new URL('definition.json', base), 'utf8'));
-    const instructions = await fs.readFile(new URL('SKILL.md', base), 'utf8');
-    if (definition.id !== id || !instructions.includes(`name: ${id}\n`))
-      throw new Error('Invalid skill package');
+    const definition = await this.catalog.get(id);
+    const instructions = definition.instructions;
     const hash = createHash('sha256').update(instructions).digest('hex');
-    const pinFile = path.join(this.store.dir(context.bookId), 'runs', context.jobId, `${id}.json`);
-    let pin;
-    try {
-      pin = JSON.parse(await fs.readFile(pinFile, 'utf8'));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-    if (pin && (pin.hash !== hash || pin.version !== definition.version))
-      throw new Error('Skill instructions changed; start a new job to use a new version');
-    if (!pin) await this.store.atomic(pinFile, { hash, version: definition.version });
+    await this.records.pin(context.bookId, context.jobId, id, {
+      hash,
+      version: definition.version,
+    });
     const book = await this.store.read(context.bookId);
     const images = await Promise.all(
       [...new Set(pages)].map(async (page) => {
@@ -62,7 +34,7 @@ export class SkillRunner implements Skills {
           throw new Error('Skill requested an unknown page');
         return {
           page,
-          url: `data:image/png;base64,${(await fs.readFile(await this.images.ensure(book.id, page, context.signal))).toString('base64')}`,
+          url: await this.images.dataUrl(book.id, page, context.signal),
         };
       }),
     );
@@ -78,19 +50,16 @@ export class SkillRunner implements Skills {
         role: definition.modelRole,
       });
       const invocationId = randomUUID();
-      await this.store.atomic(
-        path.join(this.store.dir(book.id), 'runs', context.jobId, `${invocationId}.json`),
-        {
-          id: invocationId,
-          skill: id,
-          version: definition.version,
-          instructionHash: hash,
-          model: result.model,
-          usage: result.usage,
-          at: new Date().toISOString(),
-          attempt,
-        },
-      );
+      await this.records.record(book.id, context.jobId, {
+        id: invocationId,
+        skill: id,
+        version: definition.version,
+        instructionHash: hash,
+        model: result.model,
+        usage: result.usage,
+        at: new Date().toISOString(),
+        attempt,
+      });
       try {
         const text = result.text
           .trim()

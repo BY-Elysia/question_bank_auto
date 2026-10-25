@@ -12,6 +12,7 @@ description: 判定内容和题目跨页边界
 - 每个范围必须给出 kind、sectionId、sources、label。sources.page 必须来自正式队列。box 为归一化 [left, top, right, bottom]。
 - 多页题须保留全部来源页；缺尾题、未闭合表格或段落进入 pending。宁可等待，不能把部分子题当成完整顶层题。
 - “一、选择题”等栏目是 heading，不是 group 题目；栏目内每道编号题分别成一个 question 范围。只有共享同一题干的子问才归入同一道顶层题。
+- 单个题目的题号、共享题干和全部小问必须放入同一个 question/example 范围，不得将“Exercise 1. Use ...”这类题干另拆为 heading。跨页 pending 的来源从题号和共享题干开始；“continued”等续题标记用于合并，不作为新题。
 - 单页可能同时有完整题和未完整尾题。complete 与 pending 可同时非空，不能为了尾题等待而丢掉前面的完整内容。
 - 根据 sections 的标题位置进行同页章节切换，禁止把下一节内容归入上一节。
 - blankPages 仅包含真正没有内容的页面，不能用空白声明跳过无法辨认的页；不要重复提取页眉页脚为正文，可在 reason 解释。

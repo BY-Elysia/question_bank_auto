@@ -13,9 +13,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "redocly lint dist/contracts/openapi.json",
     "test": "node --test test/*.test.mjs",
+    "test:live": "node scripts/live-e2e.mjs",
     "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "start:api": "node dist/app/apps/control-api/main.js",
-    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/*.mjs\""
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/**/*.mjs\""
   },
   "devDependencies": {
     "@redocly/cli": "2.67.1",

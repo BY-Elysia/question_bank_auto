@@ -92,3 +92,13 @@ export type Issue = z.infer<typeof Issue>;
 export type Question = z.infer<typeof Question>;
 export type Leaf = z.infer<typeof Leaf>;
 export type Source = z.infer<typeof Source>;
+
+export const Range = z.strictObject({
+  key: Id,
+  kind: Kind,
+  sectionId: Id.nullable(),
+  sources: z.array(Source).min(1),
+  label: z.string(),
+});
+
+export type Range = z.infer<typeof Range>;

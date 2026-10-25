@@ -1,18 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { Book } from '../../textbooks/domain/book.js';
 import { emptyDocument } from '../../textbooks/domain/book.js';
-import type { WorkspaceRepository } from '../../textbooks/ports/workspace.repository.js';
+import type { BookRepository } from '../../textbooks/ports/book.repository.js';
 import type { JobRequest, Job } from '../domain/job.js';
-import { TextbookWorkflow } from '../../../ai/workflows/textbook-extraction/workflow.js';
-import { ReviewWorkflow } from '../../review/application/review-workflow.js';
+import type { JobHandlers } from '../ports/job-handler.js';
 import { fail, message } from '../../../shared/errors.js';
 import { addEvent } from './job-events.js';
 export class JobsService {
   private running = new Map<string, { abort: AbortController; promise: Promise<void> }>();
   constructor(
-    private store: WorkspaceRepository,
-    private parser: TextbookWorkflow,
-    private review: ReviewWorkflow,
+    private store: BookRepository,
+    private handlers: JobHandlers,
   ) {}
   async recover() {
     for (const book of await this.store.list())
@@ -27,6 +25,7 @@ export class JobsService {
       }
   }
   async start(id: string, request: JobRequest) {
+    if (!this.handlers.has(request.kind)) fail(400, 'Unsupported job kind');
     const jobId = randomUUID();
     const book = await this.store.update(id, (book) => {
       if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))
@@ -127,8 +126,10 @@ export class JobsService {
       });
       signal.throwIfAborted();
       const context = { bookId, jobId, signal };
-      await this.parser.execute(context);
-      await this.review.execute(context);
+      const job = this.find(await this.store.read(bookId), jobId);
+      const handler = this.handlers.get(job.kind);
+      if (!handler) throw new Error('No handler registered for job');
+      await handler.execute(context);
       signal.throwIfAborted();
       await this.store.update(bookId, (book) => {
         const job = this.find(book, jobId);
@@ -149,6 +150,12 @@ export class JobsService {
         addEvent(job, job.error);
       });
     }
+  }
+  async get(bookId: string, id: string) {
+    return this.find(await this.store.read(bookId), id);
+  }
+  async list(bookId: string) {
+    return (await this.store.read(bookId)).jobs.map(({ stage, ...job }) => job);
   }
   find(book: Book, id: string): Job {
     const job = book.jobs.find((j) => j.id === id);

@@ -1,10 +1,10 @@
-import type { WorkspaceRepository } from '../../textbooks/ports/workspace.repository.js';
+import type { BookRepository } from '../../textbooks/ports/book.repository.js';
 import { Document, type Content } from '../../textbooks/domain/content.js';
 import type { Book } from '../../textbooks/domain/book.js';
 import { validateDocument } from '../../textbooks/domain/validation.js';
 import { fail } from '../../../shared/errors.js';
 export class ReviewService {
-  constructor(private store: WorkspaceRepository) {}
+  constructor(private store: BookRepository) {}
   private check(book: Book, expected: number) {
     if (book.revision !== expected) fail(409, 'Revision conflict');
     if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))

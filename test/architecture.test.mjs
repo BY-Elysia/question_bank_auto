@@ -14,7 +14,20 @@ test('Source stays modular and application/domain code does not import infrastru
     if (/\/(application|domain|ports)\//.test(file)) {
       assert.doesNotMatch(text, /from ['"][^'"]*infrastructure\//, file);
       assert.doesNotMatch(text, /from ['"]@nestjs\//, file);
+      assert.doesNotMatch(text, /from ['"](?:node:(?:fs|path)|express|archiver)(?:[/'"])/, file);
     }
+    if (/\/domain\//.test(file))
+      assert.doesNotMatch(text, /from ['"][^'"]*(?:application|presentation|ai)\//, file);
+    if (/\/presentation\//.test(file))
+      assert.doesNotMatch(text, /from ['"][^'"]*infrastructure\//, file);
+    if (/\/ai\/(runtime|workflows)\//.test(file))
+      assert.doesNotMatch(
+        text,
+        /from ['"](?:node:(?:fs|path)|[^'"]*(?:infrastructure|providers)\/)/,
+        file,
+      );
+    if (file.endsWith('jobs.service.ts'))
+      assert.doesNotMatch(text, /from ['"][^'"]*(?:workflows\/|review-workflow)/, file);
     assert.doesNotMatch(text, /from ['"][^'"]*dist\//, file);
   }
 });

@@ -1,8 +1,8 @@
 import { fillAnswers } from './answer-workflow.js';
 import { randomUUID } from 'node:crypto';
-import type { Skills, SkillContext } from '../../../ai/runtime/skill-runner.js';
+import type { Skills, SkillContext } from '../../../ai/ports/skills.js';
 import { RepairResult, VerifyResult } from '../../../ai/workflows/textbook-extraction/contracts.js';
-import type { WorkspaceRepository } from '../../textbooks/ports/workspace.repository.js';
+import type { BookRepository } from '../../textbooks/ports/book.repository.js';
 import type { Content, Leaf } from '../../textbooks/domain/content.js';
 import { contentProblems } from '../../textbooks/domain/validation.js';
 import { addEvent } from '../../jobs/application/job-events.js';
@@ -11,7 +11,7 @@ export function missingAnswer(question: Leaf) {
 }
 export class ReviewWorkflow {
   constructor(
-    private store: WorkspaceRepository,
+    private store: BookRepository,
     private skills: Skills,
   ) {}
   async execute(context: SkillContext) {

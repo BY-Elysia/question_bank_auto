@@ -1,14 +1,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { atomicJson } from '../../../shared/infrastructure/atomic-json.js';
 import { Book } from '../domain/book.js';
 import { Document } from '../domain/content.js';
-import type { WorkspaceRepository } from '../ports/workspace.repository.js';
+import type { BookRepository } from '../ports/book.repository.js';
 import { Id } from '../domain/content.js';
 import { fail } from '../../../shared/errors.js';
 
 /** A single backend process owns this volume. Atomic rename is the commit boundary. */
-export class BookStore implements WorkspaceRepository {
+export class BookStore implements BookRepository {
   private locks = new Map<string, Promise<unknown>>();
   readonly root: string;
   constructor(root: string) {
@@ -20,18 +20,6 @@ export class BookStore implements WorkspaceRepository {
   }
   async init() {
     await fs.mkdir(path.join(this.root, 'books'), { recursive: true });
-  }
-  async atomic(file: string, value: unknown) {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const temporary = `${file}.${randomUUID()}.tmp`;
-    const handle = await fs.open(temporary, 'wx');
-    try {
-      await handle.writeFile(JSON.stringify(value));
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await fs.rename(temporary, file);
   }
   async list(): Promise<Book[]> {
     const entries = await fs.readdir(path.join(this.root, 'books'), { withFileTypes: true });
@@ -68,15 +56,38 @@ export class BookStore implements WorkspaceRepository {
     }
   }
   async readRevision(id: string, revision: number) {
+    const current = await this.read(id);
+    if (!Number.isInteger(revision) || revision < 0 || revision > current.revision)
+      fail(404, 'Revision not found');
     return Document.parse(
       JSON.parse(
         await fs.readFile(path.join(this.dir(id), 'revisions', `${revision}.json`), 'utf8'),
       ),
     );
   }
+  async remove(id: string, check: (book: Book) => void) {
+    await this.exclusive(id, async () => {
+      const book = await this.read(id);
+      check(book);
+      await fs.rm(path.join(this.dir(id), 'state.json'));
+    });
+  }
   async create(book: Book) {
-    await this.atomic(path.join(this.dir(book.id), 'revisions', '0.json'), book.document);
-    await this.atomic(path.join(this.dir(book.id), 'state.json'), Book.parse(book));
+    const validated = Book.parse(book);
+    if (validated.revision !== 0) fail(400, 'A new textbook must start at revision zero');
+    await this.exclusive(validated.id, async () => {
+      try {
+        await this.read(validated.id);
+        fail(409, 'Textbook already exists');
+      } catch (error) {
+        if ((error as { status?: number }).status !== 404) throw error;
+      }
+      await atomicJson(
+        path.join(this.dir(validated.id), 'revisions', '0.json'),
+        validated.document,
+      );
+      await atomicJson(path.join(this.dir(validated.id), 'state.json'), validated);
+    });
   }
   async update(id: string, fn: (book: Book) => void, content = false): Promise<Book> {
     return this.exclusive(id, async () => {
@@ -86,13 +97,12 @@ export class BookStore implements WorkspaceRepository {
       if (content) book.revision++;
       Book.parse(book);
       if (content) {
-        await this.atomic(
+        await atomicJson(
           path.join(this.dir(id), 'revisions', `${book.revision}.json`),
           book.document,
         );
       }
-      Book.parse(book);
-      await this.atomic(path.join(this.dir(id), 'state.json'), book);
+      await atomicJson(path.join(this.dir(id), 'state.json'), book);
       return book;
     });
   }

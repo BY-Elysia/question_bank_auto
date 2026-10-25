@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Issue, Id, type Content } from '../../textbooks/domain/content.js';
-import type { Skills, SkillContext } from '../../../ai/runtime/skill-runner.js';
+import type { Skills, SkillContext } from '../../../ai/ports/skills.js';
 import { AnswerResult } from '../../../ai/workflows/textbook-extraction/contracts.js';
 const Lookup = z.strictObject({ sourceIds: z.array(Id), issues: z.array(Issue) });
 const SourceAnswers = z.strictObject({

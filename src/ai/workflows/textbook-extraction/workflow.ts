@@ -1,5 +1,5 @@
-import type { WorkspaceRepository } from '../../../modules/textbooks/ports/workspace.repository.js';
-import type { Skills, SkillContext } from '../../runtime/skill-runner.js';
+import type { BookRepository } from '../../../modules/textbooks/ports/book.repository.js';
+import type { Skills, SkillContext } from '../../ports/skills.js';
 import { BoundaryResult, StructureResult, LookaheadResult, ExtractResult } from './contracts.js';
 import { checkBoundary, materialize, readingOrder } from './guards.js';
 import { validateDocument } from '../../../modules/textbooks/domain/validation.js';
@@ -7,7 +7,7 @@ import { addEvent } from '../../../modules/jobs/application/job-events.js';
 
 export class TextbookWorkflow {
   constructor(
-    private store: WorkspaceRepository,
+    private store: BookRepository,
     private skills: Skills,
   ) {}
   async execute(context: SkillContext) {

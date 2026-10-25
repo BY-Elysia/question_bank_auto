@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { Id, Document, Issue } from '../../textbooks/domain/content.js';
-import { Range } from '../../../ai/workflows/textbook-extraction/contracts.js';
+import { Id, Document, Issue, Range } from '../../textbooks/domain/content.js';
 export const JobRequest = z.strictObject({
   kind: z.enum(['parse', 'verify', 'repair', 'answers']),
   startPage: z.number().int().positive().optional(),

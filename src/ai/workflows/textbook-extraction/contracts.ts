@@ -1,19 +1,7 @@
 import { z } from 'zod';
-import {
-  Id,
-  Kind,
-  Source,
-  Section,
-  Payload,
-  Issue,
-} from '../../../modules/textbooks/domain/content.js';
-export const Range = z.strictObject({
-  key: Id,
-  kind: Kind,
-  sectionId: Id.nullable(),
-  sources: z.array(Source).min(1),
-  label: z.string(),
-});
+import { Id, Section, Payload, Issue } from '../../../modules/textbooks/domain/content.js';
+import { Range } from '../../../modules/textbooks/domain/content.js';
+export { Range };
 export const StructureResult = z.strictObject({
   sections: z.array(Section),
   activeSectionId: Id.nullable(),
@@ -45,4 +33,3 @@ export const AnswerResult = z.strictObject({
   ),
   issues: z.array(Issue),
 });
-export type Range = z.infer<typeof Range>;

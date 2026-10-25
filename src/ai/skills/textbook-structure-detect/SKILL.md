@@ -10,6 +10,7 @@ description: 识别课本章节结构
 - source.page 为当前 PDF 页码；box 是归一化的 [left, top, right, bottom]，标记标题所在区域。
 - activeSectionId 表示处理本页后所在章节；目录页条目不能当作正文中新章节切换。无标题时保留原 activeSectionId。
 - 同页跨章节时返回所有切换节点，具体内容归属由后续边界步骤依据位置确定。
+- 单个编号例题/习题及其共享题干（如“Exercise 1. Use the rectangle above.”）属于题目，不是章节节点；“习题/Exercises”这种统领多道题的栏目才可作为节。续页重复章名或“continued”页眉沿用原章节，不新建节点。
 
 ## 通用约束
 

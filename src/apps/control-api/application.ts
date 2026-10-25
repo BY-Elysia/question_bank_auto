@@ -13,17 +13,7 @@ import express from 'express';
 import type { Response } from 'express';
 import { DomainError } from '../../shared/errors.js';
 import { ZodError } from 'zod';
-import { BookStore } from '../../modules/textbooks/infrastructure/book-store.js';
-import { PageImages } from '../../modules/textbooks/infrastructure/page-images.js';
-import { PdfRenderer } from '../../modules/textbooks/infrastructure/pdf-renderer.js';
-import { TextbooksService } from '../../modules/textbooks/application/textbooks.service.js';
-import { ExportService } from '../../modules/textbooks/application/export.service.js';
-import { ReviewService } from '../../modules/review/application/review.service.js';
-import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
-import { JobsService } from '../../modules/jobs/application/jobs.service.js';
-import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflow.js';
-import { SkillRunner, type Skills } from '../../ai/runtime/skill-runner.js';
-import { HttpModelClient, type ModelClient } from '../../ai/providers/model-client.js';
+import { createServices, type AppOptions } from './services.js';
 import { TextbooksModule } from '../../modules/textbooks/textbooks.module.js';
 import { JobsModule } from '../../modules/jobs/jobs.module.js';
 @Catch()
@@ -70,26 +60,11 @@ class HealthController {
     };
   }
 }
-export async function createApplication(
-  options: { root?: string; skills?: Skills; model?: ModelClient; pdf?: PdfRenderer } = {},
-) {
-  const store = new BookStore(options.root ?? process.env.WORKSPACE_ROOT ?? './workspace');
-  await store.init();
-  const pdf = options.pdf ?? new PdfRenderer(),
-    images = new PageImages(store, pdf);
-  const skills =
-    options.skills ?? new SkillRunner(store, options.model ?? new HttpModelClient(), images);
-  const books = new TextbooksService(store, pdf, images);
-  const review = new ReviewService(store),
-    exports = new ExportService(store, images);
-  const jobs = new JobsService(
-    store,
-    new TextbookWorkflow(store, skills),
-    new ReviewWorkflow(store, skills),
-  );
-  await jobs.recover();
+export async function createApplication(options: AppOptions = {}) {
+  const services = await createServices(options);
+  const { books, review, exports, jobs } = services;
   @Module({
-    imports: [TextbooksModule.register(books, exports, review), JobsModule.register(jobs, store)],
+    imports: [TextbooksModule.register(books, exports, review), JobsModule.register(jobs)],
     controllers: [HealthController],
   })
   class AppModule {}
@@ -102,5 +77,5 @@ export async function createApplication(
     await jobs.shutdown();
     return originalClose();
   };
-  return { app, store, books, jobs, review, exports };
+  return { app, ...services };
 }

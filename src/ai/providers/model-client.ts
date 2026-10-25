@@ -1,14 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-export interface ModelRequest {
-  system: string;
-  input: unknown;
-  images: { page: number; url: string }[];
-  signal: AbortSignal;
-  role: 'vision' | 'reasoning';
-}
-export interface ModelClient {
-  complete(request: ModelRequest): Promise<{ text: string; usage: unknown; model: string }>;
-}
+import type { ModelClient, ModelRequest } from '../ports/model-client.js';
 export class HttpModelClient implements ModelClient {
   async complete(request: ModelRequest) {
     const base = process.env.MODEL_BASE_URL || process.env.ARK_BASE_URL;
