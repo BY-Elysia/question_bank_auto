@@ -6,6 +6,7 @@ import { fail } from '../../../shared/errors.js';
 export class ReviewService {
   constructor(private store: BookRepository) {}
   private check(book: Book, expected: number) {
+    if (book.workflowLock) fail(409, 'Wait for workspace processing before editing');
     if (book.revision !== expected) fail(409, 'Revision conflict');
     if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))
       fail(409, 'Wait for or cancel active task before editing');

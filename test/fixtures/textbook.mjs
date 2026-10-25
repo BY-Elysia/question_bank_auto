@@ -1,6 +1,6 @@
 // Original two-page fixture: cross-page GROUP, visible answer, body text and formulas.
-export function textbookFixture() {
-  const pages = [
+export function textbookFixture(
+  pages = [
     [
       'Chapter 1: Arithmetic',
       'A rectangle has length 4 cm and width 3 cm.',
@@ -17,7 +17,8 @@ export function textbookFixture() {
       'Exercise 2. Calculate 2 + 3.',
       'Answer to Exercise 2: 5.',
     ],
-  ];
+  ],
+) {
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', ''],
     kids = [];
   for (const lines of pages) {

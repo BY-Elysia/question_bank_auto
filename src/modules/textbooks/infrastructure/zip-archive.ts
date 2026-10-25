@@ -7,7 +7,8 @@ export class FileArchive implements ArchivePort {
   async create(id: string, document: unknown, pages: number[]) {
     const zip = new ZipArchive({ zlib: { level: 5 } });
     zip.append(JSON.stringify(document, null, 2), { name: 'textbook.json' });
-    zip.file(path.join(this.assets.dir(id), 'source.pdf'), { name: 'source.pdf' });
+    if (await this.assets.hasPdf(id))
+      zip.file(path.join(this.assets.dir(id), 'source.pdf'), { name: 'source.pdf' });
     for (const page of pages)
       zip.file(path.join(this.assets.dir(id), 'pages', `${page}.png`), {
         name: `pages/${page}.png`,

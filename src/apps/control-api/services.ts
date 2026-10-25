@@ -1,3 +1,10 @@
+import { WorkspaceStore } from '../../modules/workspaces/infrastructure/workspace-store.js';
+import type { WorkspaceRepository } from '../../modules/workspaces/ports/workspace.repository.js';
+import { WorkspacesService } from '../../modules/workspaces/application/workspaces.service.js';
+import { ExtractionRunner } from '../../modules/workspaces/application/extraction-runner.js';
+import { WorkspaceView } from '../../modules/workspaces/application/workspace-view.js';
+import { FilePrefixCache } from '../../ai/infrastructure/file-prefix-cache.js';
+import type { PrefixCache } from '../../ai/ports/prefix-cache.js';
 import path from 'node:path';
 import type { BookRepository } from '../../modules/textbooks/ports/book.repository.js';
 import type {
@@ -27,6 +34,8 @@ import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflo
 import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
 export interface AppOptions {
   root?: string;
+  workspaceStore?: WorkspaceRepository;
+  prefixCache?: PrefixCache;
   store?: BookRepository;
   skills?: Skills;
   model?: ModelClient;
@@ -52,7 +61,7 @@ export async function createServices(options: AppOptions = {}) {
     options.skills ??
     new SkillRunner(
       store,
-      options.model ?? new HttpModelClient(),
+      options.model ?? new HttpModelClient(options.prefixCache ?? new FilePrefixCache(root)),
       assets.images,
       options.catalog ?? new FileSkillCatalog(),
       options.records ?? new FileRunRecords(root),
@@ -78,5 +87,17 @@ export async function createServices(options: AppOptions = {}) {
   ]);
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
-  return { store, books, review, exports, jobs, skills };
+  const workspaceStore = options.workspaceStore ?? new WorkspaceStore(root);
+  await workspaceStore.init();
+  const workspaceRunner = new ExtractionRunner(workspaceStore, store, books, jobs);
+  const workspaces = new WorkspacesService(
+    workspaceStore,
+    store,
+    books,
+    assets.images,
+    workspaceRunner,
+  );
+  const workspaceView = new WorkspaceView(workspaceStore, store);
+  await workspaces.recover();
+  return { store, books, review, exports, jobs, skills, workspaces, workspaceView };
 }

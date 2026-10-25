@@ -7,6 +7,8 @@ export const JobRequest = z.strictObject({
   contentIds: z.array(Id).max(10000).optional(),
   sectionId: Id.optional(),
   instruction: z.string().min(1).max(8000).optional(),
+  answerMode: z.enum(['extract_visible', 'generate_brief', 'leave_empty']).optional(),
+  cache: z.enum(['prefix', 'off']).optional(),
   generateAnswers: z.boolean().optional(),
 });
 export const Job = z.strictObject({

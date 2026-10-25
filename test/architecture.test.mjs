@@ -38,12 +38,12 @@ test('Only textbook capabilities remain and built Skill packages include actual 
     const source = fs.readFileSync(`src/ai/skills/${skill.id}/SKILL.md`, 'utf8');
     assert.equal(fs.readFileSync(`dist/app/ai/skills/${skill.id}/SKILL.md`, 'utf8'), source);
   }
-  for (const module of ['identity', 'library', 'model-config', 'workspaces'])
+  for (const module of ['identity', 'library', 'model-config'])
     assert.equal(fs.existsSync(`src/modules/${module}`), false);
   const spec = JSON.parse(fs.readFileSync('dist/contracts/openapi.json', 'utf8'));
   assert.equal(
     Object.values(spec.paths).reduce((n, p) => n + Object.keys(p).length, 0),
-    22,
+    30,
   );
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });

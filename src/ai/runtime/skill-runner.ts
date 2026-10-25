@@ -44,7 +44,9 @@ export class SkillRunner implements Skills {
       context.signal.throwIfAborted();
       const result = await this.model.complete({
         system,
-        input: { task: input, validationFeedback: feedback },
+        cache: book.jobs.find((j) => j.id === context.jobId)?.request.cache ?? 'prefix',
+        cacheScope: book.workspaceId ?? book.id,
+        input: { task: input, context: book.extractionContext, validationFeedback: feedback },
         images,
         signal: context.signal,
         role: definition.modelRole,
@@ -57,6 +59,7 @@ export class SkillRunner implements Skills {
         instructionHash: hash,
         model: result.model,
         usage: result.usage,
+        cache: result.cache ?? null,
         at: new Date().toISOString(),
         attempt,
       });

@@ -2,7 +2,7 @@
 
 ## 结论与范围
 
-采用模块化单体、分层架构和端口/适配器模式。当前只实现单工作区课本 PDF 处理，避免在业务未稳定时拆成微服务。领域和应用层不依赖 HTTP 框架、文件路径或数据库驱动，具体实现集中在装配入口绑定。
+采用模块化单体、分层架构和端口/适配器模式。当前实现独占数据卷内多个逻辑工作区的课本 PDF/图片处理，避免在业务未稳定时拆成微服务。领域和应用层不依赖 HTTP 框架、文件路径或数据库驱动，具体实现集中在装配入口绑定。
 
 ```mermaid
 flowchart TD
@@ -22,6 +22,8 @@ src/
 │   ├── application.ts            # HTTP 启动、异常映射、生命周期
 │   └── services.ts               # 唯一应用装配根，注入具体实现
 ├── modules/
+│   ├── workspaces/               # domain / ports / application / infrastructure / presentation
+│   │                            # 上传准备、步骤状态、章节编排、统一可视化
 │   ├── textbooks/
 │   │   ├── domain/               # 课本、内容、来源、范围及一致性规则
 │   │   ├── ports/                # 元数据仓储、资源、页图、归档接口
@@ -35,7 +37,7 @@ src/
 │   │   └── presentation/         # 任务 HTTP 接口
 │   └── review/application/       # 核对、修复、补答案、候选审批及版本
 ├── ai/
-│   ├── ports/                    # ModelClient、Skills、SkillCatalog、RunRecords
+│   ├── ports/                    # ModelClient、Skills、SkillCatalog、RunRecords、PrefixCache
 │   ├── workflows/textbook-extraction/ # 页队列、预读、边界、提取、检查点
 │   ├── skills/                   # 六个 SKILL.md + definition.json 包
 │   ├── runtime/                  # 指令执行、schema 校验、重试、版本锁定
@@ -81,14 +83,17 @@ Document 修订与任务检查点分开：每页结果先写任务 stage，选�
 ## 默认文件工作区
 
 ```text
-workspace/books/<book-id>/
-├── source.pdf
-├── pages/<pdf-page>.png          # 按需缓存
-├── state.json                   # 正式文档、任务、检查点、候选
-├── revisions/<revision>.json    # 不可变文档快照
-└── runs/<job-id>/
-    ├── <skill-id>.json           # 任务固定的版本/指令哈希
-    └── <invocation-id>.json      # 模型、用量、时间、指令哈希
+workspace/
+├── workspaces/<workspace-id>.json # 步骤、章节分组、运行标识与状态
+├── model-cache/<hash>.json        # 缓存种子 ID 与到期时间
+└── books/<book-id>/               # 根课本及内部章节课本，由清单关联
+    ├── source.pdf                # 仅 PDF 根课本存在
+    ├── pages/<page>.png           # 工作区自动准备的标准 PNG
+    ├── state.json                # 正式文档、任务、检查点、候选
+    ├── revisions/<revision>.json # 不可变文档快照
+    └── runs/<job-id>/
+        ├── <skill-id>.json       # 任务固定的版本/指令哈希
+        └── <invocation-id>.json  # 模型、用量、时间、指令哈希
 ```
 
 文件仓储先写修订再用 state.json 原子替换发布；未成功发布的未来修订不可读取。临时文件写入后 fsync、rename，按课本进程内串行更新；模型调用不占仓储锁。资源与元数据独立，数据库替换后 PDF/PNG 仍可保留在卷上。
@@ -102,3 +107,15 @@ workspace/books/<book-id>/
 SKILL.md 是受控任务指令，页图和用户材料作为数据发送。执行器强制 schema 和范围校验；恢复时检查 Skill 版本及指令哈希。
 
 每本课本同时运行一个任务；每个卷由单进程独占。Dockerfile 打包 Node 和 Poppler，一个容器加一个卷构成工作区。数据库接入本身不会解决多实例调度：水平扩展还需要持久任务队列、租约/分布式锁、独立 worker 和数据库迁移。用户管理、鉴权、多租户调度仍不在本轮范围。
+
+## 工作区编排与扩展
+
+用户可见的工作区是教材处理会话，WORKSPACE_ROOT 是该后端进程独占的数据卷。一个实例可以有多个会话；现有 health.mode=single-workspace 指部署隔离模式，不表示只能上传一本教材。当前没有创建用户容器的控制平面。
+
+WorkspacesService 负责导入、准备、状态和生命周期；ExtractionRunner 负责并发、恢复、合并及全书答案阶段；WorkspaceView 负责组装前端需要的数据。Controller 只做输入解析和 HTTP 映射。WorkspaceRepository 独立于 BookRepository，未来数据库实现应同时提供工作区仓储适配器，通过 services.ts 注入。
+
+每章建立隔离的内部课本聚合，复用旧顺序工作流。模型只看到该组页图，预读不会进入下一章；全部完成后统一映射全书页码、内容/章节 ID，并在根课本事务中发布一次。workspaceCommit 与 runId 防止中断恢复时重复合并；workflowLock 防止提取期间的人工写入和竞争任务。各章共享固定的工作区缓存种子，不共享动态会话历史。
+
+取消信号传递到章节任务和 HTTP 请求；Nest 生命周期钩子先停止工作区编排，再停止底层任务。重启将未完成工作区标为 interrupted，需要显式恢复。工作区删除包括根教材、内部章节和清单，删除中断可在启动恢复时继续。
+
+前缀缓存通过 PrefixCache 端口与模型适配器协作，本地实现持久化种子引用；键包含接口、凭据哈希、模型、工作区和受控系统指令。教材信息、用户要求和图片作为当前调用的数据输入，不写入系统指令种子。实际缓存行为依赖供应商实现；当前显式前缀缓存采用方舟 Responses 的 caching / previous_response_id 协议，其他供应商需提供适配器或选择 cache=off。

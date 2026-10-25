@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Single-workspace textbook PDF extraction, review, repair and JSON export backend",
+  "description": "Workspace-based textbook PDF/image extraction, review, repair and JSON export backend",
   "engines": {
     "node": ">=22.21.0"
   },
@@ -16,7 +16,8 @@
     "test:live": "node scripts/live-e2e.mjs",
     "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "start:api": "node dist/app/apps/control-api/main.js",
-    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/**/*.mjs\""
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/**/*.mjs\"",
+    "test:live:workspaces": "node scripts/live-workspaces.mjs"
   },
   "devDependencies": {
     "@redocly/cli": "2.67.1",
@@ -34,6 +35,10 @@
     "express": "5.3.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "sharp": "0.35.5",
     "zod": "4.6.7"
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }

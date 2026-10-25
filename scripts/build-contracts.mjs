@@ -1,4 +1,11 @@
+import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/domain/workspace.js';
+import {
+  WorkspaceList,
+  WorkspaceViewResponse,
+} from '../dist/app/modules/workspaces/presentation/contracts.js';
+import { workspaceRoutes } from '../dist/app/modules/workspaces/presentation/routes.js';
 import fs from 'node:fs/promises';
+import { TextbookMetadata } from '../dist/app/modules/textbooks/domain/metadata.js';
 import { z } from 'zod';
 import { Book, Proposal } from '../dist/app/modules/textbooks/domain/book.js';
 import { Document, Issue, Page } from '../dist/app/modules/textbooks/domain/content.js';
@@ -8,6 +15,10 @@ import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/route
 import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
 const schemas = {
   Book,
+  Workspace,
+  ExtractionSettings,
+  WorkspaceList,
+  WorkspaceViewResponse,
   Job,
   JobRequest,
   ...requests,
@@ -30,6 +41,7 @@ const schemas = {
     schemaVersion: z.literal('1.0'),
     id: z.string(),
     title: z.string(),
+    metadata: TextbookMetadata.nullable(),
     revision: z.number().int(),
     pages: z.array(Page.extend({ image: z.string() })),
     validation: z.array(Issue),
@@ -45,6 +57,23 @@ for (const [name, schema] of Object.entries(schemas)) {
 }
 const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
 function content(name) {
+  if (name === 'ImageUpload')
+    return {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          required: ['images'],
+          properties: {
+            images: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 500,
+              items: { type: 'string', format: 'binary' },
+            },
+          },
+        },
+      },
+    };
   return binaries[name]
     ? { [binaries[name]]: { schema: { type: 'string', format: 'binary' } } }
     : { 'application/json': { schema: { $ref: `#/components/schemas/${name}` } } };
@@ -52,6 +81,7 @@ function content(name) {
 const paths = {};
 for (const [method, path, operationId, input, output, status] of [
   ...textbookRoutes,
+  ...workspaceRoutes,
   ...jobRoutes,
   ['get', '/api/health', 'health', null, 'Health', 200],
 ]) {
@@ -61,7 +91,7 @@ for (const [method, path, operationId, input, output, status] of [
     required: true,
     schema: name === 'page' ? { type: 'integer', minimum: 1 } : { type: 'string' },
   }));
-  if (operationId === 'uploadTextbook')
+  if (['uploadTextbook', 'uploadWorkspacePdf', 'uploadWorkspaceImages'].includes(operationId))
     parameters.push({
       name: 'title',
       in: 'query',

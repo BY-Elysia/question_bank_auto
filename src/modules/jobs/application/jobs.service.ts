@@ -24,10 +24,12 @@ export class JobsService {
         });
       }
   }
-  async start(id: string, request: JobRequest) {
+  async start(id: string, request: JobRequest, owner?: string) {
     if (!this.handlers.has(request.kind)) fail(400, 'Unsupported job kind');
     const jobId = randomUUID();
     const book = await this.store.update(id, (book) => {
+      if (book.workflowLock && book.workflowLock !== owner)
+        fail(409, 'Workspace is managing this textbook');
       if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))
         fail(409, 'A task is already active for this textbook');
       if (request.kind === 'answers' && book.document.processedPages.length !== book.pages.length)
@@ -174,8 +176,10 @@ export class JobsService {
       });
     return this.find(await this.store.read(id), jobId);
   }
-  async resume(id: string, jobId: string) {
+  async resume(id: string, jobId: string, owner?: string) {
     await this.store.update(id, (book) => {
+      if (book.workflowLock && book.workflowLock !== owner)
+        fail(409, 'Workspace is managing this textbook');
       if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))
         fail(409, 'A task is active');
       const job = this.find(book, jobId);

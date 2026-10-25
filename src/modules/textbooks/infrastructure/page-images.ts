@@ -46,6 +46,7 @@ export class PageImages implements PageImagePort {
         return file;
       } catch {}
     }
+    if (book.sourceKind === 'images') fail(404, 'Uploaded page image is missing');
     const dimensions = await this.pdf.page(
       path.join(this.assets.dir(id), 'source.pdf'),
       directory,

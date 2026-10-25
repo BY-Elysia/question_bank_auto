@@ -14,6 +14,7 @@ export class ExportService {
       schemaVersion: book.schemaVersion,
       id: book.id,
       title: book.title,
+      metadata: book.extractionContext?.metadata ?? null,
       revision: book.revision,
       pages: book.pages.map((p) => ({ ...p, image: `pages/${p.number}.png` })),
       ...book.document,

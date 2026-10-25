@@ -20,6 +20,7 @@ export async function fillAnswers(
   targets: (number | null)[],
   answerBlocks: Content[],
   context: SkillContext,
+  generate = true,
 ) {
   const after = structuredClone(content),
     issues: z.infer<typeof Issue>[] = [];
@@ -72,7 +73,7 @@ export async function fillAnswers(
     }
   }
   // Any unresolved lookup concern requires review instead of silently generating over a source answer.
-  if (remaining.size && !issues.length) {
+  if (generate && remaining.size && !issues.length) {
     const result = await skills.run(
       'answer-generate',
       { content, targets: [...remaining] },
@@ -96,7 +97,7 @@ export async function fillAnswers(
       remaining.delete(answer.childIndex);
     }
   }
-  if (remaining.size && !issues.length)
+  if (generate && remaining.size && !issues.length)
     throw new Error('Missing generated answers without an issue');
   return { after: JSON.stringify(after) === JSON.stringify(content) ? null : after, issues };
 }

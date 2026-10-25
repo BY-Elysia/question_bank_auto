@@ -7,6 +7,8 @@ export interface BinaryAsset {
 }
 export interface TextbookAssets {
   prepare(id: string, pdf: Buffer): Promise<Book['pages']>;
+  prepareImages(id: string, images: Buffer[]): Promise<Book['pages']>;
+  copyPages(id: string, sourceId: string, pages: number[]): Promise<Book['pages']>;
   source(id: string): Promise<BinaryAsset>;
   remove(id: string): Promise<void>;
 }

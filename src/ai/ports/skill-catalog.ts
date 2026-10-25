@@ -19,6 +19,7 @@ export interface InvocationRecord {
   instructionHash: string;
   model: string;
   usage: unknown;
+  cache?: unknown;
   at: string;
   attempt: number;
 }

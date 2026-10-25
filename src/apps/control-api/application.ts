@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { WorkspacesModule } from '../../modules/workspaces/workspaces.module.js';
 import {
   Module,
   Controller,
@@ -62,20 +63,30 @@ class HealthController {
 }
 export async function createApplication(options: AppOptions = {}) {
   const services = await createServices(options);
-  const { books, review, exports, jobs } = services;
+  const { books, review, exports, jobs, workspaces, workspaceView } = services;
   @Module({
-    imports: [TextbooksModule.register(books, exports, review), JobsModule.register(jobs)],
+    imports: [
+      TextbooksModule.register(books, exports, review),
+      JobsModule.register(jobs),
+      WorkspacesModule.register(workspaces, workspaceView),
+    ],
     controllers: [HealthController],
+    providers: [
+      {
+        provide: 'BACKGROUND_WORK_SHUTDOWN',
+        useValue: {
+          async onModuleDestroy() {
+            await workspaces.shutdown();
+            await jobs.shutdown();
+          },
+        },
+      },
+    ],
   })
   class AppModule {}
   const app = await NestFactory.create(AppModule, { logger: false, bodyParser: false });
   app.use(express.raw({ type: 'application/pdf', limit: process.env.MAX_UPLOAD_SIZE ?? '100mb' }));
   app.use(express.json({ limit: '20mb' }));
   app.useGlobalFilters(new Errors());
-  const originalClose = app.close.bind(app);
-  app.close = async () => {
-    await jobs.shutdown();
-    return originalClose();
-  };
   return { app, ...services };
 }

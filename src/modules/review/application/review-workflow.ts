@@ -112,6 +112,8 @@ export class ReviewWorkflow {
             targets,
             book.document.contents.filter((c) => c.kind === 'answer'),
             context,
+            job.request.answerMode !== 'extract_visible' &&
+              job.request.answerMode !== 'leave_empty',
           );
           issues = result.issues;
           after = result.after;
