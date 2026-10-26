@@ -9,3 +9,6 @@ coverage/
 .idea/
 .vscode/
 workspace/
+
+client/test-results/
+client/playwright-report/

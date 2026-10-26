@@ -1,0 +1,232 @@
+.status {
+  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: #273442;
+  color: #afc1d0;
+  white-space: nowrap;
+}
+.status > span {
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 50%;
+}
+.status-extracting,
+.status-preparing,
+.status-running {
+  color: #94dad1;
+  background: #1b3937;
+}
+.status-needs_review,
+.status-interrupted {
+  color: #e4c291;
+  background: #3b3023;
+}
+.status-completed {
+  color: #a4cbb6;
+  background: #243b30;
+}
+.status-failed,
+.status-cancelled {
+  color: #e9a1a9;
+  background: #3e2730;
+}
+.dashboard-footer {
+  border-top: 1px solid #242e39;
+  margin-top: 36px;
+  padding-top: 21px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #697d8e;
+  letter-spacing: 0.3px;
+}
+.dashboard-footer > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-footer > span:last-child {
+  font: 8px monospace;
+  letter-spacing: 1.3px;
+}
+.empty-state {
+  padding: 36px 16px;
+  text-align: center;
+  color: #7e929f;
+}
+.empty-state > svg {
+  margin: 0 auto 14px;
+  color: #79a6a4;
+}
+.empty-state h3 {
+  color: #b9c8d1;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.empty-state p {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.empty-workspaces {
+  border: 1px dashed #2c3e49;
+  border-radius: 9px;
+  background: #111a2355;
+  text-align: center;
+  padding-bottom: 25px;
+}
+.loading-state {
+  padding: 80px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  color: #9db3bf;
+}
+.error-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 13px 15px;
+  border: 1px solid #714149;
+  background: #42292f66;
+  color: #ecc0c6;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.error-note svg {
+  margin-top: 2px;
+}
+.error-text {
+  color: #e5a1ad;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.field {
+  display: block;
+  font-size: 12px;
+  color: #b5c2cd;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid #34404d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #101821;
+  color: #e1e8ed;
+  display: block;
+  margin-top: 7px;
+  font-size: 12px;
+}
+.field input::placeholder,
+.field textarea::placeholder {
+  color: #637483;
+}
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: #71bcb1;
+}
+.required {
+  color: #91d7cb;
+  margin-left: 4px;
+}
+.field textarea {
+  line-height: 1.8;
+}
+.dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #335651;
+  background: #1e3836;
+  border-radius: 10px;
+  color: #9cdbcc;
+  margin-bottom: 8px;
+}
+[data-slot='dialog-content'] {
+  background: #151e28;
+  border-color: #35434e;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+[data-slot='dialog-description'] {
+  line-height: 1.8;
+  font-size: 12px;
+}
+[data-slot='dialog-title'] {
+  line-height: 1.5;
+}
+.upload-dialog {
+  max-width: 560px !important;
+}
+.dropzone {
+  width: 100%;
+  border: 1px dashed #4b6a74;
+  border-radius: 9px;
+  padding: 25px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: radial-gradient(ellipse at center, #20444855, transparent);
+  color: #a1c5c7;
+}
+.dropzone strong {
+  font-weight: 500;
+  font-size: 13px;
+  color: #d1e0e2;
+}
+.dropzone > span {
+  font-size: 10px;
+  color: #90a5b3;
+}
+.dropzone small {
+  font-size: 10px;
+  color: #74b4ac;
+  border: 1px solid #34524e;
+  padding: 3px 9px;
+  border-radius: 12px;
+}
+.drag-over {
+  background: #254b48 !important;
+  border-color: #91dccd !important;
+}
+.upload-files {
+  max-height: 190px;
+  overflow: auto;
+}
+.upload-files > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 0;
+  border-bottom: 1px solid #2d3844;
+  font-size: 11px;
+}
+.upload-files > div > .truncate {
+  flex: 1;
+}
+.upload-files .mono {
+  color: #6e8c99;
+}
+.upload-files small {
+  color: #93a5b2;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

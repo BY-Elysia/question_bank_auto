@@ -17,7 +17,12 @@
     "check": "npm run build && npm run lint && npm run typecheck && npm test",
     "start:api": "node dist/app/apps/control-api/main.js",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/**/*.mjs\"",
-    "test:live:workspaces": "node scripts/live-workspaces.mjs"
+    "test:live:workspaces": "node scripts/live-workspaces.mjs",
+    "dev:web": "npm --prefix client run dev",
+    "build:web": "npm --prefix client run build",
+    "build:all": "npm run build && npm run build:web",
+    "test:web": "npm --prefix client test",
+    "check:all": "npm run check && npm run build:web && npm run test:web"
   },
   "devDependencies": {
     "@redocly/cli": "2.67.1",

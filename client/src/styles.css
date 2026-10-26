@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/shell.css';
+@import './styles/home-hero.css';
+@import './styles/home-cards.css';
+@import './styles/components.css';
+@import './styles/workspace.css';
+@import './styles/configure.css';
+@import './styles/chapter-groups.css';
+@import './styles/processing.css';
+@import './styles/review-layout.css';
+@import './styles/page-canvas.css';
+@import './styles/review-content.css';
+@import './styles/responsive.css';
+@import './styles/workspace-responsive.css';

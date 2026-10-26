@@ -1,0 +1,107 @@
+.workspace-page {
+  padding: 28px 34px 40px;
+  max-width: 1800px;
+  margin: auto;
+}
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #8c9eac;
+  font-size: 11px;
+  margin-bottom: 25px;
+}
+.back-link:hover {
+  color: var(--teal);
+}
+.workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.workspace-heading h1 {
+  font-size: 25px;
+  font-weight: 550;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.workspace-heading p {
+  font-size: 11px;
+  color: #8b9ba9;
+  margin-top: 8px;
+}
+.workspace-heading .mono {
+  margin-left: 13px;
+  font-size: 9px;
+  color: #647c8e;
+}
+.workspace-heading .eyebrow {
+  font-size: 8px;
+  margin-bottom: 9px;
+}
+.workspace-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.workspace-tools .status {
+  margin-right: 6px;
+}
+.workspace-tools [data-slot='button'] {
+  font-size: 11px;
+}
+.steps {
+  display: flex;
+  padding: 26px 0 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 28px;
+  max-width: 100%;
+  gap: 12px;
+}
+.steps > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  color: #627586;
+  flex: 1;
+  white-space: nowrap;
+}
+.steps > div:last-child {
+  flex: 0;
+}
+.steps > div > span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font: 9px monospace;
+  background: #18212b;
+  border: 1px solid #2d3946;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.steps > div > i {
+  height: 1px;
+  flex: 1;
+  background: #2c3945;
+  margin-left: 4px;
+}
+.steps .current {
+  color: #b7e8df;
+}
+.steps .current > span {
+  border-color: #6eb9ad;
+  background: #23423e;
+  color: #aee9df;
+  box-shadow: 0 0 14px #73c7b516;
+}
+.steps .done {
+  color: #8ab7af;
+}
+.steps .done > span {
+  border-color: #40605b;
+  color: #8dc6bb;
+}

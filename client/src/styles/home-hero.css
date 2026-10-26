@@ -1,0 +1,218 @@
+.dashboard {
+  max-width: 1450px;
+  padding: 42px 46px 24px;
+  margin: auto;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #85a9a5;
+  font: 9px monospace;
+  letter-spacing: 2px;
+  margin-bottom: 14px;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+.page-heading h1 {
+  font-size: 29px;
+  font-weight: 550;
+  letter-spacing: 1px;
+  line-height: 1.5;
+}
+.page-heading h1 > span {
+  color: var(--teal);
+}
+.page-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.hero-panel {
+  border: 1px solid #2a3943;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 78% 45%, #16313966, transparent 55%),
+    linear-gradient(110deg, #141d27, #101821);
+  height: 292px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+.hero-panel:after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background-image:
+    linear-gradient(#6a9ba608 1px, transparent 1px),
+    linear-gradient(90deg, #6a9ba608 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+.hero-copy {
+  padding: 30px 34px;
+  z-index: 1;
+  width: 50%;
+}
+.soft-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: #a5d9d1;
+  padding: 5px 9px;
+  border: 1px solid #385151;
+  border-radius: 4px;
+  background: #18343144;
+}
+.hero-copy h2 {
+  font-size: 25px;
+  line-height: 1.6;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  margin: 13px 0 9px;
+}
+.hero-copy p {
+  font-size: 11px;
+  color: #8f9eaf;
+  line-height: 1.9;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9ce5d7;
+  font-size: 12px;
+}
+.hero-copy .text-link {
+  margin-top: 15px;
+  font-size: 11px;
+}
+.pipeline-art {
+  position: relative;
+  flex: 1;
+  perspective: 900px;
+}
+.orbit {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: 270px;
+  height: 270px;
+  border: 1px solid #4d86862c;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotateX(60deg) rotate(-30deg);
+}
+.orbit-two {
+  width: 390px;
+  height: 390px;
+  border-style: dashed;
+  opacity: 0.5;
+}
+.paper-stack {
+  position: absolute;
+  left: 50%;
+  top: 49%;
+  width: 126px;
+  height: 174px;
+  transform: translate(-50%, -50%) rotate(-10deg);
+  animation: float 8s ease-in-out infinite;
+}
+.paper-stack > div {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #47656c;
+  background: #1a2b36;
+  border-radius: 7px;
+  transform: translate(-14px, 9px) rotate(-10deg);
+}
+.paper-stack > div:nth-child(2) {
+  transform: translate(-7px, 4px) rotate(-5deg);
+  background: #233c45;
+}
+.paper-stack .paper-face {
+  transform: none;
+  background: linear-gradient(135deg, #355a62, #192b37);
+  box-shadow:
+    18px 22px 55px #0005,
+    inset 1px 1px #87b5b744;
+  padding: 17px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  color: #b5e4df;
+}
+.paper-face > span {
+  font: 8px monospace;
+  letter-spacing: 1.6px;
+  margin-bottom: 15px;
+}
+.paper-face > svg {
+  stroke-width: 1.1;
+  margin-bottom: 15px;
+}
+.paper-face > i {
+  height: 2px;
+  width: 85%;
+  background: #94b9bc55;
+  margin-bottom: 5px;
+}
+.paper-face > i:nth-of-type(2) {
+  width: 55%;
+}
+.paper-face small {
+  font-size: 6px;
+  margin-top: auto;
+  letter-spacing: 1px;
+  color: #9ebfc0;
+}
+.art-chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #1b2932db;
+  border: 1px solid #45606b;
+  border-radius: 7px;
+  box-shadow: 0 8px 24px #0003;
+  padding: 11px 14px;
+  color: #b8d9d6;
+  font-size: 10px;
+  backdrop-filter: blur(10px);
+}
+.chip-top {
+  top: 58px;
+  left: 12%;
+  transform: rotate(-5deg);
+}
+.chip-top b {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8ae5d5;
+  box-shadow: 0 0 10px #8ae5d5;
+}
+.chip-bottom {
+  bottom: 54px;
+  right: 12%;
+  transform: rotate(4deg);
+}
+.art-caption {
+  position: absolute;
+  bottom: 24px;
+  width: 100%;
+  text-align: center;
+  font: 8px monospace;
+  letter-spacing: 2.5px;
+  color: #62828d;
+}
+@keyframes float {
+  50% {
+    transform: translate(-50%, -53%) rotate(-7deg);
+  }
+}

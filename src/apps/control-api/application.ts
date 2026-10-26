@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import express from 'express';
+import path from 'node:path';
 import type { Response } from 'express';
 import { DomainError } from '../../shared/errors.js';
 import { ZodError } from 'zod';
@@ -87,6 +88,7 @@ export async function createApplication(options: AppOptions = {}) {
   const app = await NestFactory.create(AppModule, { logger: false, bodyParser: false });
   app.use(express.raw({ type: 'application/pdf', limit: process.env.MAX_UPLOAD_SIZE ?? '100mb' }));
   app.use(express.json({ limit: '20mb' }));
+  app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist')));
   app.useGlobalFilters(new Errors());
   return { app, ...services };
 }

@@ -1,0 +1,221 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: #10151c;
+  border-right: 1px solid var(--line);
+  padding: 30px 16px 18px;
+  display: flex;
+  flex-direction: column;
+}
+.brand-button {
+  text-align: left;
+  margin: 0 12px 46px;
+}
+.brand {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 1px;
+}
+.brand > div > span {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 2.6px;
+  color: #8996a4;
+  margin-top: 2px;
+}
+.brand-mark {
+  display: block;
+  position: relative;
+  width: 29px;
+  height: 32px;
+  transform: rotate(-12deg);
+}
+.brand-mark i {
+  position: absolute;
+  width: 22px;
+  height: 27px;
+  border-radius: 4px;
+  border: 1.5px solid #63b8b4;
+  left: 0;
+  top: 4px;
+}
+.brand-mark i:nth-child(2) {
+  left: 4px;
+  top: 2px;
+  background: #172b30;
+}
+.brand-mark i:nth-child(3) {
+  left: 8px;
+  top: 0;
+  background: linear-gradient(145deg, #9ce9d9, #397a82);
+  border: none;
+}
+.sidebar-label {
+  color: #758290;
+  font-size: 10px;
+  letter-spacing: 2px;
+  padding: 0 14px;
+  margin-bottom: 12px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #95a2af;
+  padding: 12px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  width: 100%;
+  text-align: left;
+  margin: 3px 0;
+}
+.nav-item:hover {
+  background: #19222b;
+  color: #e5eef0;
+}
+.nav-item.active {
+  background: #1d3033;
+  color: #a5e8de;
+}
+.nav-count {
+  margin-left: auto;
+  color: #628d89;
+  font-size: 14px;
+}
+.sidebar-bottom {
+  margin-top: auto;
+}
+.sidebar-note {
+  border: 1px solid #2b3741;
+  background: linear-gradient(140deg, #19252c, #121923);
+  padding: 17px 15px;
+  border-radius: 9px;
+  margin: 20px 5px;
+}
+.note-icon {
+  color: #9bd9ce;
+  margin-bottom: 12px;
+}
+.sidebar-note strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.sidebar-note p {
+  font-size: 11px;
+  color: #81929f;
+  line-height: 1.8;
+  margin: 8px 0 14px;
+}
+.sidebar-note button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 11px;
+  color: #b2ded6;
+}
+.local-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.local-profile > span {
+  background: #25323d;
+  border: 1px solid #3a4857;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+.local-profile small {
+  display: block;
+  color: #7e8b99;
+  font-size: 10px;
+  margin-top: 3px;
+}
+.main-shell {
+  min-width: 0;
+}
+.app-topbar {
+  height: 67px;
+  border-bottom: 1px solid #202934;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 34px;
+  color: #8d9aaa;
+  font-size: 12px;
+  background: #0e131b;
+}
+.app-topbar > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.app-topbar button {
+  display: flex;
+  align-items: center;
+}
+.app-topbar strong {
+  font-weight: 400;
+  color: #c8d0d9;
+}
+.divider {
+  height: 16px;
+  width: 1px;
+  background: #303743;
+}
+.breadcrumb-sep {
+  color: #424f5f;
+}
+.connection {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #8db9aa;
+}
+.connection.offline {
+  color: #e59d9d;
+}
+.shortcut {
+  border: 1px solid #2a3440 !important;
+  color: #8395a4;
+  height: 25px !important;
+}
+.sidebar-collapsed {
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+.sidebar-collapsed .app-sidebar {
+  padding: 28px 10px 16px;
+}
+.sidebar-collapsed .brand-button {
+  margin: 0 7px 45px;
+}
+.sidebar-collapsed .brand > div,
+.sidebar-collapsed .nav-item > span,
+.sidebar-collapsed .sidebar-label,
+.sidebar-collapsed .sidebar-note,
+.sidebar-collapsed .local-profile > div {
+  display: none;
+}
+.sidebar-collapsed .nav-item {
+  padding: 13px 15px;
+}
+.sidebar-collapsed .local-profile {
+  padding: 16px 8px 0;
+}

@@ -47,3 +47,12 @@ test('Only textbook capabilities remain and built Skill packages include actual 
   );
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });
+
+test('Frontend stays split into typed API, UI components and bounded feature files', () => {
+  for (const file of files('client/src').filter((f) => /\.tsx?$/.test(f))) {
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(text.split('\n').length <= 400, `${file} exceeds 400 lines`);
+    assert.doesNotMatch(text, /from ['"](?:node:|@nestjs)/, file);
+    if (file.includes('/components/')) assert.doesNotMatch(text, /from ['"]@\/features\//, file);
+  }
+});

@@ -1,8 +1,8 @@
-# 课本 PDF / 图片结构化后端
+# 析页 · 课本 PDF / 图片结构化工作台
 
 将一整本课本 PDF 或按顺序上传的图片转为可追溯的 JSON：章节、正文、公式、表格、图片、例题、习题和原文答案。提供原图与内容坐标、校对、修复候选、缺失答案生成、版本恢复和 JSON/ZIP 导出。当前版本 0.3.0，30 个业务/健康接口均有实现。
 
-每个实例独占一个数据目录，可管理多个逻辑工作区；每个逻辑工作区对应一本教材。用户只选择工作区、上传材料、填写信息和审核结果，不需要提供路径。不包含前端、用户管理、题库、组卷或通用 Agent 平台；每个用户独立容器的调度仍需后续接入。
+每个实例独占一个数据目录，可管理多个逻辑工作区；每个逻辑工作区对应一本教材。用户只选择工作区、上传材料、填写信息和审核结果，不需要提供路径。已接入 React 前端，不包含用户管理、题库、组卷或通用 Agent 平台；每个用户独立容器的调度仍需后续接入。
 
 ## 运行
 
@@ -10,9 +10,10 @@
 
 ```bash
 npm ci
+npm --prefix client ci
 cp .env.example .env
 # 编辑 .env，配置模型服务地址、密钥和模型名称
-npm run build
+npm run build:all
 node --env-file=.env dist/app/apps/control-api/main.js
 ```
 
@@ -24,7 +25,9 @@ node --env-file=.env dist/app/apps/control-api/main.js
 docker compose up --build
 ```
 
-默认地址 `http://127.0.0.1:5002`，工作目录 `./workspace`。未接入鉴权，当前作为本地/受控工作区服务使用，不要通过修改监听地址将其直接公开。
+前端地址 `http://127.0.0.1:5002`，后端 API 前缀 `/api`。开发前端运行 `npm run dev:web`（5173，代理后端 5002）。[前端设计、架构与验证](docs/frontend-2026-10-26.md)。
+
+默认工作目录 `./workspace`。未接入鉴权，当前作为本地/受控工作区服务使用，不要通过修改监听地址将其直接公开。
 
 ## 最短使用路径
 
@@ -53,6 +56,7 @@ PDF 上传返回 `preparing`，后台自动渲染全部页图；图片上传完�
 ## 架构与工作流
 
 - [工作区流程与本轮验证](docs/workspace-flow-2026-10-25.md)
+- [前端重建与运行指南](docs/frontend-2026-10-26.md)
 - [架构与目录](docs/architecture.md)
 - [可用性、测试与架构检查报告](docs/backend-audit-2026-10-25.md)
 - [与旧版对应的识题工作流](docs/extraction-workflow.md)
