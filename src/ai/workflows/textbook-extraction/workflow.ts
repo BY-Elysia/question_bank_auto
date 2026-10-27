@@ -1,6 +1,7 @@
+import { extractRanges } from './extract-ranges.js';
 import type { BookRepository } from '../../../modules/textbooks/ports/book.repository.js';
 import type { Skills, SkillContext } from '../../ports/skills.js';
-import { BoundaryResult, StructureResult, LookaheadResult, ExtractResult } from './contracts.js';
+import { BoundaryResult, StructureResult, LookaheadResult } from './contracts.js';
 import { checkBoundary, materialize, readingOrder } from './guards.js';
 import { validateDocument } from '../../../modules/textbooks/domain/validation.js';
 import { addEvent } from '../../../modules/jobs/application/job-events.js';
@@ -110,15 +111,14 @@ export class TextbookWorkflow {
         let extracted = false;
         feedback = '';
         for (let attempt = 0; attempt < 3; attempt++) {
-          const result = await this.skills.run(
-            'page-content-extract',
+          const result = await extractRanges(
+            this.skills,
             {
               ranges: boundary.complete,
               excludedPending: boundary.pending,
               answerMode: 'extract_visible',
               feedback,
             },
-            ExtractResult,
             queue,
             context,
           );

@@ -22,6 +22,7 @@ export interface InvocationRecord {
   cache?: unknown;
   at: string;
   attempt: number;
+  validationError?: string | null;
 }
 export interface RunRecords {
   pin(bookId: string, jobId: string, skillId: string, expected: SkillPin): Promise<void>;

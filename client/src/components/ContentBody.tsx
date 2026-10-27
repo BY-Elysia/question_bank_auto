@@ -38,7 +38,7 @@ function QuestionBody({ question }: { question: Question }) {
       )}
       {question.children.map((c, i) => (
         <div className="subquestion" key={i}>
-          <strong>({c.label || i + 1})</strong>
+          <strong>{c.label || `(${i + 1})`}</strong>
           <QuestionBody question={{ ...c, children: [] }} />
         </div>
       ))}

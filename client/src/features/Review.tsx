@@ -264,7 +264,11 @@ export function Review({
                         <button onClick={() => locate(c)}>
                           <span>{kindNames[c.kind]}</span>
                           <strong>
-                            {c.question?.label ? `第 ${c.question.label} 题` : '内容块'}
+                            {c.question?.label
+                              ? /^\d+$/.test(c.question.label)
+                                ? `第 ${c.question.label} 题`
+                                : c.question.label
+                              : '内容块'}
                           </strong>
                         </button>
                         <div>

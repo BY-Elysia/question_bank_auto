@@ -4,7 +4,7 @@ import type { ModelClient } from '../ports/model-client.js';
 import type { PageImagePort } from '../../modules/textbooks/ports/assets.port.js';
 import type { BookRepository } from '../../modules/textbooks/ports/book.repository.js';
 import type { SkillId, SkillCatalog, RunRecords } from '../ports/skill-catalog.js';
-import type { Skills, SkillContext } from '../ports/skills.js';
+import { StructuredOutputError, type Skills, type SkillContext } from '../ports/skills.js';
 export class SkillRunner implements Skills {
   constructor(
     private store: BookRepository,
@@ -52,6 +52,25 @@ export class SkillRunner implements Skills {
         role: definition.modelRole,
       });
       const invocationId = randomUUID();
+      let parsed: z.infer<T> | undefined;
+      let validationError: string | null = null;
+      try {
+        const text = result.text
+          .trim()
+          .replace(/^```(?:json)?\s*/, '')
+          .replace(/\s*```$/, '');
+        parsed = schema.parse(JSON.parse(text));
+      } catch (error) {
+        // Retain field paths/codes, never the raw model response or source text.
+        validationError =
+          error instanceof z.ZodError
+            ? error.issues
+                .map((i) => `${i.path.join('.')}: ${i.code}`)
+                .join('; ')
+                .slice(0, 2000)
+            : 'Invalid JSON syntax';
+        feedback = `上次输出未通过结构校验，请重新按原始资料输出：${error instanceof Error ? error.message : String(error)}`;
+      }
       await this.records.record(book.id, context.jobId, {
         id: invocationId,
         skill: id,
@@ -62,17 +81,10 @@ export class SkillRunner implements Skills {
         cache: result.cache ?? null,
         at: new Date().toISOString(),
         attempt,
+        validationError,
       });
-      try {
-        const text = result.text
-          .trim()
-          .replace(/^```(?:json)?\s*/, '')
-          .replace(/\s*```$/, '');
-        return schema.parse(JSON.parse(text));
-      } catch (error) {
-        feedback = `上次输出未通过结构校验，请重新按原始资料输出：${error instanceof Error ? error.message : String(error)}`;
-      }
+      if (validationError === null) return parsed!;
     }
-    throw new Error(`${id}: invalid structured output after two attempts`);
+    throw new StructuredOutputError(`${id}: invalid structured output after two attempts`);
   }
 }

@@ -80,3 +80,49 @@ test('Workflow handlers can be replaced without importing concrete workflows int
     /Unsupported/,
   );
 });
+
+test('Skill schema failures record field diagnostics without persisting model source text', async (t) => {
+  const system = await fixture(t);
+  const records = [];
+  let calls = 0;
+  const runner = new SkillRunner(
+    system.store,
+    {
+      async complete(request) {
+        if (calls++) assert.match(request.input.validationFeedback, /summary/);
+        return {
+          text: JSON.stringify({ summary: { privateSource: 'DO_NOT_LOG_SOURCE' } }),
+          model: 'test',
+          usage: null,
+        };
+      },
+    },
+    {
+      async dataUrl() {
+        throw new Error('No images expected');
+      },
+    },
+    {
+      async get() {
+        return { id: 'test', version: '1', instructions: 'test', modelRole: 'vision' };
+      },
+    },
+    {
+      async pin() {},
+      async record(_book, _job, record) {
+        records.push(record);
+      },
+    },
+  );
+  await assert.rejects(
+    runner.run('test', {}, z.object({ summary: z.string() }), [], {
+      bookId: 'book',
+      jobId: 'diagnostic',
+      signal: new AbortController().signal,
+    }),
+    /invalid structured output/,
+  );
+  assert.equal(records.length, 2);
+  assert.equal(records[1].validationError, 'summary: invalid_type');
+  assert.ok(!JSON.stringify(records).includes('DO_NOT_LOG_SOURCE'));
+});

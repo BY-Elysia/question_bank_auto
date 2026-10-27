@@ -14,3 +14,5 @@ export interface Skills {
     context: SkillContext,
   ): Promise<z.infer<T>>;
 }
+
+export class StructuredOutputError extends Error {}
