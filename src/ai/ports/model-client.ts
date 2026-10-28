@@ -6,9 +6,14 @@ export interface ModelRequest {
   images: { page: number; url: string }[];
   signal: AbortSignal;
   role: 'vision' | 'reasoning';
+  structuredOutput?: { name: string; schema: Record<string, unknown> };
 }
 export interface ModelClient {
-  complete(
-    request: ModelRequest,
-  ): Promise<{ text: string; usage: unknown; model: string; cache?: unknown }>;
+  complete(request: ModelRequest): Promise<{
+    text: string;
+    usage: unknown;
+    model: string;
+    cache?: unknown;
+    outputFormat?: 'json_object' | 'json_schema' | 'text';
+  }>;
 }

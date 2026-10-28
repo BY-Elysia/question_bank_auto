@@ -1,3 +1,4 @@
+import { liveSkillSnapshot } from './live-skill-snapshot.mjs';
 // Diagnostic retry of the selected image fixture; keep response files in the private test root.
 import fs from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -11,6 +12,7 @@ const provider = new HttpModelClient();
 let calls = 0;
 const system = await createApplication({
   root,
+  catalog: await liveSkillSnapshot(root),
   model: {
     async complete(request) {
       const n = ++calls;

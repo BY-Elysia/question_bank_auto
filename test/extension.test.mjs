@@ -89,7 +89,14 @@ test('Skill schema failures record field diagnostics without persisting model so
     system.store,
     {
       async complete(request) {
-        if (calls++) assert.match(request.input.validationFeedback, /summary/);
+        if (calls++) {
+          assert.match(request.input.validationFeedback, /summary/);
+          assert.equal(request.cache, 'off');
+          assert.ok(request.structuredOutput?.schema);
+        } else {
+          assert.equal(request.cache, 'prefix');
+          assert.equal(request.structuredOutput, undefined);
+        }
         return {
           text: JSON.stringify({ summary: { privateSource: 'DO_NOT_LOG_SOURCE' } }),
           model: 'test',
@@ -125,4 +132,79 @@ test('Skill schema failures record field diagnostics without persisting model so
   assert.equal(records.length, 2);
   assert.equal(records[1].validationError, 'summary: invalid_type');
   assert.ok(!JSON.stringify(records).includes('DO_NOT_LOG_SOURCE'));
+});
+
+test('Opt-in local traces preserve invalid and valid output, retry feedback, page references and provider failures', async (t) => {
+  const previous = process.env.MODEL_TRACE;
+  process.env.MODEL_TRACE = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.MODEL_TRACE;
+    else process.env.MODEL_TRACE = previous;
+  });
+  const system = await fixture(t);
+  let calls = 0;
+  const runner = new SkillRunner(
+    system.store,
+    {
+      async complete() {
+        calls++;
+        if (calls === 3) throw new Error('Authorization: DO_NOT_PERSIST_KEY');
+        return {
+          text: calls === 1 ? 'malformed raw model output' : '{"summary":"original source"}',
+          model: 'test',
+          usage: null,
+        };
+      },
+    },
+    {
+      async dataUrl() {
+        return 'data:image/png;base64,DO_NOT_PERSIST_IMAGE';
+      },
+    },
+    {
+      async get() {
+        return {
+          id: 'trace',
+          version: '1',
+          instructions: 'trace instructions',
+          modelRole: 'vision',
+        };
+      },
+    },
+    new FileRunRecords(system.root),
+  );
+  const ctx = { bookId: 'book', jobId: 'traced', signal: new AbortController().signal };
+  assert.deepEqual(
+    await runner.run(
+      'trace',
+      { feedback: 'business retry cause' },
+      z.object({ summary: z.string() }),
+      [1],
+      ctx,
+    ),
+    { summary: 'original source' },
+  );
+  await assert.rejects(
+    runner.run('trace', {}, z.object({ summary: z.string() }), [1], ctx),
+    /DO_NOT_PERSIST_KEY/,
+  );
+  const dir = path.join(system.root, 'books', 'book', 'runs', 'traced');
+  const records = [];
+  for (const name of await fs.readdir(dir)) {
+    const record = JSON.parse(await fs.readFile(path.join(dir, name), 'utf8'));
+    if (!record.at) continue;
+    assert.equal((await fs.stat(path.join(dir, name))).mode & 0o777, 0o600);
+    records.push(record);
+  }
+  assert.equal(records.length, 3);
+  const invalid = records.find((r) => r.validationError);
+  assert.equal(invalid.trace.rawOutput, 'malformed raw model output');
+  assert.equal(invalid.trace.input.task.feedback, 'business retry cause');
+  assert.deepEqual(invalid.trace.pages, [1]);
+  const valid = records.find((r) => r.validationError === null);
+  assert.match(valid.trace.input.validationFeedback, /结构校验/);
+  assert.equal(valid.trace.rawOutput, '{"summary":"original source"}');
+  assert.equal(records.find((r) => r.providerError).trace.rawOutput, null);
+  assert.ok(records.every((r) => r.durationMs >= 0));
+  assert.ok(!JSON.stringify(records).includes('DO_NOT_PERSIST'));
 });

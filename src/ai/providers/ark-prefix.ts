@@ -54,6 +54,7 @@ export class ArkPrefix {
         {
           model,
           previous_response_id: id,
+          text: { format: { type: 'json_object' } },
           input,
           caching: { type: 'enabled' },
           thinking: { type: 'disabled' },

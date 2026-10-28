@@ -1,3 +1,4 @@
+import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
 import type { ArchivePort } from '../ports/assets.port.js';
 import type { PageImagePort } from '../ports/assets.port.js';
 import type { BookRepository } from '../ports/book.repository.js';
@@ -18,7 +19,10 @@ export class ExportService {
       revision: book.revision,
       pages: book.pages.map((p) => ({ ...p, image: `pages/${p.number}.png` })),
       ...book.document,
-      validation: validateDocument(book.document, book.pages.length),
+      validation: [
+        ...validateDocument(book.document, book.pages.length),
+        ...sourceAnswerCoverageIssues(book.document.contents),
+      ],
       reviewIssues: book.jobs
         .filter((j) => j.baseRevision === book.revision)
         .flatMap((j) => j.issues),

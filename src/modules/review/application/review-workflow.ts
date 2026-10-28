@@ -1,3 +1,4 @@
+import { auditTranscription } from './transcription-audit.js';
 import { fillAnswers } from './answer-workflow.js';
 import { randomUUID } from 'node:crypto';
 import type { Skills, SkillContext } from '../../../ai/ports/skills.js';
@@ -7,7 +8,10 @@ import type { Content, Leaf } from '../../textbooks/domain/content.js';
 import { contentProblems } from '../../textbooks/domain/validation.js';
 import { addEvent } from '../../jobs/application/job-events.js';
 export function missingAnswer(question: Leaf) {
-  return !question.answer?.text.trim() && question.type !== 'group';
+  return (
+    !(question.answer?.text.trim() || question.answer?.explanation.trim()) &&
+    question.type !== 'group'
+  );
 }
 export class ReviewWorkflow {
   constructor(
@@ -65,8 +69,15 @@ export class ReviewWorkflow {
       let after: Content | null = null;
       let issues: typeof book.document.issues = [];
       if (kind === 'verify') {
-        issues = (await this.skills.run('source-verify', { content }, VerifyResult, pages, context))
-          .issues;
+        const sourceDerivations =
+          content.question &&
+          [content.question, ...content.question.children].some(
+            (q) => q.answer?.origin === 'source' && q.answer.explanation.trim(),
+          );
+        issues = sourceDerivations
+          ? await auditTranscription(this.skills, content, pages, context)
+          : (await this.skills.run('source-verify', { content }, VerifyResult, pages, context))
+              .issues;
       } else if (kind === 'repair') {
         const result = await this.skills.run(
           'content-repair',

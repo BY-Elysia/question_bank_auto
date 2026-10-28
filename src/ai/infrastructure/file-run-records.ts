@@ -34,6 +34,6 @@ export class FileRunRecords implements RunRecords {
     }
   }
   async record(bookId: string, jobId: string, record: InvocationRecord) {
-    await atomicJson(this.file(bookId, jobId, record.id), record);
+    await atomicJson(this.file(bookId, jobId, record.id), record, 0o600);
   }
 }

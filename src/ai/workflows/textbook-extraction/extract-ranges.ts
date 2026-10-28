@@ -1,33 +1,85 @@
+import { materialize } from './guards.js';
 import { StructuredOutputError, type Skills, type SkillContext } from '../../ports/skills.js';
 import { ExtractResult, type Range } from './contracts.js';
+type Input = { ranges: Range[]; excludedPending: Range[]; answerMode: string; feedback: string };
+type Result = ReturnType<typeof ExtractResult.parse>;
 
-/** Retry malformed batches one complete range at a time; never split a cross-page question. */
+/** Keep every question whole, while bounding ordinary-text batches. */
+function batches(ranges: Range[]): Range[][] {
+  const result: Range[][] = [];
+  let text: Range[] = [];
+  const flush = () => {
+    if (text.length) result.push(text);
+    text = [];
+  };
+  for (const range of ranges) {
+    if (['question', 'example', 'answer'].includes(range.kind)) {
+      flush();
+      result.push([range]);
+    } else {
+      text.push(range);
+      if (text.length === 4) flush();
+    }
+  }
+  flush();
+  return result;
+}
 export async function extractRanges(
   skills: Skills,
-  input: { ranges: Range[]; excludedPending: Range[]; answerMode: string; feedback: string },
+  input: Input,
   pages: number[],
   context: SkillContext,
 ) {
-  try {
-    return await skills.run('page-content-extract', input, ExtractResult, pages, context);
-  } catch (error) {
-    if (!(error instanceof StructuredOutputError) || input.ranges.length < 2) throw error;
-    const result: ReturnType<typeof ExtractResult.parse> = { items: [], issues: [] };
-    for (const range of input.ranges) {
-      context.signal.throwIfAborted();
-      const part = await skills.run(
-        'page-content-extract',
-        { ...input, ranges: [range] },
-        ExtractResult,
-        [...new Set(range.sources.map((s) => s.page))],
-        context,
-      );
-      // Even a valid JSON response must not introduce a sibling or pending range.
-      if (part.items.length !== 1 || part.items[0]!.key !== range.key)
-        throw new Error('Single-range extraction returned an unexpected range');
-      result.items.push(...part.items);
-      result.issues.push(...part.issues);
+  const result: Result = { items: [], issues: [] };
+  async function extract(ranges: Range[]): Promise<Result> {
+    context.signal.throwIfAborted();
+    const sourcePages = [...new Set(ranges.flatMap((r) => r.sources.map((s) => s.page)))];
+    if (sourcePages.some((page) => !pages.includes(page)))
+      throw new Error('Range outside formal queue');
+    try {
+      let feedback = input.feedback;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const part = await skills.run(
+          'page-content-extract',
+          { ...input, ranges, feedback },
+          ExtractResult,
+          sourcePages,
+          context,
+        );
+        try {
+          if (
+            part.items.length !== ranges.length ||
+            new Set(part.items.map((i) => i.key)).size !== ranges.length ||
+            part.items.some((i) => !ranges.some((r) => r.key === i.key))
+          )
+            throw new Error('Extraction returned an unexpected range');
+          materialize(part, ranges);
+          if (part.items.some((i) => i.content.question && i.content.text.trim()))
+            throw new Error(
+              'Question content.text must be empty; keep all source text in question fields without duplication',
+            );
+          return part;
+        } catch (error) {
+          feedback = `${String(error)}. Return each requested key exactly once: ${ranges.map((r) => r.key).join(', ')}; preserve all subquestions and source derivations.`;
+        }
+      }
+      throw new Error(`Extraction blocked after three semantic attempts: ${feedback}`);
+    } catch (error) {
+      if (!(error instanceof StructuredOutputError) || ranges.length < 2) throw error;
+      const parts: Result = { items: [], issues: [] };
+      for (const range of ranges) {
+        const part = await extract([range]);
+        parts.items.push(...part.items);
+        parts.issues.push(...part.issues);
+      }
+      return parts;
     }
-    return result;
   }
+  // Return only after every batch succeeds; the workflow advances its checkpoint atomically.
+  for (const ranges of batches(input.ranges)) {
+    const part = await extract(ranges);
+    result.items.push(...part.items);
+    result.issues.push(...part.issues);
+  }
+  return result;
 }

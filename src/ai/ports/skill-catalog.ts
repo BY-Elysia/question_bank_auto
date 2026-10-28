@@ -23,6 +23,10 @@ export interface InvocationRecord {
   at: string;
   attempt: number;
   validationError?: string | null;
+  durationMs?: number;
+  providerError?: string;
+  outputFormat?: string;
+  trace?: { system: string; input: unknown; pages: number[]; rawOutput: string | null };
 }
 export interface RunRecords {
   pin(bookId: string, jobId: string, skillId: string, expected: SkillPin): Promise<void>;

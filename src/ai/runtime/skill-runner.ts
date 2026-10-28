@@ -1,3 +1,4 @@
+import { invocationTrace } from './invocation-trace.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ModelClient } from '../ports/model-client.js';
@@ -42,16 +43,49 @@ export class SkillRunner implements Skills {
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       context.signal.throwIfAborted();
-      const result = await this.model.complete({
-        system,
-        cache: book.jobs.find((j) => j.id === context.jobId)?.request.cache ?? 'prefix',
-        cacheScope: book.workspaceId ?? book.id,
-        input: { task: input, context: book.extractionContext, validationFeedback: feedback },
-        images,
-        signal: context.signal,
-        role: definition.modelRole,
-      });
       const invocationId = randomUUID();
+      const startedAt = Date.now();
+      const requestInput = {
+        task: input,
+        context: book.extractionContext,
+        validationFeedback: feedback,
+      };
+      let result;
+      try {
+        result = await this.model.complete({
+          system,
+          cache:
+            attempt > 0
+              ? 'off'
+              : (book.jobs.find((j) => j.id === context.jobId)?.request.cache ?? 'prefix'),
+          ...(attempt > 0
+            ? {
+                structuredOutput: { name: id.replaceAll('-', '_'), schema: z.toJSONSchema(schema) },
+              }
+            : {}),
+          cacheScope: book.workspaceId ?? book.id,
+          input: requestInput,
+          images,
+          signal: context.signal,
+          role: definition.modelRole,
+        });
+      } catch (error) {
+        await this.records.record(book.id, context.jobId, {
+          id: invocationId,
+          skill: id,
+          version: definition.version,
+          instructionHash: hash,
+          model: 'unavailable',
+          usage: null,
+          at: new Date().toISOString(),
+          attempt,
+          durationMs: Date.now() - startedAt,
+          // Transport error messages may contain headers or provider bodies; do not persist them.
+          providerError: context.signal.aborted ? 'aborted' : 'provider_request_failed',
+          ...invocationTrace(system, requestInput, pages, null),
+        });
+        throw error;
+      }
       let parsed: z.infer<T> | undefined;
       let validationError: string | null = null;
       try {
@@ -61,7 +95,7 @@ export class SkillRunner implements Skills {
           .replace(/\s*```$/, '');
         parsed = schema.parse(JSON.parse(text));
       } catch (error) {
-        // Retain field paths/codes, never the raw model response or source text.
+        // Keep summary diagnostics safe; raw source output is available only in opt-in local traces.
         validationError =
           error instanceof z.ZodError
             ? error.issues
@@ -78,10 +112,14 @@ export class SkillRunner implements Skills {
         instructionHash: hash,
         model: result.model,
         usage: result.usage,
-        cache: result.cache ?? null,
+        cache:
+          result.cache ?? (attempt > 0 ? { mode: 'off', reason: 'structured_output_retry' } : null),
         at: new Date().toISOString(),
         attempt,
         validationError,
+        outputFormat: result.outputFormat,
+        durationMs: Date.now() - startedAt,
+        ...invocationTrace(system, requestInput, pages, result.text),
       });
       if (validationError === null) return parsed!;
     }

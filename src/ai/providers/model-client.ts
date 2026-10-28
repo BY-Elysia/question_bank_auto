@@ -1,3 +1,4 @@
+import { providerSchema } from './structured-format.js';
 import type { ModelClient, ModelRequest } from '../ports/model-client.js';
 import { MemoryPrefixCache, type PrefixCache } from '../ports/prefix-cache.js';
 import { ArkPrefix } from './ark-prefix.js';
@@ -21,6 +22,16 @@ export class HttpModelClient implements ModelClient {
     const protocol = process.env.MODEL_PROTOCOL || 'responses';
     if (!['responses', 'chat'].includes(protocol))
       throw new Error('MODEL_PROTOCOL must be responses or chat');
+    const format = request.structuredOutput
+      ? {
+          type: 'json_schema',
+          name: request.structuredOutput.name,
+          strict: true,
+          schema: providerSchema(request.structuredOutput.schema),
+        }
+      : { type: 'json_object' };
+    if (request.cache === 'prefix' && request.structuredOutput)
+      throw new Error('Strict structured output requires cache=off; prefix calls use json_object');
     const content: unknown[] = [
       {
         type: protocol === 'responses' ? 'input_text' : 'text',
@@ -59,6 +70,8 @@ export class HttpModelClient implements ModelClient {
         protocol === 'responses'
           ? {
               model,
+              text: { format },
+              ...(request.structuredOutput ? { thinking: { type: 'disabled' } } : {}),
               input: [
                 { role: 'system', content: [{ type: 'input_text', text: request.system }] },
                 { role: 'user', content },
@@ -70,7 +83,12 @@ export class HttpModelClient implements ModelClient {
                 { role: 'system', content: request.system },
                 { role: 'user', content },
               ],
-              response_format: { type: 'json_object' },
+              response_format: request.structuredOutput
+                ? {
+                    type: 'json_schema',
+                    json_schema: { name: format.name, strict: true, schema: format.schema },
+                  }
+                : { type: 'json_object' },
             },
         request.signal,
       );
@@ -83,6 +101,12 @@ export class HttpModelClient implements ModelClient {
             .join('\n')
         : data.choices?.[0]?.message?.content;
     if (!text) throw new Error('Model response contains no text');
-    return { text, usage: data.usage ?? null, model, cache };
+    return {
+      text,
+      usage: data.usage ?? null,
+      model,
+      cache,
+      outputFormat: request.structuredOutput ? ('json_schema' as const) : ('json_object' as const),
+    };
   }
 }

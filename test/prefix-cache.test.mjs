@@ -94,7 +94,10 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
       .slice(1)
       .every(
         (r) =>
-          r.previous_response_id === 'seed_1' && r.input[0].role === 'user' && r.store === true,
+          r.previous_response_id === 'seed_1' &&
+          r.input[0].role === 'user' &&
+          r.store === true &&
+          r.text?.format?.type === 'json_object',
       ),
   );
   client = new HttpModelClient(new FilePrefixCache(root));

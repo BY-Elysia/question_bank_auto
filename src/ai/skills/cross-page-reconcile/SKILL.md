@@ -12,11 +12,19 @@ description: 判定内容和题目跨页边界
 - 每个范围必须给出 kind、sectionId、sources、label。sources.page 必须来自正式队列。box 为归一化 [left, top, right, bottom]。
 - 多页题须保留全部来源页；缺尾题、未闭合表格或段落进入 pending。宁可等待，不能把部分子题当成完整顶层题。
 - “一、选择题”等栏目是 heading，不是 group 题目；栏目内每道编号题分别成一个 question 范围。只有共享同一题干的子问才归入同一道顶层题。
+- 同题紧随的“解/证明”和全部小问答案必须与题干放在同一个 question/example 范围；只有与题目分离的集中答案区才使用独立 answer 范围。不能把同页原题放 complete、其续页解答另起 key 放 pending。
 - 单个题目的题号、共享题干和全部小问必须放入同一个 question/example 范围，不得将“Exercise 1. Use ...”这类题干另拆为 heading。跨页 pending 的来源从题号和共享题干开始；“continued”等续题标记用于合并，不作为新题。
 - 单页可能同时有完整题和未完整尾题。complete 与 pending 可同时非空，不能为了尾题等待而丢掉前面的完整内容。
 - 根据 sections 的标题位置进行同页章节切换，禁止把下一节内容归入上一节。
 - blankPages 仅包含真正没有内容的页面，不能用空白声明跳过无法辨认的页；不要重复提取页眉页脚为正文，可在 reason 解释。
 - 正式队列中每页必须由未处理范围、已处理内容或空白声明覆盖。
+
+## 起始残片检查
+- boundary 输出包含 orphanedStarts 数组，值是本次范围的 key；没有缺头片段时返回 []。
+- 在没有对应 pending 的情况下，当前队列页首直接从推导中间、等式链续行或编号子问的答案开始，前文题号及题干在所有提供图中都不可见：不能把它判作“完整正文无缺失”。为可见片段创建 paragraph/answer/formula 范围，并把 key 放进 orphanedStarts。
+- 例：页首是上一题证明的半截等式，随后出现“(2) 对任意…”的证明，但主问题编号和题干不在队列中：这仍是缺头片段；即使这些等式本身写完，也须加入 orphanedStarts。不能只称它“上下确界证明段落”就跳过缺头声明。
+- 不为缺头片段猜题号或创建 question。缺失的是之前的页，不能依靠等待下一页补回题干；若片段结尾闭合可放 complete，仍须报告 orphanedStarts。
+- 已有 pending 的跨页题按原 key 续接，不能误报缺头；独立完整正文、章节标题和页眉页脚不能误报。
 
 ## lookahead 模式
 - 最后一张图是 previewPage，只判断输入 tail 这一个正式队列尾部内容是否延续到下一页。

@@ -1,3 +1,4 @@
+import { sourceAnswerCoverageIssues } from '../../../modules/textbooks/domain/content-quality.js';
 import { extractRanges } from './extract-ranges.js';
 import type { BookRepository } from '../../../modules/textbooks/ports/book.repository.js';
 import type { Skills, SkillContext } from '../../ports/skills.js';
@@ -135,6 +136,16 @@ export class TextbookWorkflow {
         if (!extracted)
           throw new Error(`Extraction blocked without advancing checkpoint: ${feedback}`);
       }
+      for (const key of boundary.orphanedStarts) {
+        const range = [...boundary.complete, ...boundary.pending].find((r) => r.key === key)!;
+        stage.issues.push({
+          code: 'MISSING_QUESTION_START',
+          severity: 'warning',
+          page: range.sources[0]!.page,
+          contentId: stage.contents.find((c) => c.key === key)?.id ?? null,
+          message: `Source begins with a continuation without its question stem: ${range.label}; visible fragment preserved without inventing missing text`,
+        });
+      }
       stage.processedPages = [...new Set([...stage.processedPages, page])].sort((a, b) => a - b);
       context.signal.throwIfAborted();
       book = await this.store.update(book.id, (current) => {
@@ -187,6 +198,7 @@ export class TextbookWorkflow {
             message: `Unclosed ${pending.key}: ${pending.label}; source pages preserved for repair`,
           });
         stage.contents.sort(readingOrder);
+        stage.issues.push(...sourceAnswerCoverageIssues(stage.contents));
         stage.issues.push(...validateDocument(stage, current.pages.length));
         stage.issues = [
           ...new Map(stage.issues.map((issue) => [JSON.stringify(issue), issue])).values(),

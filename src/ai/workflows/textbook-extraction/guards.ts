@@ -2,6 +2,17 @@ import type { z } from 'zod';
 import { BoundaryResult, ExtractResult, type Range } from './contracts.js';
 import type { Document, Content } from '../../../modules/textbooks/domain/content.js';
 import { contentProblems } from '../../../modules/textbooks/domain/validation.js';
+function containsSameRegion(a: Range['sources'], b: Range['sources']) {
+  return a.some((x) =>
+    b.some((y) => {
+      if (x.page !== y.page) return false;
+      const width = Math.max(0, Math.min(x.box[2], y.box[2]) - Math.max(x.box[0], y.box[0]));
+      const height = Math.max(0, Math.min(x.box[3], y.box[3]) - Math.max(x.box[1], y.box[1]));
+      const area = (box: number[]) => (box[2]! - box[0]!) * (box[3]! - box[1]!);
+      return (width * height) / Math.min(area(x.box), area(y.box)) >= 0.65;
+    }),
+  );
+}
 export function checkBoundary(
   result: z.infer<typeof BoundaryResult>,
   queue: number[],
@@ -19,6 +30,43 @@ export function checkBoundary(
     if (range.sectionId && !document.sections.some((s) => s.id === range.sectionId))
       throw new Error('Unknown section');
   }
+  for (const awaiting of result.pending) {
+    if (
+      ['question', 'example'].includes(awaiting.kind) &&
+      result.complete.some(
+        (ready) =>
+          ['question', 'example'].includes(ready.kind) &&
+          containsSameRegion(ready.sources, awaiting.sources),
+      )
+    )
+      throw new Error(
+        'A question overlaps complete and pending ranges. Keep its shared stem, all subquestions and inline answers in one pending range; never publish only completed subquestions.',
+      );
+  }
+  for (const range of ranges) {
+    if (
+      ['question', 'example'].includes(range.kind) &&
+      document.contents.some(
+        (done) =>
+          ['question', 'example'].includes(done.kind) &&
+          containsSameRegion(range.sources, done.sources),
+      )
+    )
+      throw new Error(
+        'New question range overlaps an already processed question; do not repeat it under a new key',
+      );
+  }
+  const orphaned = result.orphanedStarts ?? [];
+  if (
+    new Set(orphaned).size !== orphaned.length ||
+    orphaned.some((key) => {
+      const range = ranges.find((r) => r.key === key);
+      return (
+        !range || pending.some((r) => r.key === key) || ['question', 'example'].includes(range.kind)
+      );
+    })
+  )
+    throw new Error('Invalid orphaned-start declaration');
   for (const previous of pending) {
     const next = ranges.find((range) => range.key === previous.key);
     if (

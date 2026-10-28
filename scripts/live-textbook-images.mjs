@@ -1,3 +1,4 @@
+import { liveSkillSnapshot } from './live-skill-snapshot.mjs';
 // Opt-in real-image integration test. Images/results stay outside the repository.
 // MODEL_* credentials/configuration and LIVE_IMAGE_DIR must be set by the caller.
 import assert from 'node:assert/strict';
@@ -15,6 +16,7 @@ const provider = new HttpModelClient();
 const deadline = Date.now() + 1800000;
 const system = await createApplication({
   root,
+  catalog: await liveSkillSnapshot(root),
   model: {
     async complete(request) {
       assert.ok(Date.now() < deadline && report.calls < 80, 'Live test budget exceeded');
@@ -152,6 +154,41 @@ try {
     contents.every(
       (c) => !(c.sources.some((s) => s.page <= 2) && c.sources.some((s) => s.page >= 3)),
     ),
+  );
+  if (process.env.LIVE_QUALITY_CHECKS === '1') {
+    const q14 = contents.find((c) => /^(?:14|第14题)$/.test(c.question?.label ?? ''))?.question;
+    const proof = JSON.stringify(q14 ?? {});
+    expect(
+      'Question payload avoids duplicate text',
+      contents.filter((c) => c.question).every((c) => c.text === ''),
+    );
+    expect(
+      'Question 14 keeps both child answers',
+      q14?.children.length === 2 && q14.children.every((c) => c.answer?.origin === 'source'),
+    );
+    // Source-specific regression anchors; these are not a substitute for visual proofreading.
+    expect(
+      'Question 14 retains intermediate negative-argument derivation',
+      proof.replace(/[{}_\s]/g, '').includes('f1(-x)') &&
+        proof.includes('sqrt') &&
+        proof.includes('x^3'),
+    );
+    expect(
+      'First chapter name read from source',
+      view.chapters.some((c) => /实数集.*函数/.test(c.title ?? '')),
+    );
+    expect(
+      'Leading continuation has a missing-stem issue',
+      view.document.issues.some((i) => i.code === 'MISSING_QUESTION_START' && i.page === 1),
+    );
+  }
+  expect(
+    'Second chapter question 2 is published exactly once',
+    contents.filter(
+      (c) =>
+        /(?:^2[.、．]?$|第2题$)/.test(c.question?.label ?? '') &&
+        c.sources.some((s) => s.page === 3),
+    ).length === 1,
   );
   const exported = await api(view.exportJsonUrl);
   expect('JSON export matches reviewed workspace', exported.contents.length === contents.length);

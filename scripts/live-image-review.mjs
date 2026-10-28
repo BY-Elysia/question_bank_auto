@@ -1,3 +1,4 @@
+import { liveSkillSnapshot } from './live-skill-snapshot.mjs';
 // Opt-in source verification and repair against a completed real-image workspace.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -9,7 +10,7 @@ if (!root || !process.env.MODEL_API_KEY)
   throw new Error('Set LIVE_WORKSPACE_ROOT and MODEL_API_KEY');
 const previous = JSON.parse(await fs.readFile(path.join(root, 'report.json'), 'utf8'));
 const id = previous.workspaceId;
-const system = await createApplication({ root });
+const system = await createApplication({ root, catalog: await liveSkillSnapshot(root) });
 const report = { checks: [], startedAt: new Date().toISOString() };
 const deadline = Date.now() + 600000;
 const timer = setTimeout(() => void system.jobs.shutdown(), 600000);

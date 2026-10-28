@@ -31,8 +31,9 @@ test('Boundary/extractor conflict retries without dropping a later complete ques
   assert.equal(job.status, 'completed');
   assert.ok(book.document.contents.some((c) => c.key === 'q2'));
   assert.equal(
-    skills.calls.filter((c) => c.id === 'page-content-extract' && c.input.ranges.length === 2)
-      .length,
+    skills.calls.filter(
+      (c) => c.id === 'page-content-extract' && c.input.ranges.some((r) => r.key === 'q2'),
+    ).length,
     2,
   );
 });
@@ -272,4 +273,92 @@ test('A cancellation signal reaches PDF rendering before any model request', asy
   const cancelled = await system.jobs.cancel('book', job.id);
   assert.equal(cancelled.status, 'cancelled');
   assert.equal(cancelled.cursor, 1);
+});
+
+test('A declared leading fragment remains visible and carries a missing-stem review issue', async (t) => {
+  class FragmentSkills extends ScriptedSkills {
+    output(id, input) {
+      const result = super.output(id, input);
+      if (id === 'cross-page-reconcile' && input.mode === 'boundary' && input.queue.at(-1) === 1)
+        result.orphanedStarts = ['p1'];
+      return result;
+    }
+  }
+  const system = await fixture(t, new FragmentSkills());
+  const { book, job } = await run(system);
+  assert.equal(job.status, 'needs_review');
+  assert.ok(book.document.contents.some((c) => c.key === 'p1' && c.kind === 'paragraph'));
+  assert.ok(
+    book.document.issues.some(
+      (i) => i.code === 'MISSING_QUESTION_START' && i.page === 1 && i.contentId === 'c_p1',
+    ),
+  );
+});
+test('Orphan declarations cannot refer to unknown ranges, full questions or carried pending ranges', () => {
+  const document = { sections: [], contents: [], issues: [], processedPages: [] };
+  const fragment = range('frag', [1], 'paragraph', null);
+  const base = {
+    complete: [fragment],
+    pending: [],
+    blankPages: [],
+    reason: '',
+    orphanedStarts: ['missing'],
+  };
+  assert.throws(() => checkBoundary(base, [1], [], document), /orphaned/);
+  assert.throws(
+    () =>
+      checkBoundary(
+        { ...base, orphanedStarts: ['frag'], complete: [{ ...fragment, kind: 'question' }] },
+        [1],
+        [],
+        document,
+      ),
+    /orphaned/,
+  );
+  assert.throws(
+    () => checkBoundary({ ...base, orphanedStarts: ['frag'] }, [1], [fragment], document),
+    /orphaned/,
+  );
+});
+
+test('Partial subquestions cannot be published while another overlapping part remains pending', () => {
+  const whole = {
+    ...range('full', [1], 'question', null),
+    sources: [{ page: 1, box: [0.1, 0.5, 0.9, 0.9] }],
+  };
+  const fragment = {
+    ...range('partial', [1], 'question', null),
+    sources: [{ page: 1, box: [0.12, 0.52, 0.51, 0.57] }],
+  };
+  const document = { sections: [], contents: [], issues: [], processedPages: [] };
+  assert.throws(
+    () =>
+      checkBoundary(
+        { complete: [whole], pending: [fragment], blankPages: [], orphanedStarts: [], reason: '' },
+        [1],
+        [],
+        document,
+      ),
+    /overlaps complete and pending/,
+  );
+  const committed = { ...payload(''), ...whole, id: 'c_full', question: question('2') };
+  assert.throws(
+    () =>
+      checkBoundary(
+        { complete: [fragment], pending: [], blankPages: [], orphanedStarts: [], reason: '' },
+        [1],
+        [],
+        { ...document, contents: [committed] },
+      ),
+    /already processed question/,
+  );
+  const separate = { ...fragment, sources: [{ page: 1, box: [0.1, 0.92, 0.9, 0.99] }] };
+  assert.doesNotThrow(() =>
+    checkBoundary(
+      { complete: [whole], pending: [separate], blankPages: [], orphanedStarts: [], reason: '' },
+      [1],
+      [],
+      document,
+    ),
+  );
 });

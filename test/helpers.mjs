@@ -127,6 +127,19 @@ export class ScriptedSkills {
         content: { ...payload('Corrected text'), question: input.content.question },
         issues: [],
       };
+    if (id === 'source-verify' && input.mode === 'source_transcribe')
+      return { blocks: [{ page: input.sources[0].page, text: 'Original explanation' }] };
+    if (id === 'source-verify' && input.mode === 'transcription_audit')
+      return {
+        checks: [
+          {
+            page: input.content.sources[0].page,
+            sourceText: 'Original explanation',
+            extractedText: 'Original explanation',
+            verdict: 'matched',
+          },
+        ],
+      };
     if (id === 'source-verify') return { issues: [] };
     throw new Error(id);
   }

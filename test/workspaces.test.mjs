@@ -85,7 +85,7 @@ function fakeSkills() {
         return schema.parse({
           items: input.ranges.map((r) => ({
             key: r.key,
-            content: { ...payload('Question'), question: question('1') },
+            content: { ...payload(''), question: question('1') },
           })),
           issues: [],
         });

@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractRanges } from '../dist/app/ai/workflows/textbook-extraction/extract-ranges.js';
 import { StructuredOutputError } from '../dist/app/ai/ports/skills.js';
-import { range, payload } from './helpers.mjs';
+import { range, payload, question } from './helpers.mjs';
 const context = () => ({ bookId: 'book', jobId: 'job', signal: new AbortController().signal });
 const input = () => ({
-  ranges: [range('cross', [1, 2]), range('next', [2])],
+  ranges: [range('cross', [1, 2], 'paragraph'), range('next', [2], 'paragraph')],
   excludedPending: [range('tail', [2])],
   answerMode: 'extract_visible',
   feedback: '',
@@ -80,4 +80,70 @@ test('A malformed single cross-page range fails without splitting or recursive r
     StructuredOutputError,
   );
   assert.equal(calls, 1);
+});
+
+test('Question batches preserve each complete question and request only its source pages', async () => {
+  const calls = [];
+  const task = input();
+  task.ranges = [range('first', [1]), range('cross', [1, 2]), range('body', [2], 'paragraph')];
+  const result = await extractRanges(
+    {
+      async run(_id, input, _schema, pages) {
+        calls.push({ input, pages });
+        return {
+          items: input.ranges.map((r) => ({
+            key: r.key,
+            content: {
+              ...payload(r.kind === 'question' ? '' : 'source'),
+              question: r.kind === 'question' ? question(r.key) : null,
+            },
+          })),
+          issues: [],
+        };
+      },
+    },
+    task,
+    [1, 2],
+    context(),
+  );
+  assert.deepEqual(
+    calls.map((c) => c.input.ranges.map((r) => r.key)),
+    [['first'], ['cross'], ['body']],
+  );
+  assert.deepEqual(
+    calls.map((c) => c.pages),
+    [[1], [1, 2], [2]],
+  );
+  assert.equal(result.items.length, 3);
+});
+
+test('Invalid group retries only that question and returns full source pages on retry', async () => {
+  const calls = [];
+  let bad = true;
+  const task = input();
+  task.ranges = [range('first', [1]), range('cross', [1, 2]), range('last', [2])];
+  const result = await extractRanges(
+    {
+      async run(_id, input, _schema, pages) {
+        const key = input.ranges[0].key;
+        calls.push({ key, pages, feedback: input.feedback });
+        const q = question(key);
+        if (key === 'cross' && bad) {
+          bad = false;
+          q.type = 'group';
+        }
+        return { items: [{ key, content: { ...payload(''), question: q } }], issues: [] };
+      },
+    },
+    task,
+    [1, 2],
+    context(),
+  );
+  assert.deepEqual(
+    calls.map((c) => c.key),
+    ['first', 'cross', 'cross', 'last'],
+  );
+  assert.match(calls[2].feedback, /Group has no children/);
+  assert.deepEqual(calls[2].pages, [1, 2]);
+  assert.equal(result.items.length, 3);
 });

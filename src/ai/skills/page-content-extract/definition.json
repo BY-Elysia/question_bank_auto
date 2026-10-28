@@ -1,6 +1,6 @@
 {
   "id": "page-content-extract",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "忠实提取课本内容及题目",
   "modelRole": "vision",
   "allowedTools": [],

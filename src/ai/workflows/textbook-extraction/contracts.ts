@@ -10,6 +10,7 @@ export const BoundaryResult = z.strictObject({
   complete: z.array(Range),
   pending: z.array(Range),
   blankPages: z.array(z.number().int().positive()),
+  orphanedStarts: z.array(Id).default([]),
   reason: z.string(),
 });
 export const LookaheadResult = z.strictObject({
