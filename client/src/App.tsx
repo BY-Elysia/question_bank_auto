@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowUpRight,
@@ -14,35 +14,15 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Logo, Loading } from '@/components/common';
-import { Dashboard } from '@/features/Dashboard';
+import { Dashboard } from '@/features/workspace/components/Dashboard';
 const WorkspacePage = lazy(() =>
-  import('@/features/Workspace').then((m) => ({ default: m.WorkspacePage })),
+  import('@/features/workspace/components/Workspace').then((m) => ({ default: m.WorkspacePage })),
 );
-import { UploadDialog } from '@/features/UploadDialog';
-import { navigate } from '@/lib/api';
-import { useResource } from '@/lib/hooks';
+import { UploadDialog } from '@/features/workspace/components/UploadDialog';
+import { navigate } from '@/shared/navigation';
+import { useAppShell } from '@/app/hooks/useAppShell';
 export default function App() {
-  const [hash, setHash] = useState(location.hash),
-    [upload, setUpload] = useState(false),
-    [collapsed, setCollapsed] = useState(false);
-  const health = useResource<{ status: string; modelConfigured: boolean }>('/health', 15000);
-  useEffect(() => {
-    const route = () => setHash(location.hash);
-    window.addEventListener('hashchange', route);
-    return () => window.removeEventListener('hashchange', route);
-  }, []);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setUpload(true);
-      }
-    };
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  }, []);
-  const match = hash.match(/^#\/workspace\/([a-zA-Z0-9_-]{1,100})$/),
-    id = match?.[1];
+  const { id, upload, setUpload, collapsed, setCollapsed, health } = useAppShell();
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="app-sidebar">

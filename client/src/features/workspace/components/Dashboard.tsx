@@ -1,5 +1,4 @@
 import { relativeDate } from '@/lib/labels';
-import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowUpRight,
@@ -14,24 +13,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Status, Empty, ErrorNote, Loading } from '@/components/common';
-import { type Workspaces, navigate } from '@/lib/api';
-import { useResource } from '@/lib/hooks';
+import { navigate } from '@/shared/navigation';
+import { useDashboard } from '../hooks/useDashboard';
 export function Dashboard({ onUpload }: { onUpload: () => void }) {
-  const { data, loading, error, refresh } = useResource<Workspaces>('/workspaces', 6000);
-  const [query, setQuery] = useState(''),
-    [filter, setFilter] = useState('all');
-  const items = data ?? [],
-    active = items.filter((w) => ['preparing', 'extracting'].includes(w.status)).length;
-  const filtered = items
-    .filter(
-      (w) =>
-        w.title.toLowerCase().includes(query.toLowerCase()) &&
-        (filter === 'all' ||
-          (filter === 'active'
-            ? ['preparing', 'extracting'].includes(w.status)
-            : w.status === 'needs_review')),
-    )
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const { loading, error, refresh, query, setQuery, filter, setFilter, items, active, filtered } =
+    useDashboard();
   return (
     <div className="dashboard">
       <div className="eyebrow">

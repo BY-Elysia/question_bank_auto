@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -8,8 +7,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ErrorNote } from '@/components/common';
-import { type Content, write, bookUrl } from '@/lib/api';
-import { useAction } from '@/lib/hooks';
+import type { Content } from '@/shared/contracts';
+import { useContentEditor } from '../hooks/useContentEditor';
 export function EditDialog({
   id,
   content,
@@ -23,27 +22,13 @@ export function EditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [draft, setDraft] = useState<Content>(() => structuredClone(content));
-  const action = useAction();
-  function updateLeaf(index: number, field: 'prompt' | 'answer' | 'explanation', value: string) {
-    setDraft((old) => {
-      const d = structuredClone(old),
-        q = index < 0 ? d.question! : d.question!.children[index];
-      if (field === 'prompt') q.prompt = value;
-      else {
-        if (!q.answer)
-          q.answer = {
-            text: '',
-            explanation: '',
-            origin: 'human',
-            review: 'accepted',
-            sources: [],
-          };
-        q.answer[field === 'answer' ? 'text' : 'explanation'] = value;
-      }
-      return d;
-    });
-  }
+  const { draft, setDraft, action, updateLeaf, updateOption, clearAnswer, save } = useContentEditor(
+    id,
+    content,
+    revision,
+    onSaved,
+    onClose,
+  );
   return (
     <Dialog
       open
@@ -76,14 +61,7 @@ export function EditDialog({
                     <textarea
                       rows={2}
                       value={o.text}
-                      onChange={(e) =>
-                        setDraft((old) => {
-                          const d = structuredClone(old),
-                            leaf = i === 0 ? d.question! : d.question!.children[i - 1];
-                          leaf.options[j].text = e.target.value;
-                          return d;
-                        })
-                      }
+                      onChange={(e) => updateOption(i - 1, j, e.target.value)}
                     />
                   </label>
                 ))}
@@ -104,17 +82,7 @@ export function EditDialog({
                   />
                 </label>
                 {q.answer && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setDraft((old) => {
-                        const d = structuredClone(old);
-                        (i === 0 ? d.question! : d.question!.children[i - 1]).answer = null;
-                        return d;
-                      })
-                    }
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => clearAnswer(i - 1)}>
                     清空答案
                   </Button>
                 )}
@@ -156,20 +124,7 @@ export function EditDialog({
           )}
         </div>
         <ErrorNote>{action.error}</ErrorNote>
-        <Button
-          disabled={action.busy}
-          onClick={() =>
-            action.run(async () => {
-              await write(
-                bookUrl(id) + `/contents/${content.id}`,
-                { expectedRevision: revision, content: draft },
-                'PATCH',
-              );
-              onSaved();
-              onClose();
-            })
-          }
-        >
+        <Button disabled={action.busy} onClick={save}>
           {action.busy ? '保存中…' : '保存修改'}
         </Button>
       </DialogContent>

@@ -1,6 +1,6 @@
 import { FileScan, CheckCircle2, Layers3, ArrowRight, LoaderCircle } from 'lucide-react';
 import { motion } from 'motion/react';
-import type { WorkspaceView } from '@/lib/api';
+import type { WorkspaceView } from '@/shared/contracts';
 import { Status } from '@/components/common';
 export function Processing({ view }: { view: WorkspaceView }) {
   const w = view.workspace,

@@ -1,5 +1,5 @@
 import { Empty } from '@/components/common';
-import type { WorkspaceView } from '@/lib/api';
+import type { WorkspaceView } from '@/shared/contracts';
 export function ReviewIssues({
   issues,
   onLocate,

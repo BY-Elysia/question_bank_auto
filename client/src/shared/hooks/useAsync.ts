@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { request } from './api';
-export function useResource<T>(url: string, interval = 0) {
+export function useResource<T>(loadResource: (signal: AbortSignal) => Promise<T>, interval = 0) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -11,7 +10,7 @@ export function useResource<T>(url: string, interval = 0) {
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       try {
-        const result = await request<T>(url, { signal: abort.signal });
+        const result = await loadResource(abort.signal);
         if (!abort.signal.aborted) {
           setData(result);
           setError('');
@@ -30,7 +29,7 @@ export function useResource<T>(url: string, interval = 0) {
       abort.abort();
       clearTimeout(timer);
     };
-  }, [url, interval, version]);
+  }, [loadResource, interval, version]);
   return { data, error, loading, refresh };
 }
 export function useAction() {

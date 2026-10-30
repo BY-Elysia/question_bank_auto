@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, Maximize, Focus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { Content, WorkspaceView } from '@/lib/api';
+import type { Content, WorkspaceView } from '@/shared/contracts';
 export function PageCanvas({
   pages,
   page,

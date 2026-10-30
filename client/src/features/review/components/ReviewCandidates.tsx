@@ -2,7 +2,7 @@ import { Check, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { ContentBody } from '@/components/ContentBody';
-import type { Content, Proposal } from '@/lib/api';
+import type { Content, Proposal } from '@/shared/contracts';
 export function ReviewCandidates({
   pending,
   disabled,

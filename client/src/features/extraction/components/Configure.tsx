@@ -1,54 +1,26 @@
-import { useState } from 'react';
 import { ArrowRight, Layers3, ScanLine, ShieldCheck, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/common';
-import { ChapterGroups, type Group } from './ChapterGroups';
-import { type WorkspaceView, type ExtractionSettings, write, workspaceUrl } from '@/lib/api';
-import { useAction } from '@/lib/hooks';
+import { ChapterGroups } from './ChapterGroups';
+import type { WorkspaceView } from '@/shared/contracts';
+import { useConfigure } from '../hooks/useConfigure';
 export function Configure({ view, onDone }: { view: WorkspaceView; onDone: () => void }) {
-  const [metadata, setMetadata] = useState({
-    version: 'v1.1',
-    courseId: '',
-    textbookId: '',
-    title: view.workspace.title,
-    publisher: '',
-    subject: '',
-    hasAnswer: true,
-    answerHandlingMode: 'generate_brief',
-  });
-  const [mode, setMode] = useState<'sequential' | 'chapters'>('sequential'),
-    [groups, setGroups] = useState<Group[]>([
-      { id: 1, pages: [] },
-      { id: 2, pages: [] },
-    ]),
-    [instructions, setInstructions] = useState(''),
-    [cache, setCache] = useState<'prefix' | 'off'>('prefix');
-  const action = useAction();
-  const grouped =
-    groups.every((g) => g.pages.length > 0) &&
-    new Set(groups.flatMap((g) => g.pages)).size === view.pages.length;
-  const valid =
-    metadata.title.trim() &&
-    metadata.subject.trim() &&
-    (mode === 'sequential' || grouped) &&
-    view.actions.configure;
-  async function start() {
-    if (!valid) return;
-    await action.run(async () => {
-      await write(workspaceUrl(view.workspace.id) + '/extract', {
-        metadata: {
-          ...metadata,
-          answerHandlingMode: metadata.hasAnswer ? 'extract_visible' : metadata.answerHandlingMode,
-        },
-        instructions,
-        cache,
-        mode,
-        chapters: mode === 'chapters' ? groups.map((g) => ({ pages: g.pages })) : [],
-        concurrency: 2,
-      } as ExtractionSettings);
-      onDone();
-    });
-  }
+  const {
+    metadata,
+    setMetadata,
+    mode,
+    setMode,
+    groups,
+    setGroups,
+    instructions,
+    setInstructions,
+    cache,
+    setCache,
+    action,
+    grouped,
+    valid,
+    start,
+  } = useConfigure(view, onDone);
   return (
     <div className="configure">
       <div className="section-intro">

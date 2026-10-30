@@ -158,3 +158,35 @@ test('Connection errors are visible and can be retried', async ({ page }) => {
   await page.getByRole('button', { name: '重新连接' }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+test('A rejected edit keeps the draft and can be retried without losing workspace state', async ({
+  page,
+}) => {
+  await upload(page, '编辑冲突回归', false);
+  await complete(page);
+  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  const draft = '冲突后仍然保留的人工修改';
+  await page.getByRole('textbox', { name: '题干', exact: true }).fill(draft);
+  let saves = 0;
+  await page.route('**/api/textbooks/*/contents/*', async (route) => {
+    saves++;
+    if (saves === 1)
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ detail: '测试版本冲突' }),
+      });
+    else await route.continue();
+  });
+  await page.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('测试版本冲突');
+  await expect(page.getByRole('textbox', { name: '题干', exact: true })).toHaveValue(draft);
+  await page.getByRole('button', { name: '保存修改', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText(draft, { exact: true })).toBeVisible();
+  expect(saves).toBe(2);
+  await page.getByRole('button', { name: '下一页' }).click();
+  await expect(page.getByRole('img', { name: '教材第 2 页原图' })).toBeVisible();
+  await page.getByRole('button', { name: '上一页' }).click();
+  await expect(page.getByText(draft, { exact: true })).toBeVisible();
+});

@@ -56,6 +56,7 @@ PDF 上传返回 `preparing`，后台自动渲染全部页图；图片上传完�
 ## 架构与工作流
 
 - [工作区流程与本轮验证](docs/workspace-flow-2026-10-25.md)
+- [前端分层架构](docs/frontend-architecture.md)
 - [前端重建与运行指南](docs/frontend-2026-10-26.md)
 - [架构与目录](docs/architecture.md)
 - [可用性、测试与架构检查报告](docs/backend-audit-2026-10-25.md)

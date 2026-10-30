@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { Content, Question } from '@/lib/api';
+import type { Content, Question } from '@/shared/contracts';
 const MathText = lazy(() => import('./RichText'));
 function RichText({ text }: { text: string }) {
   return (

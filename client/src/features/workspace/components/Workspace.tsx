@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { ArrowLeft, Download, History, Pause, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,23 +8,36 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Steps, Status, ErrorNote, Loading } from '@/components/common';
-import { useAction, useResource } from '@/lib/hooks';
-import { type WorkspaceView, workspaceUrl, bookUrl, navigate, write, request } from '@/lib/api';
-import { Configure } from './Configure';
-import { Processing } from './Processing';
-import { Review } from './Review';
+import { navigate } from '@/shared/navigation';
+import { useWorkspace } from '../hooks/useWorkspace';
+import { Configure } from '@/features/extraction/components/Configure';
+import { Processing } from '@/features/extraction/components/Processing';
+import { Review } from '@/features/review/components/Review';
 export function WorkspacePage({ id }: { id: string }) {
   const {
-    data: view,
+    view,
     error,
     loading,
     refresh,
-  } = useResource<WorkspaceView>(workspaceUrl(id), 2000);
-  const action = useAction();
-  const [confirm, setConfirm] = useState(false),
-    [history, setHistory] = useState<number[] | null>(null),
-    [revision, setRevision] = useState(0),
-    [preview, setPreview] = useState(false);
+    action,
+    confirm,
+    setConfirm,
+    history,
+    setHistory,
+    revision,
+    setRevision,
+    preview,
+    setPreview,
+    active,
+    runningJob,
+    canExport,
+    step,
+    command,
+    download,
+    openHistory,
+    remove,
+    restore,
+  } = useWorkspace(id);
   if (loading && !view) return <Loading />;
   if (!view)
     return (
@@ -37,39 +49,7 @@ export function WorkspacePage({ id }: { id: string }) {
         </Button>
       </div>
     );
-  const w = view.workspace,
-    active = ['preparing', 'extracting'].includes(w.status),
-    runningJob = view.jobs.some((j) => ['queued', 'running'].includes(j.status)),
-    canExport = view.actions.export && !runningJob,
-    step =
-      w.status === 'preparing'
-        ? 0
-        : w.status === 'ready'
-          ? 1
-          : active || view.actions.resume
-            ? 2
-            : 3;
-  async function command(name: string) {
-    await action.run(async () => {
-      await write(workspaceUrl(id) + '/' + name);
-      refresh();
-    });
-  }
-  async function download(url: string, extension: string) {
-    await action.run(async () => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('导出失败，请刷新后重试。');
-      const blob = await response.blob(),
-        link = document.createElement('a'),
-        objectUrl = URL.createObjectURL(blob);
-      link.href = objectUrl;
-      link.download = `${w.title.replace(/[\\/:*?"<>|]/g, '_')}.${extension}`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-    });
-  }
+  const w = view.workspace;
   return (
     <div className="workspace-page">
       <button className="back-link" onClick={() => navigate()}>
@@ -101,17 +81,7 @@ export function WorkspacePage({ id }: { id: string }) {
           )}
           {canExport && (
             <>
-              <Button
-                variant="outline"
-                disabled={action.busy}
-                onClick={() =>
-                  action.run(async () => {
-                    const list = await request<{ revision: number }[]>(bookUrl(id) + '/revisions');
-                    setHistory(list.map((r) => r.revision));
-                    setRevision(view.revision);
-                  })
-                }
-              >
+              <Button variant="outline" disabled={action.busy} onClick={openHistory}>
                 <History size={15} />
                 历史
               </Button>
@@ -183,16 +153,7 @@ export function WorkspacePage({ id }: { id: string }) {
             <Button variant="outline" onClick={() => setConfirm(false)}>
               保留工作区
             </Button>
-            <Button
-              variant="destructive"
-              disabled={action.busy}
-              onClick={() =>
-                action.run(async () => {
-                  await write(workspaceUrl(id), undefined, 'DELETE');
-                  navigate();
-                })
-              }
-            >
+            <Button variant="destructive" disabled={action.busy} onClick={remove}>
               确认删除
             </Button>
           </div>
@@ -221,19 +182,7 @@ export function WorkspacePage({ id }: { id: string }) {
             </select>
           </label>
           <ErrorNote>{action.error}</ErrorNote>
-          <Button
-            disabled={revision === view.revision || action.busy}
-            onClick={() =>
-              action.run(async () => {
-                await write(bookUrl(id) + '/restore', {
-                  expectedRevision: view.revision,
-                  revision,
-                });
-                setHistory(null);
-                refresh();
-              })
-            }
-          >
+          <Button disabled={revision === view.revision || action.busy} onClick={restore}>
             恢复为新修订
           </Button>
         </DialogContent>

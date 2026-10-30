@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
 import { Check, Layers3, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { WorkspaceView } from '@/lib/api';
-export type Group = { id: number; pages: number[] };
+import type { WorkspaceView } from '@/shared/contracts';
+import type { Group } from '../model/groups';
+import { useChapterGroups } from '../hooks/useChapterGroups';
 export function ChapterGroups({
   pages,
   groups,
@@ -12,35 +12,11 @@ export function ChapterGroups({
   groups: Group[];
   onChange: (g: Group[]) => void;
 }) {
-  const [selected, setSelected] = useState<number[]>([]),
-    [target, setTarget] = useState(1);
-  const last = useRef<number | null>(null);
-  const assigned = new Set(groups.flatMap((g) => g.pages));
-  function select(n: number, shift: boolean) {
-    if (shift && last.current !== null) {
-      const low = Math.min(n, last.current),
-        high = Math.max(n, last.current);
-      setSelected((old) => [
-        ...new Set([
-          ...old,
-          ...pages.filter((p) => p.number >= low && p.number <= high).map((p) => p.number),
-        ]),
-      ]);
-    } else setSelected((old) => (old.includes(n) ? old.filter((v) => v !== n) : [...old, n]));
-    last.current = n;
-  }
-  function assign(id: number, values = selected) {
-    onChange(
-      groups.map((g) => ({
-        ...g,
-        pages:
-          g.id === id
-            ? [...new Set([...g.pages, ...values])].sort((a, b) => a - b)
-            : g.pages.filter((p) => !values.includes(p)),
-      })),
-    );
-    setSelected([]);
-  }
+  const { selected, setSelected, target, setTarget, assigned, select, assign } = useChapterGroups(
+    pages,
+    groups,
+    onChange,
+  );
   return (
     <section className="chapter-groups">
       <div className="section-bar">

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { ArrowDown, ArrowUp, FilePlus2, LoaderCircle, UploadCloud, X } from 'lucide-react';
 import {
   Dialog,
@@ -9,8 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/common';
-import { request, type Workspace } from '@/lib/api';
-import { useAction } from '@/lib/hooks';
+import { useUpload } from '../hooks/useUpload';
 export function UploadDialog({
   open,
   onOpenChange,
@@ -20,63 +19,9 @@ export function UploadDialog({
   onOpenChange: (v: boolean) => void;
   onCreated: (id: string) => void;
 }) {
-  const [files, setFiles] = useState<File[]>([]),
-    [title, setTitle] = useState(''),
-    [hover, setHover] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const action = useAction();
-  function choose(list: FileList | File[] | null) {
-    if (!list) return;
-    const next = Array.from(list);
-    action.setError('');
-    if (!next.length) return;
-    if (next.some((f) => !/\.(pdf|png|jpe?g|webp)$/i.test(f.name))) {
-      action.setError('请选择 PDF、PNG、JPEG 或 WebP 文件。');
-      return;
-    }
-    const pdf = next.filter((f) => /\.pdf$/i.test(f.name));
-    if (pdf.length && (pdf.length !== 1 || next.length !== 1)) {
-      action.setError('一次上传一个 PDF，或一组图片，请勿混合。');
-      return;
-    }
-    if (
-      next.length > 500 ||
-      next.reduce((n, f) => n + f.size, 0) > 100 * 1024 * 1024 ||
-      (!pdf.length && next.some((f) => f.size > 20 * 1024 * 1024))
-    ) {
-      action.setError('总大小不超过 100 MB；图片最多 500 张，每张不超过 20 MB。');
-      return;
-    }
-    setFiles(next);
-    if (!title) setTitle(next[0].name.replace(/\.[^.]+$/, ''));
-  }
-  async function submit() {
-    if (!title.trim() || !files.length) return;
-    await action.run(async () => {
-      const isPdf = /\.pdf$/i.test(files[0].name);
-      const body = isPdf ? files[0] : new FormData();
-      if (body instanceof FormData) files.forEach((f) => body.append('images', f));
-      const w = await request<Workspace>(
-        `/workspaces/${isPdf ? 'pdf' : 'images'}?title=${encodeURIComponent(title.trim())}`,
-        {
-          method: 'POST',
-          body,
-          headers: isPdf ? { 'Content-Type': 'application/pdf' } : undefined,
-        },
-      );
-      setFiles([]);
-      setTitle('');
-      onOpenChange(false);
-      onCreated(w.id);
-    });
-  }
-  function move(i: number, delta: number) {
-    setFiles((current) => {
-      const copy = [...current];
-      [copy[i], copy[i + delta]] = [copy[i + delta], copy[i]];
-      return copy;
-    });
-  }
+  const { files, setFiles, title, setTitle, hover, setHover, action, choose, submit, move } =
+    useUpload(onOpenChange, onCreated);
   return (
     <Dialog
       open={open}
