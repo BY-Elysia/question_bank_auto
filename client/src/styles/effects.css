@@ -1,0 +1,144 @@
+.main-shell {
+  isolation: isolate;
+}
+.particle-field {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.8;
+}
+.particle-field[hidden] {
+  display: none;
+}
+.app-sidebar {
+  z-index: 1;
+}
+.effects-toggle {
+  color: #716d85;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+.effects-toggle[aria-pressed='true'] {
+  color: #b6a2ed;
+  background: #9a7cd911;
+}
+.app-shell[data-effects='on'] .library-welcome {
+  position: relative;
+  overflow: hidden;
+}
+.app-shell[data-effects='on'] .library-welcome::before {
+  content: '';
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  top: -150px;
+  right: 12%;
+  background: radial-gradient(circle, #a487e525, transparent 70%);
+  pointer-events: none;
+  animation: ambient-drift 15s ease-in-out infinite alternate;
+}
+.book-cover {
+  overflow: hidden;
+}
+.app-shell[data-effects='on'] .book-cover::after {
+  content: '';
+  position: absolute;
+  inset: -80%;
+  background: linear-gradient(115deg, transparent 42%, #d0baff12 49%, transparent 56%);
+  transform: translateX(-60%);
+  pointer-events: none;
+}
+.app-shell[data-effects='on'] .workspace-card:hover .book-cover::after {
+  animation: cover-sweep 1.2s ease-out both;
+}
+.app-shell[data-effects='on'] .workspace-card {
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.app-shell[data-effects='on'] .workspace-card:hover {
+  box-shadow:
+    0 7px 25px #00000022,
+    0 0 16px #9975de0a;
+}
+.app-shell[data-effects='on'] .workspace-card:hover .book-cover > svg {
+  filter: drop-shadow(0 0 8px #b296e744);
+}
+.app-shell[data-effects='on'] [data-slot='button'][data-variant='default']:hover {
+  box-shadow:
+    0 0 16px #9b7cd433,
+    0 3px 8px #0002;
+}
+.processing-orbit {
+  position: absolute;
+  inset: -20px;
+  border: 1px solid #a788df20;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+.app-shell[data-effects='on'] .processing-orbit {
+  opacity: 1;
+  animation: processing-orbit 18s linear infinite;
+}
+.processing-orbit b {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #c3a5ef;
+  border-radius: 50%;
+  box-shadow: 0 0 9px #a681d8aa;
+  top: 4px;
+  left: 24%;
+}
+.processing-orbit b:nth-child(2) {
+  top: 73%;
+  left: 94%;
+  width: 3px;
+  height: 3px;
+}
+.processing-orbit b:nth-child(3) {
+  top: 86%;
+  left: 15%;
+  width: 2px;
+  height: 2px;
+}
+.app-shell[data-effects='on'] .scan-orb {
+  animation: processing-breathe 4s ease-in-out infinite;
+}
+@keyframes ambient-drift {
+  to {
+    transform: translate(-180px, 200px) scale(1.2);
+  }
+}
+@keyframes cover-sweep {
+  to {
+    transform: translateX(60%);
+  }
+}
+@keyframes processing-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes processing-breathe {
+  50% {
+    box-shadow: 0 0 32px #9473c61c;
+    border-color: #9d7cc766;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .particle-field,
+  .processing-orbit,
+  .library-welcome::before,
+  .book-cover::after {
+    display: none !important;
+  }
+  .app-shell[data-effects='on'] .workspace-card:hover .book-cover > svg {
+    filter: none;
+  }
+}

@@ -13,6 +13,11 @@ export function Processing({ view }: { view: WorkspaceView }) {
     <div className="processing">
       <div className="processing-heading">
         <div className="scan-orb">
+          <em className="processing-orbit" aria-hidden="true">
+            <b />
+            <b />
+            <b />
+          </em>
           <FileScan size={36} />
           <i />
         </div>

@@ -10,7 +10,9 @@ import {
   Command,
   Wifi,
   WifiOff,
+  Sparkles,
 } from 'lucide-react';
+import { ParticleField } from '@/components/effects/ParticleField';
 import { Button } from '@/components/ui/button';
 import { Logo, Loading } from '@/components/common';
 import { Dashboard } from '@/features/workspace/components/Dashboard';
@@ -21,9 +23,13 @@ import { UploadDialog } from '@/features/workspace/components/UploadDialog';
 import { navigate } from '@/shared/navigation';
 import { useAppShell } from '@/app/hooks/useAppShell';
 export default function App() {
-  const { id, upload, setUpload, collapsed, setCollapsed, health } = useAppShell();
+  const { id, upload, setUpload, collapsed, setCollapsed, health, effects, toggleEffects } =
+    useAppShell();
   return (
-    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+    <div
+      className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}
+      data-effects={effects ? 'on' : 'off'}
+    >
       <aside className="app-sidebar">
         <button className="brand-button" onClick={() => navigate()} aria-label="析页首页">
           <Logo />
@@ -62,6 +68,7 @@ export default function App() {
         </div>
       </aside>
       <div className="main-shell">
+        <ParticleField enabled={effects} />
         <header className="app-topbar">
           <div>
             <button
@@ -91,6 +98,17 @@ export default function App() {
                       : '模型待配置'}
               </span>
             </span>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="effects-toggle"
+              onClick={toggleEffects}
+              aria-label="粒子动效"
+              aria-pressed={effects}
+              title={effects ? '关闭粒子动效（遵循系统减少动态设置）' : '开启粒子动效'}
+            >
+              <Sparkles size={15} />
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setUpload(true)} className="shortcut">
               <Command size={13} />K
             </Button>

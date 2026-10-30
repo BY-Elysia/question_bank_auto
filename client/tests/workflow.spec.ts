@@ -198,3 +198,47 @@ test('A rejected edit keeps the draft and can be retried without losing workspac
   await page.getByRole('button', { name: '上一页' }).click();
   await expect(page.getByText(draft, { exact: true })).toBeVisible();
 });
+
+test('Particle effects render, never intercept controls, persist their toggle and respect reduced motion', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  const canvas = page.locator('.particle-field');
+  const toggle = page.getByRole('button', { name: '粒子动效', exact: true });
+  await expect(canvas).toHaveAttribute('data-state', 'running');
+  await expect(canvas).toHaveCSS('pointer-events', 'none');
+  const paintedPixels = () =>
+    canvas.evaluate((element) => {
+      const c = element as HTMLCanvasElement;
+      const pixels = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let painted = 0;
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i]) painted++;
+      return painted;
+    });
+  await expect.poll(paintedPixels).toBeGreaterThan(0);
+  await page.mouse.move(620, 250);
+  await page.getByRole('button', { name: '新建工作区', exact: true }).last().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: testInfo.outputPath('particles-desktop.png'), fullPage: true });
+  await toggle.click();
+  await expect(canvas).toHaveAttribute('data-state', 'disabled');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await page.reload();
+  await expect(canvas).toHaveAttribute('data-state', 'disabled');
+  await toggle.click();
+  await expect(canvas).toHaveAttribute('data-state', 'running');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(canvas).toHaveAttribute('data-state', 'reduced');
+  await expect(canvas).toBeHidden();
+  expect(await paintedPixels()).toBe(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(toggle).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  expect(errors).toEqual([]);
+});
