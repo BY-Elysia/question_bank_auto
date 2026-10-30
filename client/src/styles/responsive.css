@@ -1,54 +1,44 @@
-@media (min-width: 1600px) {
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
   .dashboard {
-    padding-top: 56px;
+    padding: 32px 30px;
   }
-  .hero-panel {
-    height: 330px;
+  .welcome-steps {
+    gap: 6px;
+    padding: 24px 18px 24px 0;
   }
-  .hero-copy {
-    padding: 38px;
+  .welcome-steps > div {
+    padding: 16px 10px;
   }
-  .hero-copy h2 {
-    font-size: 29px;
-  }
-  .workspace-card {
+  .welcome-copy {
     padding: 25px;
   }
-}
-@media (max-width: 1100px) {
-  .app-shell {
-    grid-template-columns: 180px minmax(0, 1fr);
-  }
-  .dashboard {
-    padding: 30px 25px;
+  .welcome-steps small {
+    font-size: 9px;
   }
   .workspace-grid {
+    gap: 16px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .sidebar-note {
-    padding: 13px 10px;
-  }
-  .app-topbar {
-    padding: 0 25px;
-  }
-  .hero-copy {
-    padding: 25px;
-  }
-  .hero-copy h2 {
-    font-size: 22px;
-  }
-  .chip-top {
-    left: 0;
-  }
-  .chip-bottom {
-    right: 2%;
-  }
-  .stats-row > div {
-    padding: 16px 12px;
-    gap: 8px;
   }
   .sidebar-collapsed {
     grid-template-columns: 70px minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .library-welcome {
+    grid-template-columns: 1fr;
+  }
+  .welcome-steps {
+    padding: 0 25px 25px;
+    gap: 10px;
+  }
+  .welcome-steps > div {
+    min-height: 115px;
+  }
+  .welcome-copy p {
+    max-width: none;
   }
 }
 @media (max-width: 760px) {
@@ -61,73 +51,73 @@
   }
   .app-topbar {
     height: 56px;
-    padding: 0 18px;
+    padding: 0 20px;
   }
   .app-topbar > div {
     gap: 10px;
   }
+  .app-topbar > div:first-child > button,
+  .app-topbar .divider,
+  .app-topbar .shortcut {
+    display: none;
+  }
   .dashboard {
-    padding: 27px 18px;
+    padding: 28px 20px;
   }
   .page-heading {
-    align-items: flex-start;
+    gap: 12px;
     flex-wrap: wrap;
-    gap: 16px;
+    margin-bottom: 24px;
   }
   .page-heading h1 {
-    font-size: 23px;
+    font-size: 27px;
   }
-  .hero-panel {
-    height: 265px;
+  .page-heading p {
+    font-size: 12px;
+    line-height: 1.8;
   }
-  .hero-copy {
-    padding: 24px 20px;
-    width: 60%;
+  .welcome-copy {
+    padding: 22px;
   }
-  .hero-copy h2 {
-    font-size: 20px;
+  .welcome-copy h2 {
+    font-size: 22px;
   }
-  .pipeline-art {
-    opacity: 0.75;
-  }
-  .art-chip {
-    display: none;
-  }
-  .paper-stack {
-    left: 55%;
-    width: 100px;
-    height: 145px;
-  }
-  .art-caption {
-    display: none;
-  }
-  .stats-row {
-    gap: 8px;
-    margin: 16px 0 28px;
-  }
-  .stats-row > div {
-    padding: 12px;
-    flex-wrap: wrap;
+  .welcome-steps {
+    padding: 0 18px 20px;
     gap: 7px;
   }
+  .welcome-steps > div {
+    padding: 15px 9px;
+    gap: 10px;
+  }
+  .welcome-steps strong {
+    font-size: 11px;
+  }
+  .welcome-steps small {
+    font-size: 8px;
+  }
+  .stats-row {
+    gap: 12px;
+    padding: 20px 0;
+    justify-content: space-between;
+  }
+  .stats-row > div {
+    gap: 5px;
+  }
   .stats-row svg {
-    width: 14px;
+    display: none;
   }
   .stats-row span {
-    font-size: 10px;
+    font-size: 11px;
   }
   .stats-row strong {
-    font-size: 22px;
-    width: 100%;
-    margin: 0;
+    font-size: 12px;
   }
   .section-bar {
     flex-wrap: wrap;
-    gap: 14px;
+    gap: 15px;
   }
-  .search {
-    width: 100%;
-  }
+  .search,
   .search input {
     width: 100%;
   }
@@ -138,19 +128,16 @@
     display: none;
   }
   .loading-state {
-    padding: 60px 15px;
+    padding: 50px 15px;
+  }
+  .upload-dialog {
+    max-width: calc(100% - 24px) !important;
   }
   .connection {
     font-size: 10px;
   }
-  .app-topbar .shortcut {
-    display: none;
-  }
-  .hero-copy p {
-    font-size: 10px;
-  }
-  .upload-dialog {
-    max-width: calc(100% - 24px) !important;
+  .filter-tabs {
+    gap: 20px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -160,41 +147,5 @@
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
-  }
-}
-@media (max-width: 760px) {
-  .hero-panel {
-    height: auto;
-    min-height: 275px;
-  }
-  .hero-copy {
-    width: 100%;
-    padding: 25px 22px;
-  }
-  .hero-copy h2 {
-    font-size: 21px;
-  }
-  .pipeline-art {
-    position: absolute;
-    right: -30px;
-    bottom: 10px;
-    width: 130px;
-    height: 170px;
-    opacity: 0.22;
-    pointer-events: none;
-  }
-  .paper-stack {
-    left: 50%;
-    top: 50%;
-  }
-  .orbit {
-    display: none;
-  }
-}
-
-@media (max-width: 760px) {
-  .app-topbar > div:first-child > button,
-  .app-topbar .divider {
-    display: none;
   }
 }

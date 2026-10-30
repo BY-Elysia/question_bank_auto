@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  ArrowUpRight,
   FolderOpen,
   LayoutGrid,
   Plus,
@@ -46,16 +45,13 @@ export default function App() {
           </div>
         )}
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <div className="note-icon">
-              <BookOpen size={19} />
-            </div>
-            <strong>从纸页，到知识</strong>
-            <p>每一次提取，都保留原文的线索。</p>
-            <button onClick={() => setUpload(true)}>
-              开始整理
-              <ArrowUpRight size={14} />
-            </button>
+          <div className="sidebar-tip">
+            <BookOpen size={16} />
+            <p>
+              你的材料与整理记录
+              <br />
+              都保存在工作区中。
+            </p>
           </div>
           <div className="local-profile">
             <span>析</span>

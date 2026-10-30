@@ -10,8 +10,8 @@
   font-weight: 500;
 }
 .review-heading p {
-  font-size: 11px;
-  color: #829aaa;
+  font-size: 12px;
+  color: var(--muted);
   margin-top: 8px;
 }
 .review-actions {
@@ -19,12 +19,12 @@
   gap: 8px;
 }
 .review-actions [data-slot='button'] {
-  font-size: 11px;
+  font-size: 12px;
 }
 .review-layout {
   display: grid;
   grid-template-columns: 170px minmax(0, 1fr);
-  border: 1px solid #30404c;
+  border: 1px solid var(--line);
   border-radius: 9px;
   overflow: hidden;
   height: calc(100vh - 340px);
@@ -32,8 +32,8 @@
   max-height: 1100px;
 }
 .chapter-tree {
-  background: #111c26;
-  border-right: 1px solid #30404c;
+  background: var(--surface-soft);
+  border-right: 1px solid var(--line);
   padding: 16px 8px;
   overflow: auto;
 }
@@ -43,7 +43,7 @@
   gap: 9px;
   font-size: 12px;
   margin: 2px 6px 18px;
-  color: #adc4cf;
+  color: var(--foreground);
 }
 .chapter-tree > button {
   display: flex;
@@ -52,9 +52,9 @@
   text-align: left;
   width: 100%;
   padding: 10px 8px;
-  color: #9ab0bf;
+  color: var(--muted);
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   margin: 3px 0;
 }
@@ -63,24 +63,24 @@
 }
 .chapter-tree > button > small {
   font: 9px monospace;
-  color: #7395a6;
+  color: var(--muted);
 }
 .chapter-tree > button:hover,
 .chapter-tree > button.selected {
-  background: #233c3b;
-  color: #c5e6de;
+  background: var(--surface-soft);
+  color: var(--foreground);
 }
 .chapter-tree .tree-summary {
-  font-size: 10px;
-  color: #6f91a5;
-  border-bottom: 1px solid #293d48;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
   border-radius: 0;
   margin-bottom: 16px;
   padding-bottom: 16px;
 }
 .chapter-tree > p {
-  font-size: 11px;
-  color: #698a9e;
+  font-size: 12px;
+  color: var(--muted);
   padding: 10px;
   line-height: 1.8;
 }

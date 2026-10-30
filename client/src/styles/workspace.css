@@ -7,8 +7,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #8c9eac;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 12px;
   margin-bottom: 25px;
 }
 .back-link:hover {
@@ -27,17 +27,17 @@
   overflow-wrap: anywhere;
 }
 .workspace-heading p {
-  font-size: 11px;
-  color: #8b9ba9;
+  font-size: 12px;
+  color: var(--muted);
   margin-top: 8px;
 }
 .workspace-heading .mono {
   margin-left: 13px;
-  font-size: 9px;
-  color: #647c8e;
+  font-size: 12px;
+  color: var(--muted);
 }
 .workspace-heading .eyebrow {
-  font-size: 8px;
+  font-size: 12px;
   margin-bottom: 9px;
 }
 .workspace-tools {
@@ -50,7 +50,7 @@
   margin-right: 6px;
 }
 .workspace-tools [data-slot='button'] {
-  font-size: 11px;
+  font-size: 12px;
 }
 .steps {
   display: flex;
@@ -64,8 +64,8 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 11px;
-  color: #627586;
+  font-size: 12px;
+  color: var(--muted);
   flex: 1;
   white-space: nowrap;
 }
@@ -78,30 +78,30 @@
   display: grid;
   place-items: center;
   font: 9px monospace;
-  background: #18212b;
-  border: 1px solid #2d3946;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
   border-radius: 50%;
   flex-shrink: 0;
 }
 .steps > div > i {
   height: 1px;
   flex: 1;
-  background: #2c3945;
+  background: var(--surface-soft);
   margin-left: 4px;
 }
 .steps .current {
-  color: #b7e8df;
+  color: var(--foreground);
 }
 .steps .current > span {
-  border-color: #6eb9ad;
-  background: #23423e;
-  color: #aee9df;
-  box-shadow: 0 0 14px #73c7b516;
+  border-color: var(--line);
+  background: var(--surface-soft);
+  color: var(--foreground);
+  box-shadow: 0 4px 18px #00000012;
 }
 .steps .done {
-  color: #8ab7af;
+  color: var(--muted);
 }
 .steps .done > span {
-  border-color: #40605b;
-  color: #8dc6bb;
+  border-color: var(--line);
+  color: var(--muted);
 }

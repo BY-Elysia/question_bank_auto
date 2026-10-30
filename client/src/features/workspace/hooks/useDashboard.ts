@@ -4,7 +4,8 @@ import { workspaceApi } from '../api/workspaces';
 export function useDashboard() {
   const { data, loading, error, refresh } = useResource(workspaceApi.list, 6000);
   const [query, setQuery] = useState(''),
-    [filter, setFilter] = useState('all');
+    [filter, setFilter] = useState('all'),
+    [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const items = data ?? [],
     active = items.filter((w) => ['preparing', 'extracting'].includes(w.status)).length;
   const filtered = items
@@ -17,5 +18,18 @@ export function useDashboard() {
             : w.status === 'needs_review')),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  return { loading, error, refresh, query, setQuery, filter, setFilter, items, active, filtered };
+  return {
+    loading,
+    error,
+    refresh,
+    query,
+    setQuery,
+    filter,
+    setFilter,
+    items,
+    active,
+    filtered,
+    layout,
+    setLayout,
+  };
 }

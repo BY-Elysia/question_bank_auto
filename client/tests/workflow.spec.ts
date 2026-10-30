@@ -80,7 +80,7 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await expect(page.getByText('人工校对后的题目：已知 f(x) = 2x + 3，求 f(4)。')).toHaveCount(0);
   await page.getByRole('button', { name: '删除工作区', exact: true }).click();
   await page.getByRole('button', { name: '确认删除' }).click();
-  await expect(page.getByRole('heading', { name: '每一页，都有新可能。' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '教材库' })).toBeVisible();
   expect(errors).toEqual([]);
 });
 test('Image grouping supports selection and drag, then produces a merged document', async ({
@@ -131,7 +131,15 @@ test('Mobile layout, reduced motion, search and keyboard dialog work', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '每一页，都有新可能。' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '教材库' })).toBeVisible();
+  await page.getByRole('button', { name: '列表视图', exact: true }).click();
+  await expect(page.locator('.workspace-grid')).toHaveClass(/is-list/);
+  await expect(page.getByRole('button', { name: '列表视图', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: '卡片视图', exact: true }).click();
+  await expect(page.locator('.workspace-grid')).not.toHaveClass(/is-list/);
   await page.getByLabel('搜索工作区').fill('不存在的教材');
   await expect(page.getByText('没有匹配的工作区')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(

@@ -15,7 +15,7 @@
 }
 .processing-heading p {
   font-size: 12px;
-  color: #8da1b1;
+  color: var(--muted);
   line-height: 1.9;
 }
 .scan-orb {
@@ -24,12 +24,12 @@
   display: grid;
   place-items: center;
   border-radius: 22px;
-  background: radial-gradient(circle at top left, #294e50, #152b34);
-  border: 1px solid #42666a;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
   margin: 0 auto;
-  color: #9ed9ce;
+  color: var(--muted);
   position: relative;
-  box-shadow: 0 0 65px #427b691d;
+  box-shadow: 0 4px 18px #00000012;
 }
 .scan-orb i {
   position: absolute;
@@ -37,8 +37,8 @@
   right: 18px;
   top: 24px;
   height: 1px;
-  background: #b2f2e5;
-  box-shadow: 0 0 10px #b2f2e5;
+  background: var(--surface-soft);
+  box-shadow: 0 4px 18px #00000012;
   animation: scan 3s ease-in-out infinite;
 }
 @keyframes scan {
@@ -55,34 +55,34 @@
   justify-content: space-between;
   align-items: baseline;
   font-size: 12px;
-  color: #b0c0cd;
+  color: var(--foreground);
   margin-bottom: 13px;
 }
 .progress-summary strong {
   font-size: 23px;
   font-weight: 500;
-  color: #d8e9eb;
+  color: var(--foreground);
   font-variant-numeric: tabular-nums;
 }
 .progress-summary small {
   font-size: 12px;
-  color: #8fa5b3;
+  color: var(--muted);
   font-weight: 400;
 }
 .progress-track {
   height: 4px;
-  background: #27343f;
+  background: var(--surface-soft);
   border-radius: 4px;
   overflow: hidden;
 }
 .progress-track > div {
   height: 100%;
-  background: linear-gradient(90deg, #4c8a86, #a1dfca);
+  background: var(--surface-soft);
   border-radius: 4px;
 }
 .progress-summary p {
-  font-size: 11px;
-  color: #7c94a3;
+  font-size: 12px;
+  color: var(--muted);
   margin-top: 13px;
   text-align: center;
 }
@@ -91,26 +91,26 @@
   align-items: center;
   justify-content: center;
   gap: 22px;
-  color: #53717d;
+  color: var(--foreground);
   margin: 30px 0;
 }
 .process-flow > span {
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid #2a3d47;
+  border: 1px solid var(--line);
   padding: 12px 20px;
   border-radius: 7px;
-  color: #87a2ad;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .process-flow svg {
   width: 16px;
 }
 .process-flow .highlight {
-  border-color: #49796e;
-  color: #abd9cc;
-  background: #1b322e;
+  border-color: var(--line);
+  color: var(--foreground);
+  background: var(--surface-soft);
 }
 .chapter-progress-grid {
   display: grid;
@@ -119,8 +119,8 @@
   margin-top: 32px;
 }
 .chapter-progress {
-  background: #141e29;
-  border: 1px solid #2e414c;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 21px;
 }
@@ -130,9 +130,9 @@
   justify-content: space-between;
 }
 .chapter-progress .mono {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 1px;
-  color: #698fa1;
+  color: var(--muted);
 }
 .chapter-progress h3 {
   font-size: 14px;
@@ -142,8 +142,8 @@
 .chapter-progress footer {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  color: #849fac;
+  font-size: 12px;
+  color: var(--muted);
   margin-top: 14px;
 }
 .chapter-progress .error-text {
@@ -154,8 +154,8 @@
   align-items: center;
   gap: 7px;
   justify-content: center;
-  color: #778f9f;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 12px;
   margin: 26px 0 6px;
 }
 .preview-toggle {

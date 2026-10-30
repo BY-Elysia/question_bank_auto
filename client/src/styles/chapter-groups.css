@@ -1,6 +1,6 @@
 .chapter-groups {
   margin-top: 26px;
-  border-top: 1px solid #2c3946;
+  border-top: 1px solid var(--line);
   padding-top: 24px;
 }
 .chapter-groups h3 {
@@ -9,33 +9,33 @@
 }
 .counter {
   font: 11px monospace;
-  color: #d6bf9c;
+  color: var(--foreground);
   white-space: nowrap;
 }
 .group-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid #34424e;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 9px 10px;
   margin-bottom: 18px;
-  background: #19242e;
+  background: var(--surface-soft);
 }
 .group-toolbar > span {
-  font-size: 11px;
-  color: #9ab0bf;
+  font-size: 12px;
+  color: var(--muted);
   margin-right: auto;
 }
 .group-toolbar select {
-  background: #111b24;
-  border: 1px solid #3d515b;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
   padding: 6px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .group-toolbar button {
-  font-size: 11px;
+  font-size: 12px;
 }
 .group-layout {
   display: grid;
@@ -53,8 +53,8 @@
 }
 .thumbnail {
   padding: 7px;
-  border: 1px solid #3a4855;
-  background: #19252f;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
   border-radius: 6px;
   position: relative;
   text-align: left;
@@ -62,14 +62,14 @@
 }
 .thumbnail:hover,
 .thumbnail.is-selected {
-  border-color: #96d6c8;
-  background: #263d3b;
+  border-color: var(--line);
+  background: var(--surface-soft);
 }
 .thumbnail img {
   width: 100%;
   height: 130px;
   object-fit: contain;
-  background: #fff;
+  background: #1b1c22;
   border-radius: 2px;
 }
 .thumbnail > div {
@@ -80,24 +80,24 @@
 }
 .thumbnail b {
   font: 10px monospace;
-  color: #bacdd7;
+  color: var(--foreground);
 }
 .thumbnail small {
-  font-size: 9px;
-  color: #89aaa8;
+  font-size: 12px;
+  color: var(--muted);
 }
 .thumb-check {
   position: absolute;
   right: 10px;
   top: 10px;
-  border: 1px solid #4d7775;
-  background: #152a29cc;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
   display: grid;
   place-items: center;
   width: 17px;
   height: 17px;
   border-radius: 4px;
-  color: #baf4e6;
+  color: var(--foreground);
 }
 .group-buckets {
   display: flex;
@@ -105,16 +105,16 @@
   gap: 12px;
 }
 .group-bucket {
-  border: 1px dashed #3d5660;
+  border: 1px dashed var(--line);
   border-radius: 7px;
   padding: 14px;
-  background: #16232d;
+  background: var(--surface-soft);
 }
 .group-bucket > div {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #9ac6c0;
+  color: var(--muted);
   font-size: 12px;
 }
 .group-bucket strong {
@@ -124,19 +124,19 @@
   margin-left: auto;
 }
 .group-bucket p {
-  font-size: 10px;
-  color: #8b9fae;
+  font-size: 12px;
+  color: var(--muted);
   line-height: 1.8;
   margin-top: 10px;
   overflow-wrap: anywhere;
 }
 .group-bucket [data-slot='button'] {
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 10px;
   padding-left: 0;
 }
 .group-buckets > small {
-  color: #7a93a3;
-  font-size: 10px;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.8;
 }

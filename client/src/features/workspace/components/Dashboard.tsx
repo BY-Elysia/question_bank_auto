@@ -10,78 +10,69 @@ import {
   Sparkles,
   Layers3,
   CheckCircle2,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Status, Empty, ErrorNote, Loading } from '@/components/common';
 import { navigate } from '@/shared/navigation';
 import { useDashboard } from '../hooks/useDashboard';
 export function Dashboard({ onUpload }: { onUpload: () => void }) {
-  const { loading, error, refresh, query, setQuery, filter, setFilter, items, active, filtered } =
-    useDashboard();
+  const {
+    loading,
+    error,
+    refresh,
+    query,
+    setQuery,
+    filter,
+    setFilter,
+    items,
+    active,
+    filtered,
+    layout,
+    setLayout,
+  } = useDashboard();
   return (
     <div className="dashboard">
-      <div className="eyebrow">
-        <span /> YOUR KNOWLEDGE, STRUCTURED
-      </div>
       <div className="page-heading">
         <div>
-          <h1>
-            每一页，都有新可能<span>。</span>
-          </h1>
-          <p>从一本教材，到清晰、有序、可追溯的知识。</p>
+          <div className="eyebrow">YOUR LIBRARY</div>
+          <h1>教材库</h1>
+          <p>从原始书页到结构化题目，让每一份知识都有出处。</p>
         </div>
         <Button onClick={onUpload}>
           <Plus size={17} />
           新建工作区
         </Button>
       </div>
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <div className="soft-tag">
-            <Sparkles size={14} /> AI 教材结构化
+      {!items.length && (
+        <section className="library-welcome">
+          <div className="welcome-copy">
+            <span className="soft-tag">
+              <Sparkles size={14} /> 教材整理助手
+            </span>
+            <h2>一本教材，三步整理。</h2>
+            <p>上传后自动转图，提取题目，再对照原文完成校对。</p>
+            <button className="text-link" onClick={onUpload}>
+              导入 PDF 或图片 <ArrowUpRight size={15} />
+            </button>
           </div>
-          <h2>
-            把繁复的整理，
-            <br />
-            交给智能工作流。
-          </h2>
-          <p>
-            上传材料，识别题目，校对细节。
-            <br />
-            所有操作，在一个工作区自然衔接。
-          </p>
-          <button className="text-link" onClick={onUpload}>
-            开始第一步 <ArrowUpRight size={16} />
-          </button>
-        </div>
-        <div className="pipeline-art" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="paper-stack">
-            <div />
-            <div />
-            <div className="paper-face">
-              <span>TEXTBOOK</span>
-              <BookOpen size={40} />
-              <i />
-              <i />
-              <i />
-              <small>每一页 · 有迹可循</small>
-            </div>
+          <div className="welcome-steps">
+            {[
+              { number: '01', icon: FileScan, title: '导入材料', note: 'PDF · 图片' },
+              { number: '02', icon: Layers3, title: '智能提取', note: '章节 · 题目 · 答案' },
+              { number: '03', icon: CheckCircle2, title: '校对导出', note: '原图对照 · JSON' },
+            ].map((step) => (
+              <div key={step.number}>
+                <span className="welcome-step-number">{step.number}</span>
+                <step.icon size={22} />
+                <strong>{step.title}</strong>
+                <small>{step.note}</small>
+              </div>
+            ))}
           </div>
-          <div className="art-chip chip-top">
-            <FileScan size={16} />
-            <span>识别 · 提取</span>
-            <b />
-          </div>
-          <div className="art-chip chip-bottom">
-            <Layers3 size={16} />
-            <span>结构化 JSON</span>
-            <CheckCircle2 size={14} />
-          </div>
-          <span className="art-caption">DOCUMENT → KNOWLEDGE</span>
-        </div>
-      </section>
+        </section>
+      )}
       <div className="stats-row">
         {[
           { label: '全部工作区', value: items.length, icon: FolderOpen },
@@ -116,21 +107,39 @@ export function Dashboard({ onUpload }: { onUpload: () => void }) {
           />
         </label>
       </div>
-      <div className="filter-tabs" role="group" aria-label="工作区筛选">
-        {[
-          ['all', '全部'],
-          ['active', '处理中'],
-          ['review', '待校对'],
-        ].map(([key, label]) => (
+      <div className="library-toolbar">
+        <div className="filter-tabs" role="group" aria-label="工作区筛选">
+          {[
+            ['all', '全部'],
+            ['active', '处理中'],
+            ['review', '待校对'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              className={filter === key ? 'selected' : ''}
+              aria-pressed={filter === key}
+              onClick={() => setFilter(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="view-switch" role="group" aria-label="展示方式">
           <button
-            key={key}
-            className={filter === key ? 'selected' : ''}
-            aria-pressed={filter === key}
-            onClick={() => setFilter(key)}
+            aria-label="卡片视图"
+            aria-pressed={layout === 'grid'}
+            onClick={() => setLayout('grid')}
           >
-            {label}
+            <LayoutGrid size={16} />
           </button>
-        ))}
+          <button
+            aria-label="列表视图"
+            aria-pressed={layout === 'list'}
+            onClick={() => setLayout('list')}
+          >
+            <List size={17} />
+          </button>
+        </div>
       </div>
       {error && (
         <>
@@ -143,7 +152,7 @@ export function Dashboard({ onUpload }: { onUpload: () => void }) {
       {loading ? (
         <Loading />
       ) : filtered.length ? (
-        <div className="workspace-grid">
+        <div className={`workspace-grid ${layout === 'list' ? 'is-list' : ''}`}>
           {filtered.map((w, i) => (
             <motion.button
               layout
@@ -154,21 +163,31 @@ export function Dashboard({ onUpload }: { onUpload: () => void }) {
               key={w.id}
               onClick={() => navigate(w.id)}
             >
-              <div className="card-top">
-                <span className="book-icon">
-                  <BookOpen size={23} />
-                </span>
-                <Status status={w.status} />
+              <div className={`book-cover cover-${i % 3}`} aria-hidden="true">
+                <BookOpen size={32} />
+                <span>{w.sourceKind === 'pdf' ? 'PDF' : 'IMAGES'}</span>
+                <i />
+                <i />
               </div>
-              <h3>{w.title}</h3>
-              <p>
-                {w.sourceKind === 'pdf' ? 'PDF 教材' : '图片教材'}
-                <span>·</span>
-                {w.totalPages} 页
-              </p>
-              <div className="card-bottom">
-                <span>{relativeDate(w.updatedAt)}</span>
-                <ArrowUpRight size={17} />
+              <div className="card-details">
+                <div className="card-top">
+                  <span className="card-kind">
+                    {w.sourceKind === 'pdf' ? 'PDF 教材' : '图片教材'}
+                  </span>
+                  <Status status={w.status} />
+                </div>
+                <h3>{w.title}</h3>
+                <p>
+                  {w.sourceKind === 'pdf' ? 'PDF 教材' : '图片教材'}
+                  <span>·</span>
+                  {w.totalPages} 页
+                </p>
+                <div className="card-bottom">
+                  <span>{relativeDate(w.updatedAt)}</span>
+                  <span className="card-open">
+                    打开工作区 <ArrowUpRight size={15} />
+                  </span>
+                </div>
               </div>
             </motion.button>
           ))}
