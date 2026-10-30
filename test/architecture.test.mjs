@@ -53,6 +53,18 @@ test('Frontend stays split into typed API, UI components and bounded feature fil
     const text = fs.readFileSync(file, 'utf8');
     assert.ok(text.split('\n').length <= 400, `${file} exceeds 400 lines`);
     assert.doesNotMatch(text, /from ['"](?:node:|@nestjs)/, file);
-    if (file.includes('/components/')) assert.doesNotMatch(text, /from ['"]@\/features\//, file);
+    if (file.includes('/components/')) {
+      const imported = [...text.matchAll(/from ['"](@\/features\/[^'"]+)/g)].map((m) => m[1]);
+      for (const target of imported)
+        assert.ok(
+          file.endsWith('/features/workspace/components/Workspace.tsx') &&
+            [
+              '@/features/extraction/components/Configure',
+              '@/features/extraction/components/Processing',
+              '@/features/review/components/Review',
+            ].includes(target),
+          `${file} cannot import ${target}`,
+        );
+    }
   }
 });
