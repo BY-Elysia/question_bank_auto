@@ -106,7 +106,8 @@ const skills = {
     throw Error('Unknown test skill');
   },
 };
-system = await createApplication({ root, skills });
+const access = process.env.ACCESS_TEST === '1' ? { username: 'admin', passwordHash: (await import('../../dist/app/shared/auth/gate.js')).hashPassword('browser-test-password'), secure: false } : undefined;
+system = await createApplication({ root, skills, access });
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');
 for (const signal of ['SIGINT', 'SIGTERM'])

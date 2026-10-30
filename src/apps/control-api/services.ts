@@ -1,3 +1,4 @@
+import type { AccessConfig } from '../../shared/auth/gate.js';
 import { WorkspaceStore } from '../../modules/workspaces/infrastructure/workspace-store.js';
 import type { WorkspaceRepository } from '../../modules/workspaces/ports/workspace.repository.js';
 import { WorkspacesService } from '../../modules/workspaces/application/workspaces.service.js';
@@ -33,6 +34,7 @@ import { JobsService } from '../../modules/jobs/application/jobs.service.js';
 import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflow.js';
 import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
 export interface AppOptions {
+  access?: AccessConfig;
   root?: string;
   workspaceStore?: WorkspaceRepository;
   prefixCache?: PrefixCache;

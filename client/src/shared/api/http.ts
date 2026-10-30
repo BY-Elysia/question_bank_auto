@@ -9,6 +9,7 @@ export class ApiError extends Error {
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch('/api' + url, options);
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event('access-expired'));
     let detail = '请求失败';
     try {
       const problem = await response.json();

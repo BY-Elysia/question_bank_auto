@@ -1,3 +1,4 @@
+import { AccessBoundary } from './features/access/components/AccessBoundary';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
@@ -7,7 +8,9 @@ import './styles.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <MotionConfig reducedMotion="user">
-      <App />
+      <AccessBoundary>
+        <App />
+      </AccessBoundary>
     </MotionConfig>
   </React.StrictMode>,
 );
