@@ -21,6 +21,9 @@ export class SkillRunner implements Skills {
     pages: number[],
     context: SkillContext,
   ): Promise<z.infer<T>> {
+    const budget = Number(process.env.MAX_SKILL_DURATION_MS ?? 180000);
+    if (!Number.isFinite(budget) || budget < 1) throw new Error('Invalid skill duration budget');
+    const signal = AbortSignal.any([context.signal, AbortSignal.timeout(budget)]);
     const definition = await this.catalog.get(id);
     const instructions = definition.instructions;
     const hash = createHash('sha256').update(instructions).digest('hex');
@@ -35,14 +38,14 @@ export class SkillRunner implements Skills {
           throw new Error('Skill requested an unknown page');
         return {
           page,
-          url: await this.images.dataUrl(book.id, page, context.signal),
+          url: await this.images.dataUrl(book.id, page, signal),
         };
       }),
     );
     const system = `${instructions}\n只输出 JSON，不要代码围栏。输出 JSON Schema：\n${JSON.stringify(z.toJSONSchema(schema))}`;
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
-      context.signal.throwIfAborted();
+      signal.throwIfAborted();
       const invocationId = randomUUID();
       const startedAt = Date.now();
       const requestInput = {
@@ -66,7 +69,7 @@ export class SkillRunner implements Skills {
           cacheScope: book.workspaceId ?? book.id,
           input: requestInput,
           images,
-          signal: context.signal,
+          signal,
           role: definition.modelRole,
         });
       } catch (error) {
@@ -81,7 +84,11 @@ export class SkillRunner implements Skills {
           attempt,
           durationMs: Date.now() - startedAt,
           // Transport error messages may contain headers or provider bodies; do not persist them.
-          providerError: context.signal.aborted ? 'aborted' : 'provider_request_failed',
+          providerError: context.signal.aborted
+            ? 'aborted'
+            : signal.aborted
+              ? 'deadline_exceeded'
+              : 'provider_request_failed',
           ...invocationTrace(system, requestInput, pages, null),
         });
         throw error;

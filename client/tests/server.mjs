@@ -31,22 +31,29 @@ const skills = {
       });
     if (id === 'cross-page-reconcile')
       return schema.parse(
-        input.mode === 'lookahead'
-          ? { tailKey: input.tail.key, continues: false, reason: '完整题目' }
-          : {
-              complete: [
-                {
-                  key: `q_${input.queue.at(-1)}`,
-                  kind: 'question',
-                  sectionId: 'chapter',
-                  sources: [source(input.queue.at(-1))],
-                  label: '练习',
-                },
-              ],
-              pending: [],
-              blankPages: [],
-              reason: '完整题目',
-            },
+        input.mode === 'seam'
+          ? {
+              targetKey: input.previous.key,
+              decision: 'independent',
+              sources: [],
+              reason: 'Independent fixture question',
+            }
+          : input.mode === 'lookahead'
+            ? { tailKey: input.tail.key, continues: false, reason: '完整题目' }
+            : {
+                complete: [
+                  {
+                    key: `q_${input.queue.at(-1)}`,
+                    kind: 'question',
+                    sectionId: 'chapter',
+                    sources: [source(input.queue.at(-1))],
+                    label: '练习',
+                  },
+                ],
+                pending: [],
+                blankPages: [],
+                reason: '完整题目',
+              },
       );
     if (id === 'page-content-extract')
       return schema.parse({
@@ -106,7 +113,16 @@ const skills = {
     throw Error('Unknown test skill');
   },
 };
-const access = process.env.ACCESS_TEST === '1' ? { username: 'admin', passwordHash: (await import('../../dist/app/shared/auth/gate.js')).hashPassword('browser-test-password'), secure: false } : undefined;
+const access =
+  process.env.ACCESS_TEST === '1'
+    ? {
+        username: 'admin',
+        passwordHash: (await import('../../dist/app/shared/auth/gate.js')).hashPassword(
+          'browser-test-password',
+        ),
+        secure: false,
+      }
+    : undefined;
 system = await createApplication({ root, skills, access });
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');

@@ -1,3 +1,4 @@
+import { transcriptionIssues } from '../domain/transcription-quality.js';
 import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
 import {
   Controller,
@@ -87,6 +88,7 @@ export class TextbooksController {
       issues: [
         ...book.document.issues,
         ...validateDocument(book.document, book.pages.length),
+        ...transcriptionIssues(book.document.contents),
         ...sourceAnswerCoverageIssues(book.document.contents),
         ...book.jobs.filter((j) => j.baseRevision === book.revision).flatMap((j) => j.issues),
       ],

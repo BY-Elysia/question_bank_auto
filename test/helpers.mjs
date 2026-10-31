@@ -67,6 +67,13 @@ export class ScriptedSkills {
         activeSectionId: input.page === 3 ? 'sec_3_1' : 'sec_1_1',
       };
     if (id === 'cross-page-reconcile') {
+      if (input.mode === 'seam')
+        return {
+          targetKey: input.previous.key,
+          decision: 'independent',
+          sources: [],
+          reason: 'New content',
+        };
       if (input.mode === 'lookahead')
         return {
           tailKey: this.badPreview ? 'wrong' : input.tail.key,

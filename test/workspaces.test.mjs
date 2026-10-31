@@ -64,22 +64,29 @@ function fakeSkills() {
       }
       if (id === 'cross-page-reconcile')
         return schema.parse(
-          input.mode === 'lookahead'
-            ? { tailKey: input.tail.key, continues: false, reason: 'new question' }
-            : {
-                complete: [
-                  {
-                    key: `r_${input.queue.at(-1)}`,
-                    kind: 'question',
-                    sectionId: 'chapter',
-                    sources: [source(input.queue.at(-1))],
-                    label: 'Exercise',
-                  },
-                ],
-                pending: [],
-                blankPages: [],
-                reason: 'complete',
-              },
+          input.mode === 'seam'
+            ? {
+                targetKey: input.previous.key,
+                decision: 'independent',
+                sources: [],
+                reason: 'Independent fixture question',
+              }
+            : input.mode === 'lookahead'
+              ? { tailKey: input.tail.key, continues: false, reason: 'new question' }
+              : {
+                  complete: [
+                    {
+                      key: `r_${input.queue.at(-1)}`,
+                      kind: 'question',
+                      sectionId: 'chapter',
+                      sources: [source(input.queue.at(-1))],
+                      label: 'Exercise',
+                    },
+                  ],
+                  pending: [],
+                  blankPages: [],
+                  reason: 'complete',
+                },
         );
       if (id === 'page-content-extract')
         return schema.parse({

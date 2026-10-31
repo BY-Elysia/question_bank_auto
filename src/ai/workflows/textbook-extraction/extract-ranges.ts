@@ -1,3 +1,7 @@
+import {
+  transcriptionProblems,
+  transcriptionIssues,
+} from '../../../modules/textbooks/domain/transcription-quality.js';
 import { materialize } from './guards.js';
 import { StructuredOutputError, type Skills, type SkillContext } from '../../ports/skills.js';
 import { ExtractResult, type Range } from './contracts.js';
@@ -53,7 +57,10 @@ export async function extractRanges(
             part.items.some((i) => !ranges.some((r) => r.key === i.key))
           )
             throw new Error('Extraction returned an unexpected range');
-          materialize(part, ranges);
+          const checked = materialize(part, ranges);
+          const defects = checked.flatMap(transcriptionProblems);
+          if (defects.length) throw new Error(defects.join('; '));
+          part.issues.push(...transcriptionIssues(checked));
           if (part.items.some((i) => i.content.question && i.content.text.trim()))
             throw new Error(
               'Question content.text must be empty; keep all source text in question fields without duplication',

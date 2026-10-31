@@ -1,3 +1,4 @@
+import { transcriptionIssues } from '../domain/transcription-quality.js';
 import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
 import type { ArchivePort } from '../ports/assets.port.js';
 import type { PageImagePort } from '../ports/assets.port.js';
@@ -21,6 +22,7 @@ export class ExportService {
       ...book.document,
       validation: [
         ...validateDocument(book.document, book.pages.length),
+        ...transcriptionIssues(book.document.contents),
         ...sourceAnswerCoverageIssues(book.document.contents),
       ],
       reviewIssues: book.jobs

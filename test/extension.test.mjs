@@ -208,3 +208,65 @@ test('Opt-in local traces preserve invalid and valid output, retry feedback, pag
   assert.ok(records.every((r) => r.durationMs >= 0));
   assert.ok(!JSON.stringify(records).includes('DO_NOT_PERSIST'));
 });
+
+test('Skill retries share one deadline and record deadline failure without losing the parent cancellation signal', async (t) => {
+  const keepAlive = setTimeout(() => {}, 1000);
+  t.after(() => clearTimeout(keepAlive));
+  const previous = process.env.MAX_SKILL_DURATION_MS;
+  process.env.MAX_SKILL_DURATION_MS = '80';
+  t.after(() => {
+    if (previous === undefined) delete process.env.MAX_SKILL_DURATION_MS;
+    else process.env.MAX_SKILL_DURATION_MS = previous;
+  });
+  const system = await fixture(t);
+  let calls = 0;
+  const runner = new SkillRunner(
+    system.store,
+    {
+      async complete(request) {
+        calls++;
+        if (calls === 1) return { text: 'invalid', usage: null, model: 'test' };
+        await new Promise((_, reject) => {
+          request.signal.addEventListener('abort', () => reject(request.signal.reason), {
+            once: true,
+          });
+          if (request.signal.aborted) reject(request.signal.reason);
+        });
+        throw Error('Unreachable');
+      },
+    },
+    {
+      async dataUrl() {
+        return 'data:image/png;base64,x';
+      },
+    },
+    {
+      async get() {
+        return { id: 'deadline', version: '1', instructions: 'bounded', modelRole: 'vision' };
+      },
+    },
+    new FileRunRecords(system.root),
+  );
+  const controller = new AbortController();
+  await assert.rejects(
+    runner.run('deadline', {}, z.object({ ok: z.boolean() }), [1], {
+      bookId: 'book',
+      jobId: 'deadline',
+      signal: controller.signal,
+    }),
+    (e) => e.name === 'TimeoutError',
+  );
+  assert.equal(calls, 2);
+  assert.equal(controller.signal.aborted, false);
+  const files = await fs.readdir(path.join(system.root, 'books', 'book', 'runs', 'deadline'));
+  const records = await Promise.all(
+    files
+      .filter((f) => f.endsWith('.json'))
+      .map(async (f) =>
+        JSON.parse(
+          await fs.readFile(path.join(system.root, 'books', 'book', 'runs', 'deadline', f)),
+        ),
+      ),
+  );
+  assert.ok(records.some((r) => r.providerError === 'deadline_exceeded'));
+});

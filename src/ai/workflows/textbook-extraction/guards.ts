@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import { BoundaryResult, ExtractResult, type Range } from './contracts.js';
 import type { Document, Content } from '../../../modules/textbooks/domain/content.js';
 import { contentProblems } from '../../../modules/textbooks/domain/validation.js';
-function containsSameRegion(a: Range['sources'], b: Range['sources']) {
+export function containsSameRegion(a: Range['sources'], b: Range['sources']) {
   return a.some((x) =>
     b.some((y) => {
       if (x.page !== y.page) return false;
@@ -69,10 +69,7 @@ export function checkBoundary(
     throw new Error('Invalid orphaned-start declaration');
   for (const previous of pending) {
     const next = ranges.find((range) => range.key === previous.key);
-    if (
-      !next ||
-      previous.sources.some((source) => !next.sources.some((s) => s.page === source.page))
-    )
+    if (!next || previous.sources.some((source) => !containsSameRegion([source], next.sources)))
       throw new Error(`Pending range was lost: ${previous.key}`);
   }
   if (
