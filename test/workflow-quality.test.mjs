@@ -175,6 +175,7 @@ test('Resume reuses validated ranges from an interrupted page without publishing
   const { fixture, run } = await import('./helpers.mjs');
   let fail = true;
   const calls = [];
+  let plans = 0;
   const ranges = [
     { ...range('first', [1], 'question', null), sources: [source(1, 0.1, 0.3)] },
     { ...range('second', [1], 'question', null), sources: [source(1, 0.5, 0.8)] },
@@ -183,7 +184,12 @@ test('Resume reuses validated ranges from an interrupted page without publishing
     async run(id, input, schema) {
       if (id === 'textbook-structure-detect')
         return schema.parse({ sections: [], activeSectionId: null });
-      if (id === 'cross-page-reconcile')
+      if (id === 'cross-page-reconcile') {
+        assert.equal(
+          ++plans,
+          1,
+          'Resume must reuse the validated plan rather than redraw boundaries',
+        );
         return schema.parse({
           complete: ranges.filter((r) => !input.processed?.some((c) => c.key === r.key)),
           pending: [],
@@ -191,6 +197,7 @@ test('Resume reuses validated ranges from an interrupted page without publishing
           orphanedStarts: [],
           reason: 'Independent questions',
         });
+      }
       if (id === 'page-content-extract') {
         const key = input.ranges[0].key;
         calls.push(key);
@@ -215,6 +222,7 @@ test('Resume reuses validated ranges from an interrupted page without publishing
     ['first'],
   );
   assert.equal(result.job.cursor, 1);
+  assert.equal(result.job.pagePlan.page, 1);
   await system.jobs.resume('book', result.job.id);
   await system.jobs.wait(result.job.id);
   const final = await system.store.read('book');
@@ -223,4 +231,5 @@ test('Resume reuses validated ranges from an interrupted page without publishing
     ['first', 'second'],
   );
   assert.equal(calls.filter((c) => c === 'first').length, 1);
+  assert.equal(final.jobs[0].pagePlan, null);
 });

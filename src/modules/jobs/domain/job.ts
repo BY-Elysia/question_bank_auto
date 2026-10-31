@@ -11,6 +11,15 @@ export const JobRequest = z.strictObject({
   cache: z.enum(['prefix', 'off']).optional(),
   generateAnswers: z.boolean().optional(),
 });
+// Immutable accepted page plan: retries resume extraction without asking the model to redraw boundaries.
+export const ParsePagePlan = z.strictObject({
+  page: z.number().int().positive(),
+  queue: z.array(z.number().int().positive()),
+  complete: z.array(Range),
+  pending: z.array(Range),
+  orphanedStarts: z.array(Id),
+  activeSectionId: Id.nullable(),
+});
 export const Job = z.strictObject({
   id: Id,
   kind: JobRequest.shape.kind,
@@ -32,6 +41,7 @@ export const Job = z.strictObject({
   pending: z.array(Range),
   activeSectionId: Id.nullable(),
   stage: Document.nullable(),
+  pagePlan: ParsePagePlan.nullable().default(null),
   processedIds: z.array(Id),
   issues: z.array(Issue),
   error: z.string().nullable(),

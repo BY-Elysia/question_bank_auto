@@ -76,7 +76,7 @@ Content 是统一内容块，kind 区分 heading、paragraph、formula、figure�
 
 Question 保留题号、题型、题干、选项、答案及共享题干下的子问；沿用旧版一层 GROUP/子问语义。更深的印刷嵌套保留在相应小问题干中。原文答案有页码坐标；AI 与人工答案分别标记 origin。缺答案以 null 表示。
 
-Document 修订与任务检查点分开：每页结果先写任务 stage，选定范围处理完后替换正式文档并增加 revision。失败不破坏已发布修订。完整解析使用新 stage，局部重跑保留范围外内容。
+Document 修订与任务检查点分开：页计划先固定到 pagePlan，每个通过校验的范围批次写任务 stage，整页完成才推进 cursor，选定范围处理完后替换正式文档并增加 revision。失败不破坏已发布修订。完整解析使用新 stage，局部重跑保留范围外内容。
 
 人工编辑、候选接受和恢复要求 expectedRevision。接受候选逐项比较当前内容与 before，阻止过期覆盖；互不冲突的候选可依次接受。拒绝候选不改变文档修订，恢复会创建新修订。
 
@@ -102,7 +102,7 @@ workspace/
 
 ## 模型与部署边界
 
-支持 MODEL_PROTOCOL=responses 或 chat，兼容旧版 ARK_* 配置。MODEL_NAME 为默认模型，VISION_MODEL / REASONING_MODEL 可覆盖。默认 HTTP 超时 180 秒；429、5xx、网络错误和超时最多尝试 3 次，取消信号中断请求及退避等待。
+支持 MODEL_PROTOCOL=responses 或 chat，兼容旧版 ARK_* 配置。MODEL_NAME 为默认模型，VISION_MODEL / REASONING_MODEL 可覆盖。默认 HTTP 超时 180 秒；429、5xx、网络错误和超时最多尝试 3 次，同时受 Skill 共享总时限限制；取消信号中断请求及退避等待。单次输出默认上限 8192 tokens，截断状态不能通过 schema 验收。具体阶段与恢复边界见 [extraction-workflow.md](extraction-workflow.md)。
 
 SKILL.md 是受控任务指令，页图和用户材料作为数据发送。执行器强制 schema 和范围校验；恢复时检查 Skill 版本及指令哈希。
 

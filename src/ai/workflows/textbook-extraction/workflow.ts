@@ -1,6 +1,6 @@
 import { transcriptionIssues } from '../../../modules/textbooks/domain/transcription-quality.js';
 import { contextIssues } from './context-quality.js';
-import { planPage } from './plan-page.js';
+import { pageCheckpoint } from './page-checkpoint.js';
 import { sourceAnswerCoverageIssues } from '../../../modules/textbooks/domain/content-quality.js';
 import { extractRanges } from './extract-ranges.js';
 import type { BookRepository } from '../../../modules/textbooks/ports/book.repository.js';
@@ -20,7 +20,8 @@ export class TextbookWorkflow {
     if (job.phase !== 'parse') return;
     for (let page = job.cursor; page <= job.endPage; page++) {
       context.signal.throwIfAborted();
-      const { stage, boundary, queue, structure } = await planPage(
+      const { stage, boundary, queue, structure } = await pageCheckpoint(
+        this.store,
         this.skills,
         book,
         job,
@@ -31,7 +32,7 @@ export class TextbookWorkflow {
         await extractRanges(
           this.skills,
           {
-            ranges: boundary.complete,
+            ranges: boundary.complete.filter((r) => !stage.contents.some((c) => c.key === r.key)),
             excludedPending: boundary.pending,
             answerMode: 'extract_visible',
             feedback: '',
@@ -94,6 +95,7 @@ export class TextbookWorkflow {
           saved.endPage = end;
         }
         saved.stage = stage;
+        saved.pagePlan = null;
         saved.pending = boundary!.pending;
         saved.cursor = page + 1;
         saved.activeSectionId = structure.activeSectionId;

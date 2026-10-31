@@ -98,6 +98,7 @@ export class JobsService {
         pending: [],
         activeSectionId: null,
         stage,
+        pagePlan: null,
         processedIds: [],
         issues: [],
         error: null,
