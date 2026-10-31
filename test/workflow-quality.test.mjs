@@ -167,6 +167,15 @@ test('Opening mathematical fragments remain visible but cannot silently imply a 
     { ...content(), kind: 'paragraph', question: null, text: '$$\\lim_{n\\to\\infty} a_n = 0$$' },
   ];
   assert.equal(contextIssues(stage)[0].code, 'OPENING_CONTEXT_UNCERTAIN');
+  stage.issues.push({
+    code: 'MISSING_QUESTION_START',
+    severity: 'warning',
+    page: 1,
+    contentId: stage.contents[0].id,
+    message: 'Already identified',
+  });
+  assert.deepEqual(contextIssues(stage), []);
+  stage.issues = [];
   stage.contents[0].text = '教材前言';
   assert.deepEqual(contextIssues(stage), []);
 });

@@ -8,6 +8,11 @@ export function contextIssues(document: Document): Issue[] {
   if (
     first &&
     !first.question &&
+    !document.issues.some(
+      (i) =>
+        i.code === 'MISSING_QUESTION_START' &&
+        (i.contentId === first.id || (i.contentId === null && i.page === first.sources[0]!.page)),
+    ) &&
     (['answer', 'formula'].includes(first.kind) || /^\s*\$\$/u.test(first.text))
   ) {
     issues.push({
