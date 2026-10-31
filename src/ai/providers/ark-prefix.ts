@@ -12,6 +12,7 @@ export class ArkPrefix {
     input: unknown[],
     scope: string,
     signal: AbortSignal,
+    maxOutputTokens: number,
   ) {
     const key = createHash('sha256')
       .update(JSON.stringify([url, apiKey, model, scope, system]))
@@ -54,6 +55,7 @@ export class ArkPrefix {
         {
           model,
           previous_response_id: id,
+          max_output_tokens: maxOutputTokens,
           text: { format: { type: 'json_object' } },
           input,
           caching: { type: 'enabled' },

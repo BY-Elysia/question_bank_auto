@@ -160,3 +160,67 @@ test('Explicit uncertainty remains reviewable, rather than being guessed or reje
   assert.deepEqual(contentProblems(c), []);
   assert.equal(transcriptionIssues([c])[0].severity, 'error');
 });
+
+test('Opening mathematical fragments remain visible but cannot silently imply a complete source', () => {
+  const stage = document();
+  stage.contents = [
+    { ...content(), kind: 'paragraph', question: null, text: '$$\\lim_{n\\to\\infty} a_n = 0$$' },
+  ];
+  assert.equal(contextIssues(stage)[0].code, 'OPENING_CONTEXT_UNCERTAIN');
+  stage.contents[0].text = '教材前言';
+  assert.deepEqual(contextIssues(stage), []);
+});
+
+test('Resume reuses validated ranges from an interrupted page without publishing a partial document', async (t) => {
+  const { fixture, run } = await import('./helpers.mjs');
+  let fail = true;
+  const calls = [];
+  const ranges = [
+    { ...range('first', [1], 'question', null), sources: [source(1, 0.1, 0.3)] },
+    { ...range('second', [1], 'question', null), sources: [source(1, 0.5, 0.8)] },
+  ];
+  const skills = {
+    async run(id, input, schema) {
+      if (id === 'textbook-structure-detect')
+        return schema.parse({ sections: [], activeSectionId: null });
+      if (id === 'cross-page-reconcile')
+        return schema.parse({
+          complete: ranges.filter((r) => !input.processed?.some((c) => c.key === r.key)),
+          pending: [],
+          blankPages: [],
+          orphanedStarts: [],
+          reason: 'Independent questions',
+        });
+      if (id === 'page-content-extract') {
+        const key = input.ranges[0].key;
+        calls.push(key);
+        if (key === 'second' && fail) {
+          fail = false;
+          throw Error('Transient provider failure');
+        }
+        return schema.parse({
+          items: [{ key, content: { ...payload(''), question: question(key) } }],
+          issues: [],
+        });
+      }
+      throw Error(id);
+    },
+  };
+  const system = await fixture(t, skills, 1);
+  const result = await run(system);
+  assert.equal(result.job.status, 'failed');
+  assert.equal(result.book.document.contents.length, 0);
+  assert.deepEqual(
+    result.job.stage.contents.map((c) => c.key),
+    ['first'],
+  );
+  assert.equal(result.job.cursor, 1);
+  await system.jobs.resume('book', result.job.id);
+  await system.jobs.wait(result.job.id);
+  const final = await system.store.read('book');
+  assert.deepEqual(
+    final.document.contents.map((c) => c.key),
+    ['first', 'second'],
+  );
+  assert.equal(calls.filter((c) => c === 'first').length, 1);
+});

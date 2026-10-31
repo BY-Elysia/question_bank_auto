@@ -4,6 +4,21 @@ import { readingOrder } from './guards.js';
 export function contextIssues(document: Document): Issue[] {
   const contents = [...document.contents].sort(readingOrder);
   const issues: Issue[] = [];
+  const first = contents[0];
+  if (
+    first &&
+    !first.question &&
+    (['answer', 'formula'].includes(first.kind) || /^\s*\$\$/u.test(first.text))
+  ) {
+    issues.push({
+      code: 'OPENING_CONTEXT_UNCERTAIN',
+      severity: 'warning',
+      page: first.sources[0]!.page,
+      contentId: first.id,
+      message:
+        'The source opens with mathematics or an answer without its question stem; check whether preceding pages are missing.',
+    });
+  }
   for (let i = 1; i < contents.length; i++) {
     const current = contents[i]!,
       previous = contents[i - 1]!;

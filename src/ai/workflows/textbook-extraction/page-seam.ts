@@ -21,7 +21,8 @@ export async function reconcileSeam(
     .filter((c) => c.sources.some((s) => s.page === page - 1))
     .sort(readingOrder)
     .at(-1);
-  if (page === 1 || pending.length || !prior?.question) return pending;
+  if (page === 1 || pending.length || !prior?.question || prior.sources.some((s) => s.page >= page))
+    return pending;
   const result = await skills.run(
     'cross-page-reconcile',
     {

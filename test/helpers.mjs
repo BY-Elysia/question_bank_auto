@@ -90,7 +90,10 @@ export class ScriptedSkills {
         };
       if (p === 2)
         return {
-          complete: [range('q1', [1, 2]), range('q2', [2])],
+          complete: [
+            { ...range('q1', [1, 2]), sources: [source(1), source(2, 0, 0.45)] },
+            { ...range('q2', [2]), sources: [source(2, 0.5, 1)] },
+          ].filter((r) => !input.processed?.some((c) => c.key === r.key)),
           pending: [],
           blankPages: [],
           reason: 'Both questions complete',

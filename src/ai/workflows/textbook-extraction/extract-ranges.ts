@@ -33,6 +33,7 @@ export async function extractRanges(
   input: Input,
   pages: number[],
   context: SkillContext,
+  onAccepted?: (part: Result, ranges: Range[]) => Promise<void>,
 ) {
   const result: Result = { items: [], issues: [] };
   async function extract(ranges: Range[]): Promise<Result> {
@@ -82,9 +83,10 @@ export async function extractRanges(
       return parts;
     }
   }
-  // Return only after every batch succeeds; the workflow advances its checkpoint atomically.
+  // Accepted ranges may be checkpointed privately; the public document advances only after the complete workflow succeeds.
   for (const ranges of batches(input.ranges)) {
     const part = await extract(ranges);
+    await onAccepted?.(part, ranges);
     result.items.push(...part.items);
     result.issues.push(...part.issues);
   }

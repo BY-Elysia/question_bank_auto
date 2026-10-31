@@ -45,8 +45,9 @@ test('Repeated extraction omissions stop before advancing the failing page', asy
   assert.equal(job.status, 'failed');
   assert.equal(job.cursor, 2);
   assert.equal(book.revision, 0);
-  assert.equal(job.pending[0].key, 'q1');
-  assert.equal(job.stage.contents.length, 1);
+  assert.equal(job.pending[0].key, 'q2');
+  assert.equal(job.stage.contents.length, 2);
+  assert.ok(job.stage.contents.some((c) => c.key === 'q1'));
   skills.missingAlways = false;
   await system.jobs.resume('book', job.id);
   await system.jobs.wait(job.id);

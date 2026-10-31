@@ -9,6 +9,10 @@ export class HttpModelClient implements ModelClient {
     this.prefix = new ArkPrefix(cache);
   }
   async complete(request: ModelRequest) {
+    const maxOutputTokens =
+      request.maxOutputTokens ?? Number(process.env.MAX_MODEL_OUTPUT_TOKENS ?? 8192);
+    if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1)
+      throw new Error('Invalid model output token budget');
     const base = process.env.MODEL_BASE_URL || process.env.ARK_BASE_URL,
       key = process.env.MODEL_API_KEY || process.env.ARK_API_KEY;
     const model =
@@ -60,6 +64,7 @@ export class HttpModelClient implements ModelClient {
         [{ role: 'user', content }],
         request.cacheScope ?? 'default',
         request.signal,
+        maxOutputTokens,
       );
       data = completed.result;
       cache = completed.cache;
@@ -70,6 +75,7 @@ export class HttpModelClient implements ModelClient {
         protocol === 'responses'
           ? {
               model,
+              max_output_tokens: maxOutputTokens,
               text: { format },
               ...(request.structuredOutput ? { thinking: { type: 'disabled' } } : {}),
               input: [
@@ -79,6 +85,7 @@ export class HttpModelClient implements ModelClient {
             }
           : {
               model,
+              max_tokens: maxOutputTokens,
               messages: [
                 { role: 'system', content: request.system },
                 { role: 'user', content },
@@ -100,13 +107,18 @@ export class HttpModelClient implements ModelClient {
             .map((item: any) => item.text ?? '')
             .join('\n')
         : data.choices?.[0]?.message?.content;
-    if (!text) throw new Error('Model response contains no text');
+    const incomplete =
+      protocol === 'responses'
+        ? Boolean((data.status && data.status !== 'completed') || data.incomplete_details)
+        : Boolean(data.choices?.[0]?.finish_reason && data.choices[0].finish_reason !== 'stop');
+    if (!text && !incomplete) throw new Error('Model response contains no text');
     return {
-      text,
+      text: text ?? '',
       usage: data.usage ?? null,
       model,
       cache,
       outputFormat: request.structuredOutput ? ('json_schema' as const) : ('json_object' as const),
+      completionStatus: incomplete ? ('incomplete' as const) : ('completed' as const),
     };
   }
 }

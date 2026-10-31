@@ -26,6 +26,7 @@ export interface InvocationRecord {
   durationMs?: number;
   providerError?: string;
   outputFormat?: string;
+  completionStatus?: 'completed' | 'incomplete';
   trace?: { system: string; input: unknown; pages: number[]; rawOutput: string | null };
 }
 export interface RunRecords {

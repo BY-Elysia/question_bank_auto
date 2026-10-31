@@ -76,6 +76,7 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
     role: 'vision',
     cache: 'prefix',
     cacheScope: 'workspace_a',
+    maxOutputTokens: 2048,
   };
   let client = new HttpModelClient(new FilePrefixCache(root));
   const responses = await Promise.all([
@@ -97,6 +98,7 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
           r.previous_response_id === 'seed_1' &&
           r.input[0].role === 'user' &&
           r.store === true &&
+          r.max_output_tokens === 2048 &&
           r.text?.format?.type === 'json_object',
       ),
   );

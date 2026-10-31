@@ -28,7 +28,7 @@ export class TextbookWorkflow {
         context,
       );
       if (boundary.complete.length) {
-        const result = await extractRanges(
+        await extractRanges(
           this.skills,
           {
             ranges: boundary.complete,
@@ -38,10 +38,27 @@ export class TextbookWorkflow {
           },
           queue,
           context,
+          async (part, ranges) => {
+            stage.contents.push(...materialize(part, ranges));
+            stage.issues.push(...part.issues);
+            context.signal.throwIfAborted();
+            await this.store.update(book.id, (current) => {
+              const saved = current.jobs.find((j) => j.id === job.id)!;
+              saved.stage = structuredClone(stage);
+              saved.pending = [
+                ...boundary.pending,
+                ...boundary.complete.filter((r) => !stage.contents.some((c) => c.key === r.key)),
+              ];
+              saved.activeSectionId = structure.activeSectionId;
+              addEvent(
+                saved,
+                `Validated range checkpoint: ${ranges.map((r) => r.key).join(', ')}; page ${page} remains uncommitted`,
+              );
+            });
+          },
         );
-        stage.contents.push(...materialize(result, boundary.complete));
-        stage.issues.push(...result.issues);
       }
+
       for (const key of boundary.orphanedStarts) {
         const range = [...boundary.complete, ...boundary.pending].find((r) => r.key === key)!;
         stage.issues.push({

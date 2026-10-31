@@ -6,6 +6,7 @@ export interface ModelRequest {
   images: { page: number; url: string }[];
   signal: AbortSignal;
   role: 'vision' | 'reasoning';
+  maxOutputTokens?: number;
   structuredOutput?: { name: string; schema: Record<string, unknown> };
 }
 export interface ModelClient {
@@ -15,5 +16,6 @@ export interface ModelClient {
     model: string;
     cache?: unknown;
     outputFormat?: 'json_object' | 'json_schema' | 'text';
+    completionStatus?: 'completed' | 'incomplete';
   }>;
 }

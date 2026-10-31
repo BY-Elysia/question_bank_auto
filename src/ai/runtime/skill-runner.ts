@@ -95,23 +95,28 @@ export class SkillRunner implements Skills {
       }
       let parsed: z.infer<T> | undefined;
       let validationError: string | null = null;
-      try {
-        const text = result.text
-          .trim()
-          .replace(/^```(?:json)?\s*/, '')
-          .replace(/\s*```$/, '');
-        parsed = schema.parse(JSON.parse(text));
-      } catch (error) {
-        // Keep summary diagnostics safe; raw source output is available only in opt-in local traces.
-        validationError =
-          error instanceof z.ZodError
-            ? error.issues
-                .map((i) => `${i.path.join('.')}: ${i.code}`)
-                .join('; ')
-                .slice(0, 2000)
-            : 'Invalid JSON syntax';
-        feedback = `上次输出未通过结构校验，请重新按原始资料输出：${error instanceof Error ? error.message : String(error)}`;
-      }
+      if (result.completionStatus === 'incomplete') {
+        validationError = 'Incomplete model output';
+        feedback =
+          '上次模型输出未完成或被截断；不要省略原文，请重新完整输出。如仍超出预算，停止并保留检查点。';
+      } else
+        try {
+          const text = result.text
+            .trim()
+            .replace(/^```(?:json)?\s*/, '')
+            .replace(/\s*```$/, '');
+          parsed = schema.parse(JSON.parse(text));
+        } catch (error) {
+          // Keep summary diagnostics safe; raw source output is available only in opt-in local traces.
+          validationError =
+            error instanceof z.ZodError
+              ? error.issues
+                  .map((i) => `${i.path.join('.')}: ${i.code}`)
+                  .join('; ')
+                  .slice(0, 2000)
+              : 'Invalid JSON syntax';
+          feedback = `上次输出未通过结构校验，请重新按原始资料输出：${error instanceof Error ? error.message : String(error)}`;
+        }
       await this.records.record(book.id, context.jobId, {
         id: invocationId,
         skill: id,
@@ -125,6 +130,7 @@ export class SkillRunner implements Skills {
         attempt,
         validationError,
         outputFormat: result.outputFormat,
+        completionStatus: result.completionStatus,
         durationMs: Date.now() - startedAt,
         ...invocationTrace(system, requestInput, pages, result.text),
       });

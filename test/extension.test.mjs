@@ -134,6 +134,57 @@ test('Skill schema failures record field diagnostics without persisting model so
   assert.ok(!JSON.stringify(records).includes('DO_NOT_LOG_SOURCE'));
 });
 
+test('An incomplete provider response cannot pass even when its partial JSON matches the schema', async (t) => {
+  const system = await fixture(t);
+  const records = [];
+  let calls = 0;
+  const runner = new SkillRunner(
+    system.store,
+    {
+      async complete(request) {
+        calls++;
+        if (calls === 2) assert.match(request.input.validationFeedback, /截断/);
+        return {
+          text: '{"summary":"partial"}',
+          model: 'test',
+          usage: null,
+          completionStatus: 'incomplete',
+        };
+      },
+    },
+    {
+      async dataUrl() {
+        throw Error('Unexpected image');
+      },
+    },
+    {
+      async get() {
+        return { id: 'bounded', version: '1', instructions: 'test', modelRole: 'vision' };
+      },
+    },
+    {
+      async pin() {},
+      async record(_book, _job, value) {
+        records.push(value);
+      },
+    },
+  );
+  await assert.rejects(
+    runner.run('bounded', {}, z.object({ summary: z.string() }), [], {
+      bookId: 'book',
+      jobId: 'bounded',
+      signal: new AbortController().signal,
+    }),
+    /invalid structured output/,
+  );
+  assert.equal(calls, 2);
+  assert.ok(
+    records.every(
+      (r) => r.completionStatus === 'incomplete' && r.validationError === 'Incomplete model output',
+    ),
+  );
+});
+
 test('Opt-in local traces preserve invalid and valid output, retry feedback, page references and provider failures', async (t) => {
   const previous = process.env.MODEL_TRACE;
   process.env.MODEL_TRACE = '1';

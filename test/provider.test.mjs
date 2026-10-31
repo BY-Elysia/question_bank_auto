@@ -14,7 +14,8 @@ test('Provider transports support Responses and Chat Completions with bounded tr
   ];
   const prior = Object.fromEntries(names.map((n) => [n, process.env[n]]));
   let count = 0,
-    seen = [];
+    seen = [],
+    incomplete = false;
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -30,8 +31,19 @@ test('Provider transports support Responses and Chat Completions with bounded tr
     res.end(
       JSON.stringify(
         req.url.endsWith('/responses')
-          ? { output: [{ content: [{ text: '{"ok":true}' }] }], usage: { total_tokens: 3 } }
-          : { choices: [{ message: { content: '{"ok":true}' } }] },
+          ? {
+              status: incomplete ? 'incomplete' : 'completed',
+              output: [{ content: [{ text: '{"ok":true}' }] }],
+              usage: { total_tokens: 3 },
+            }
+          : {
+              choices: [
+                {
+                  finish_reason: incomplete ? 'length' : 'stop',
+                  message: { content: '{"ok":true}' },
+                },
+              ],
+            },
       ),
     );
   });
@@ -55,15 +67,18 @@ test('Provider transports support Responses and Chat Completions with bounded tr
     images: [{ page: 1, url: 'data:image/png;base64,AA==' }],
     signal: new AbortController().signal,
     role: 'vision',
+    maxOutputTokens: 2048,
   };
   process.env.MODEL_PROTOCOL = 'responses';
   assert.equal((await client.complete(input)).text, '{"ok":true}');
   assert.equal(count, 2);
   assert.ok(seen[1].body.input);
+  assert.equal(seen[1].body.max_output_tokens, 2048);
   assert.deepEqual(seen[1].body.text, { format: { type: 'json_object' } });
   process.env.MODEL_PROTOCOL = 'chat';
   assert.equal((await client.complete(input)).text, '{"ok":true}');
   assert.ok(seen[2].body.messages);
+  assert.equal(seen[2].body.max_tokens, 2048);
   process.env.MODEL_PROTOCOL = 'responses';
   await client.complete({
     ...input,
@@ -94,4 +109,8 @@ test('Provider transports support Responses and Chat Completions with bounded tr
   abort.abort();
   await assert.rejects(client.complete({ ...input, signal: abort.signal }));
   assert.equal(count, 4);
+  incomplete = true;
+  assert.equal((await client.complete(input)).completionStatus, 'incomplete');
+  process.env.MODEL_PROTOCOL = 'chat';
+  assert.equal((await client.complete(input)).completionStatus, 'incomplete');
 });

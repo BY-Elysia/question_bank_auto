@@ -2,20 +2,30 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import sharp from 'sharp';
 const base = process.env.LIVE_BASE_URL;
 const imageDir = process.env.LIVE_IMAGE_DIR;
 const root = process.env.LIVE_RESULT_DIR;
 if (!base || !imageDir || !root || !process.env.LIVE_CREDENTIALS_FILE)
   throw Error('Set LIVE_BASE_URL, LIVE_IMAGE_DIR, LIVE_RESULT_DIR and LIVE_CREDENTIALS_FILE');
 const { username, password } = JSON.parse(await fs.readFile(process.env.LIVE_CREDENTIALS_FILE));
+const selected = process.env.LIVE_CASES?.split(',');
 const cases = [
   { id: 'sequence-proof', files: ['32.jpg', '33.jpg'], hasAnswer: true },
   { id: 'derivative-boundary', files: ['80.jpg', '81.jpg'], hasAnswer: true },
   { id: 'missing-answers', files: [path.resolve(root, 'question-only.png')], hasAnswer: false },
-];
+].filter((c) => !selected || selected.includes(c.id));
+const concurrency = Number(process.env.LIVE_CASE_CONCURRENCY ?? 3);
+if (!cases.length || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3)
+  throw Error('Select valid LIVE_CASES and LIVE_CASE_CONCURRENCY (1..3)');
 await fs.mkdir(root, { recursive: true, mode: 0o700 });
-const deadline = Date.now() + 18 * 60000;
+if (cases.some((c) => c.id === 'missing-answers'))
+  await sharp(path.join(imageDir, '19.jpg'))
+    .extract({ left: 20, top: 327, width: 601, height: 102 })
+    .png()
+    .toFile(path.join(root, 'question-only.png'));
 async function run(c) {
+  const deadline = Date.now() + 18 * 60000;
   const report = {
     case: c.id,
     files: c.files.map((f) => path.basename(f)),
@@ -199,7 +209,9 @@ async function run(c) {
   console.log(JSON.stringify({ case: c.id, passed: report.passed, checks: report.checks }));
   return report;
 }
-const results = await Promise.allSettled(cases.map(run));
+const results = [];
+for (let start = 0; start < cases.length; start += concurrency)
+  results.push(...(await Promise.allSettled(cases.slice(start, start + concurrency).map(run))));
 await fs.writeFile(path.join(root, 'summary.json'), JSON.stringify(results, null, 2), {
   mode: 0o600,
 });
