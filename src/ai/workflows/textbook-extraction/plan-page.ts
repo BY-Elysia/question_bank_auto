@@ -1,3 +1,4 @@
+import { spatialOutput } from './spatial-contract.js';
 import type { Book } from '../../../modules/textbooks/domain/book.js';
 import type { Job } from '../../../modules/jobs/domain/job.js';
 import type { Skills, SkillContext } from '../../ports/skills.js';
@@ -20,6 +21,7 @@ export async function planPage(
     StructureResult,
     [page],
     context,
+    spatialOutput('structure'),
   );
   for (const section of structure.sections) {
     if (section.source.page !== page)
@@ -59,6 +61,7 @@ export async function planPage(
       BoundaryResult,
       queue,
       context,
+      spatialOutput('boundary'),
     );
     try {
       checkBoundary(boundary, queue, pending, stage);

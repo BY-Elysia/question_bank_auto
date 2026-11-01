@@ -1,3 +1,4 @@
+import { extractionOutput } from './output-contract.js';
 import {
   transcriptionProblems,
   transcriptionIssues,
@@ -50,6 +51,7 @@ export async function extractRanges(
           ExtractResult,
           sourcePages,
           context,
+          extractionOutput(ranges),
         );
         try {
           if (

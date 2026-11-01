@@ -186,7 +186,7 @@ test('Cancellation aborts model work, preserves checkpoint, and active tasks blo
   let release, entered;
   const started = new Promise((resolve) => (entered = resolve));
   skills.run = async (...args) => {
-    const context = args.at(-1);
+    const context = args[4];
     entered();
     await new Promise((resolve, reject) => {
       release = resolve;

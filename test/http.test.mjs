@@ -23,7 +23,7 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
         return { text: 'not JSON', usage: null, model: 'test-vision' };
       }
       return {
-        text: JSON.stringify(scripted.output(id, request.input.task)),
+        text: JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: { total_tokens: 10 },
         model: 'test-vision',
       };

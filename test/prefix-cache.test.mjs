@@ -125,6 +125,9 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
         process.env.MODEL_API_KEY,
       ),
     );
+  fail = false;
+  await client.complete({ ...request, outputMode: 'text' });
+  assert.equal(seen.at(-1).text.format.type, 'text');
   process.env.MODEL_PROTOCOL = 'chat';
   await assert.rejects(client.complete(request), /prefix caching requires/);
 });

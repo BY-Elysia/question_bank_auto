@@ -427,7 +427,7 @@ test('Legacy form metadata reaches model requests as data, with default prefix c
       requests.push(request);
       const id = request.system.match(/^name: (.+)$/m)[1];
       return {
-        text: JSON.stringify(scripted.output(id, request.input.task)),
+        text: JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: null,
         model: 'test',
       };

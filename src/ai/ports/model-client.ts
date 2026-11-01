@@ -7,6 +7,7 @@ export interface ModelRequest {
   signal: AbortSignal;
   role: 'vision' | 'reasoning';
   maxOutputTokens?: number;
+  outputMode?: 'text' | 'json_object';
   structuredOutput?: { name: string; schema: Record<string, unknown> };
 }
 export interface ModelClient {

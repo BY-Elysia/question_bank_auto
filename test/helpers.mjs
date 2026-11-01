@@ -1,3 +1,4 @@
+import { mapBoxes } from '../dist/app/ai/workflows/textbook-extraction/spatial-contract.js';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +39,21 @@ export class ScriptedSkills {
     if (this.failAt && this.calls.length === this.failAt)
       throw new Error('Injected provider failure');
     return schema.parse(this.output(id, input));
+  }
+  wireOutput(id, input, system) {
+    const data = this.output(id, mapBoxes(input, 'decode'));
+    if (system.includes('本次为单题契约')) {
+      const q = data.items[0].content.question;
+      for (const leaf of [q, ...q.children])
+        if (leaf.answer) {
+          delete leaf.answer.origin;
+          delete leaf.answer.review;
+        }
+      return mapBoxes({ question: q, issues: data.issues }, 'encode');
+    }
+    if (system.includes('本次为单个正文/标题契约'))
+      return { text: data.items[0].content.text, issues: data.issues };
+    return system.includes('千分位整数对象') ? mapBoxes(data, 'encode') : data;
   }
   output(id, input) {
     if (id === 'textbook-structure-detect')

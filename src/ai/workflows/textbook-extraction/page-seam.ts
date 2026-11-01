@@ -1,3 +1,4 @@
+import { spatialOutput } from './spatial-contract.js';
 import { z } from 'zod';
 import type { Document, Range } from '../../../modules/textbooks/domain/content.js';
 import { Source } from '../../../modules/textbooks/domain/content.js';
@@ -35,6 +36,7 @@ export async function reconcileSeam(
     Seam,
     [...new Set([...prior.sources.map((s) => s.page), page])],
     context,
+    spatialOutput('seam'),
   );
   if (result.targetKey !== prior.key || result.sources.some((s) => s.page !== page))
     throw new Error('Invalid seam evidence target or page');

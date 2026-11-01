@@ -103,7 +103,7 @@ async function run(c) {
         last = state;
         await fs.writeFile(dir + '/progress.json', JSON.stringify(view, null, 2), { mode: 0o600 });
       }
-      if (view.workspace.status === 'failed' && !resumed) {
+      if (view.workspace.status === 'failed' && !resumed && process.env.LIVE_AUTO_RESUME !== '0') {
         report.attempts.push({ status: 'failed', error: view.workspace.error });
         await api(url + '/resume', {});
         resumed = true;

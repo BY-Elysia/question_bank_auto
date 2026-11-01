@@ -33,7 +33,7 @@ export class HttpModelClient implements ModelClient {
           strict: true,
           schema: providerSchema(request.structuredOutput.schema),
         }
-      : { type: 'json_object' };
+      : { type: request.outputMode ?? 'json_object' };
     if (request.cache === 'prefix' && request.structuredOutput)
       throw new Error('Strict structured output requires cache=off; prefix calls use json_object');
     const content: unknown[] = [
@@ -65,6 +65,7 @@ export class HttpModelClient implements ModelClient {
         request.cacheScope ?? 'default',
         request.signal,
         maxOutputTokens,
+        request.outputMode ?? 'json_object',
       );
       data = completed.result;
       cache = completed.cache;
@@ -90,12 +91,16 @@ export class HttpModelClient implements ModelClient {
                 { role: 'system', content: request.system },
                 { role: 'user', content },
               ],
-              response_format: request.structuredOutput
-                ? {
-                    type: 'json_schema',
-                    json_schema: { name: format.name, strict: true, schema: format.schema },
-                  }
-                : { type: 'json_object' },
+              ...(request.outputMode === 'text' && !request.structuredOutput
+                ? {}
+                : {
+                    response_format: request.structuredOutput
+                      ? {
+                          type: 'json_schema',
+                          json_schema: { name: format.name, strict: true, schema: format.schema },
+                        }
+                      : { type: 'json_object' },
+                  }),
             },
         request.signal,
       );
@@ -117,7 +122,9 @@ export class HttpModelClient implements ModelClient {
       usage: data.usage ?? null,
       model,
       cache,
-      outputFormat: request.structuredOutput ? ('json_schema' as const) : ('json_object' as const),
+      outputFormat: request.structuredOutput
+        ? ('json_schema' as const)
+        : (request.outputMode ?? 'json_object'),
       completionStatus: incomplete ? ('incomplete' as const) : ('completed' as const),
     };
   }

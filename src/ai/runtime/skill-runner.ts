@@ -5,7 +5,12 @@ import type { ModelClient } from '../ports/model-client.js';
 import type { PageImagePort } from '../../modules/textbooks/ports/assets.port.js';
 import type { BookRepository } from '../../modules/textbooks/ports/book.repository.js';
 import type { SkillId, SkillCatalog, RunRecords } from '../ports/skill-catalog.js';
-import { StructuredOutputError, type Skills, type SkillContext } from '../ports/skills.js';
+import {
+  StructuredOutputError,
+  type Skills,
+  type SkillContext,
+  type OutputContract,
+} from '../ports/skills.js';
 export class SkillRunner implements Skills {
   constructor(
     private store: BookRepository,
@@ -20,6 +25,7 @@ export class SkillRunner implements Skills {
     schema: T,
     pages: number[],
     context: SkillContext,
+    output?: OutputContract,
   ): Promise<z.infer<T>> {
     const budget = Number(process.env.MAX_SKILL_DURATION_MS ?? 180000);
     if (!Number.isFinite(budget) || budget < 1) throw new Error('Invalid skill duration budget');
@@ -42,28 +48,35 @@ export class SkillRunner implements Skills {
         };
       }),
     );
-    const system = `${instructions}\n只输出 JSON，不要代码围栏。输出 JSON Schema：\n${JSON.stringify(z.toJSONSchema(schema))}`;
+    const wireSchema = output?.schema ?? schema;
+    const system = `${instructions}\n${output?.instructions ?? ''}\n输出一个紧凑 JSON 对象，字段名严格遵守契约，不输出缩进、围栏或额外文字。数学反斜杠须正确 JSON 转义。\n只输出 JSON，不要代码围栏。输出 JSON Schema：\n${JSON.stringify(z.toJSONSchema(wireSchema))}`;
     let feedback = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       signal.throwIfAborted();
       const invocationId = randomUUID();
       const startedAt = Date.now();
       const requestInput = {
-        task: input,
+        task: output?.encode ? output.encode(input) : input,
         context: book.extractionContext,
         validationFeedback: feedback,
+        outputContract:
+          'Return one compact JSON object matching the system schema. No padding or commentary.',
       };
       let result;
       try {
         result = await this.model.complete({
           system,
+          outputMode: 'text',
           cache:
             attempt > 0
               ? 'off'
               : (book.jobs.find((j) => j.id === context.jobId)?.request.cache ?? 'prefix'),
           ...(attempt > 0
             ? {
-                structuredOutput: { name: id.replaceAll('-', '_'), schema: z.toJSONSchema(schema) },
+                structuredOutput: {
+                  name: id.replaceAll('-', '_'),
+                  schema: z.toJSONSchema(wireSchema),
+                },
               }
             : {}),
           cacheScope: book.workspaceId ?? book.id,
@@ -105,7 +118,8 @@ export class SkillRunner implements Skills {
             .trim()
             .replace(/^```(?:json)?\s*/, '')
             .replace(/\s*```$/, '');
-          parsed = schema.parse(JSON.parse(text));
+          const value = wireSchema.parse(JSON.parse(text));
+          parsed = schema.parse(output ? output.decode(value) : value);
         } catch (error) {
           // Keep summary diagnostics safe; raw source output is available only in opt-in local traces.
           validationError =
@@ -115,7 +129,7 @@ export class SkillRunner implements Skills {
                   .join('; ')
                   .slice(0, 2000)
               : 'Invalid JSON syntax';
-          feedback = `上次输出未通过结构校验，请重新按原始资料输出：${error instanceof Error ? error.message : String(error)}`;
+          feedback = `上次输出未通过结构校验：${validationError}。重新对照原图输出紧凑 JSON；字符串用双引号，LaTeX 反斜杠在 JSON 中写成双反斜杠。不要复述错误响应。`;
         }
       await this.records.record(book.id, context.jobId, {
         id: invocationId,

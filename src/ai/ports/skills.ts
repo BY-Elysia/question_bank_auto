@@ -5,6 +5,12 @@ export interface SkillContext {
   jobId: string;
   signal: AbortSignal;
 }
+export interface OutputContract {
+  schema: z.ZodType;
+  instructions: string;
+  encode?(value: unknown): unknown;
+  decode(value: unknown): unknown;
+}
 export interface Skills {
   run<T extends z.ZodType>(
     id: SkillId,
@@ -12,6 +18,7 @@ export interface Skills {
     schema: T,
     pages: number[],
     context: SkillContext,
+    output?: OutputContract,
   ): Promise<z.infer<T>>;
 }
 

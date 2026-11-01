@@ -109,6 +109,13 @@ test('Provider transports support Responses and Chat Completions with bounded tr
   abort.abort();
   await assert.rejects(client.complete({ ...input, signal: abort.signal }));
   assert.equal(count, 4);
+  process.env.MODEL_PROTOCOL = 'responses';
+  assert.equal((await client.complete({ ...input, outputMode: 'text' })).outputFormat, 'text');
+  assert.equal(seen.at(-1).body.text.format.type, 'text');
+  process.env.MODEL_PROTOCOL = 'chat';
+  await client.complete({ ...input, outputMode: 'text' });
+  assert.equal(seen.at(-1).body.response_format, undefined);
+  process.env.MODEL_PROTOCOL = 'responses';
   incomplete = true;
   assert.equal((await client.complete(input)).completionStatus, 'incomplete');
   process.env.MODEL_PROTOCOL = 'chat';
