@@ -63,8 +63,12 @@ verify 对选定内容及其原始页图做语义核对，结果记录在任务 
 
 业务编排不导入 HTTP、文件系统或供应商实现。新增 AI 能力实现独立 workflow 并注册到任务执行映射，通过 Skills/ModelClient 调用；新增数据库实现 BookRepository 等端口，不将读写逻辑放入提示词或页面处理流程。SKILL.md 保留语义任务要求，确定性范围/来源/质量约束由代码执行。
 
-单次 Skill 默认共享 180 秒总预算，包含缓存种子、网络重试及两次格式尝试；业务重提是新的调用。模型输出默认上限 8192 tokens，可通过 MAX_MODEL_OUTPUT_TOKENS 调整，超长完整题应明确调预算或人工处理，不允许静默截断子问。Responses 的 incomplete、Chat 的非 stop 结束状态均不能通过验收，即使 JSON 恰好有效。参考[方舟 Responses 文档](https://console.volcengine.com/ark/region%3Acn-beijing/docs/create-model-responses-api)。默认仍使用前缀缓存，格式重试改用无缓存严格 schema。
+单次 Skill 默认共享 180 秒总预算，包含缓存种子、网络重试及两次格式尝试；业务重提是新的调用。模型输出默认上限 8192 tokens，可通过 MAX_MODEL_OUTPUT_TOKENS 调整，超长完整题应明确调预算或人工处理，不允许静默截断子问。Responses 的 incomplete、Chat 的非 stop 结束状态均不能通过验收，即使 JSON 恰好有效。参考[方舟 Responses 文档](https://console.volcengine.com/ark/region%3Acn-beijing/docs/create-model-responses-api)。默认仍使用前缀缓存；首轮采用 text 输出并在本地校验 JSON，格式重试改用无缓存严格 schema。
 
 MODEL_TRACE=1 时记录每次调用的输入、反馈、原始输出、时长、格式/结束状态或脱敏错误类别，存入私有诊断目录；不保存密钥和图片 data URL。生产默认关闭原文记录。格式失败、转录质量失败和超时必须分别统计，不能用任务 completed 代替内容正确率。
 
 质量检查是保守规则，不证明数学语义正确或所有原文都被覆盖。历史结果在校验/导出接口也会显示转录问题，但不会阻止用户逐项手工修正未改动的旧内容。旧任务 Skill 哈希变化时需重新提取，不能把新指令悄悄用于旧检查点。
+
+## 2026-11-01 输出契约
+
+工作流通过 OutputContract 提供模型侧 schema、任务编码和输出解码。单题/单正文不再生成通用包装和后端已确定字段；来源在模型侧采用具名千分位整数，校验后转换为原来的归一化数组。执行器先验收模型契约，再验收完整业务 schema，范围、质量和原子发布约束保持。详见 [格式失败复测](verification/model-format-2026-11-01.md)。
