@@ -36,6 +36,8 @@ client/src/
 
 Workspace 作为流程装配组件，根据服务端状态组合 Configure、Processing、Review。其他业务组件不读取服务器目录，也不承担模型工作流。
 
+公式渲染器与 Workspace 共用一个懒加载边界；ContentBody 同步引用 RichText，不再用原始 LaTeX 作为异步占位。remark-math 解析公式后，remarkDisplayMath 只将段落中已识别的同一行 `$$…$$` 节点转换为独立公式，代码和转义符不参与替换，保存与导出仍使用原始内容。
+
 ## 状态与请求生命周期
 
 后端是教材、章节任务、修订和候选结果的事实来源；前端不复制一套任务状态机。

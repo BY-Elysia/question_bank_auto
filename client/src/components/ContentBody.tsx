@@ -1,13 +1,7 @@
-import { lazy, Suspense } from 'react';
 import type { Content, Question } from '@/shared/contracts';
-const MathText = lazy(() => import('./RichText'));
-function RichText({ text }: { text: string }) {
-  return (
-    <Suspense fallback={<p>{text}</p>}>
-      <MathText text={text} />
-    </Suspense>
-  );
-}
+// Workspace is already lazy-loaded. Keep its content and math renderer in the
+// same loading boundary so a slow chunk never exposes unrendered LaTeX.
+import RichText from './RichText';
 function QuestionBody({ question }: { question: Question }) {
   return (
     <>

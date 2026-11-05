@@ -1,0 +1,116 @@
+[
+  {
+    "text": "$$\\begin{aligned}\\lim_{n\\to\\infty}\\frac{a_n}{a_{n+1}} = \\lim_{n\\to\\infty}\\frac{n^2|q|^n}{(n+1)^2|q|^{n+1}} = \\frac{1}{|q|} > 1,\\end{aligned}$$\n由习题2.3第7题知$\\lim_{n\\to\\infty}|n^2q^n|=0$，于是，当$|q|<1$时，$\\lim_{n\\to\\infty}n^2q^n=0$。\n（2）当$\\alpha=1$时，$\\frac{\\lg n}{n}=\\lg \\sqrt[n]{n}$，故$\\lim_{n\\to\\infty}\\frac{\\lg n}{n}=\\lim_{n\\to\\infty}\\lg \\sqrt[n]{n}=0$。\n当$\\alpha>1$时，$0<\\frac{\\lg n}{n^\\alpha}<\\frac{n}{n^\\alpha}=\\frac{1}{n^{\\alpha-1}}$，而$\\lim_{n\\to\\infty}\\frac{1}{n^{\\alpha-1}}=0$，故由迫敛性知$\\lim_{n\\to\\infty}\\frac{\\lg n}{n^\\alpha}=0$。",
+    "question": null,
+    "table": null,
+    "caption": null,
+    "id": "chapter_1_115c91d5c04bf1cf8b6e3085",
+    "key": "chapter_1_d3d03ed2e067fb19fa15eaec",
+    "kind": "paragraph",
+    "sectionId": null,
+    "sources": [
+      {
+        "page": 1,
+        "box": [
+          0.15,
+          0.09,
+          0.8,
+          0.22
+        ]
+      }
+    ]
+  },
+  {
+    "text": "",
+    "question": {
+      "label": "3",
+      "type": "group",
+      "prompt": "设$\\lim_{n \\to \\infty} a_n = a$，证明：",
+      "options": [],
+      "answer": null,
+      "children": [
+        {
+          "label": "(1)",
+          "type": "proof",
+          "prompt": "$\\lim_{n \\to \\infty} \\frac{a_1 + a_2 + \\dots + a_n}{n} = a$（又问由此等式能否反过来推出$\\lim_{n \\to \\infty} a_n = a$）；",
+          "options": [],
+          "answer": {
+            "text": "$\\lim_{n \\to \\infty} \\frac{a_1 + a_2 + \\dots + a_n}{n} = a$，该等式不能反过来推出$\\lim_{n \\to \\infty} a_n = a$",
+            "explanation": "因为$\\lim_{n \\to \\infty} a_n = a$，所以对任意$\\varepsilon > 0$，存在正整数$N_1$，当$n > N_1$时，有$|a_n - a| < \\varepsilon$，于是当$n > N_1$时，有\n$$\n\\begin{aligned}\n\\left| \\frac{a_1 + a_2 + \\dots + a_n}{n} - a \\right| &= \\left| \\frac{1}{n} \\left[ (a_1 - a) + (a_2 - a) + \\dots + (a_n - a) \\right] \\right| \\\\\n&\\leqslant \\frac{1}{n} \\left( |a_1 - a| + |a_2 - a| + \\dots + |a_n - a| \\right) \\\\\n&< \\frac{1}{n} N_1 M + \\frac{(n - N_1)\\varepsilon}{n} < \\frac{1}{n} N_1 M + \\varepsilon,\n\\end{aligned}\n$$\n其中$M = \\max\\{ |a_1 - a|, |a_2 - a|, \\dots, |a_{N_1} - a| \\}$。\n又因为$\\lim_{n \\to \\infty} \\frac{N_1 M}{n} = 0$，所以对上面的$\\varepsilon$，存在正整数$N_2$，使得当$n > N_2$时，有$\\left| \\frac{N_1 M}{n} - 0 \\right| = \\frac{N_1 M}{n} < \\varepsilon$，取$N = \\max\\{N_1, N_2\\}$，则当$n > N$时，有\n$$\n\\left| \\frac{a_1 + a_2 + \\dots + a_n}{n} - a \\right| < \\varepsilon + \\varepsilon = 2\\varepsilon,\n$$\n故$\\lim_{n \\to \\infty} \\frac{a_1 + a_2 + \\dots + a_n}{n} = a$。\n\n由这个等式不能推出$\\lim_{n \\to \\infty} a_n = a$。例如，$a_n = (-1)^n$，$\\lim_{n \\to \\infty} \\frac{a_1 + a_2 + \\dots + a_n}{n} = 0$，但$\\{a_n\\}$不收敛。",
+            "origin": "source",
+            "review": "pending",
+            "sources": [
+              {
+                "page": 1,
+                "box": [
+                  0.105,
+                  0.312,
+                  0.978,
+                  0.627
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "(2)",
+          "type": "proof",
+          "prompt": "若$a_n > 0(n = 1, 2, \\dots)$，则$\\lim_{n \\to \\infty} \\sqrt[n]{a_1 a_2 \\cdots a_n} = a$。",
+          "options": [],
+          "answer": {
+            "text": "$\\lim_{n \\to \\infty} \\sqrt[n]{a_1 a_2 \\cdots a_n} = a$",
+            "explanation": "根据极限保号性，由$a_n > 0(n = 1, 2, \\dots)$可得$a \\geqslant 0$，如果$a > 0$，那么$\\lim_{n \\to \\infty} \\frac{1}{a_n} = \\frac{1}{a}$，由平均值不等式得\n$$\n\\frac{n}{\\frac{1}{a_1} + \\frac{1}{a_2} + \\dots + \\frac{1}{a_n}} \\leqslant \\sqrt[n]{a_1 a_2 \\cdots a_n} \\leqslant \\frac{a_1 + a_2 + \\dots + a_n}{n},\n$$\n由(1)的结论可得\n$$\n\\lim_{n \\to \\infty} \\frac{a_1 + a_2 + \\dots + a_n}{n} = a,\n$$\n$$\n\\lim_{n \\to \\infty} \\frac{n}{\\frac{1}{a_1} + \\frac{1}{a_2} + \\dots + \\frac{1}{a_n}} = \\lim_{n \\to \\infty} \\frac{1}{\\frac{1}{n} \\left( \\frac{1}{a_1} + \\frac{1}{a_2} + \\dots + \\frac{1}{a_n} \\right)} = \\frac{1}{\\frac{1}{a}} = a,\n$$\n再由迫敛性得$\\lim_{n \\to \\infty} \\sqrt[n]{a_1 a_2 \\cdots a_n} = a$。\n\n如果$a = 0$，则$0 \\leqslant \\sqrt[n]{a_1 a_2 \\cdots a_n} \\leqslant \\frac{1}{n}(a_1 + a_2 + \\dots + a_n)$，且$\\lim_{n \\to \\infty} \\frac{1}{n}(a_1 + a_2 + \\dots + a_n) = 0$，因此，由迫敛性得$\\lim_{n \\to \\infty} \\sqrt[n]{a_1 a_2 \\cdots a_n} = 0$。\n\n综上所述，有$\\lim_{n \\to \\infty} \\sqrt[n]{a_1 a_2 \\cdots a_n} = a$。",
+            "origin": "source",
+            "review": "pending",
+            "sources": [
+              {
+                "page": 1,
+                "box": [
+                  0.14,
+                  0.635,
+                  0.985,
+                  0.923
+                ]
+              },
+              {
+                "page": 2,
+                "box": [
+                  0.145,
+                  0.101,
+                  0.447,
+                  0.124
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "table": null,
+    "caption": null,
+    "id": "chapter_1_eba00ae2bf9f26fc0b88273b",
+    "key": "chapter_1_da3cb68536bc524a68dd88a2",
+    "kind": "question",
+    "sectionId": "chapter_1_1bbc7166039a1dc981bf911c",
+    "sources": [
+      {
+        "page": 1,
+        "box": [
+          0.1,
+          0.22,
+          0.98,
+          0.92
+        ]
+      },
+      {
+        "page": 2,
+        "box": [
+          0.13,
+          0.098,
+          0.45,
+          0.128
+        ]
+      }
+    ]
+  }
+]

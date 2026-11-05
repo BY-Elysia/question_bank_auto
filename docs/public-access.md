@@ -8,6 +8,8 @@
 
 当前是单管理员工作台，会话保存在单进程内存，不能据此横向运行多个共享数据卷的后端。Nginx 不记录请求体，配置文件只保存密码摘要。
 
+HTTPS server 块包含 `deploy/nginx-assets.conf`（部署时复制到 `/opt/question-bank/shared/nginx-assets.conf` 并使用绝对路径 include）。仅 `/assets/` 下带内容哈希的静态文件启用 gzip 与一年缓存；API 和登录响应不套用此配置。更新后先执行 `nginx -t` 再 reload。静态压缩能减少工作区与公式渲染代码的首次下载量。
+
 服务器采用 Let's Encrypt 公网 IP 短期证书，Certbot 定时续期并重载 Nginx。参考：[官方 IP 证书配置](https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html)。
 
 部署验证：65 项自动化测试通过；原有 7 项浏览器流程、独立登录流程和公网 HTTPS 浏览器登录／刷新／退出流程通过。证书续期演练成功，续期定时器已启用。公网应用镜像为 b888cb3，后续提交只调整测试约束与部署说明。
