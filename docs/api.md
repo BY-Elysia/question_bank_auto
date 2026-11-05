@@ -20,7 +20,7 @@
 `GET /workspaces/:id` 返回：
 
 - `workspace`：状态、准备页数、总页数、设置和错误。
-- `pages[].imageUrl`：可直接加载的页图地址；`sourceUrl` 仅 PDF 非空。
+- `pages[].imageUrl`：标准 PNG；`previewUrl` 为轻量 WebP 预览，`detailUrl` 为全尺寸无损 WebP。三者坐标与宽高比一致；`sourceUrl` 仅 PDF 非空。
 - `document`、`revision`、`proposals`：正式内容、版本和候选。
 - `jobs`：根教材的核对、修复、补答案等任务及 issues，省略内部 stage。
 - `chapters`：章节识别名称、分组页码、处理进度与 `preview`。预览来源坐标已转换为全书页码，与根页图直接对应；未完成预览不能当正式导出。
@@ -68,7 +68,7 @@ metadata.title / subject 必填；version 默认 v1.1，courseId / textbookId / 
 | GET /textbooks/:id | 课本、任务、检查点、候选完整状态 |
 | DELETE /textbooks/:id | 删除课本及文件；有活动任务时拒绝 |
 | GET /textbooks/:id/source | 下载原始 PDF |
-| GET /textbooks/:id/pages/:page/image | 按需渲染并返回 PNG |
+| GET /textbooks/:id/pages/:page/image | 默认返回 PNG；`variant=preview` 返回最长边 1400、quality 90 的 WebP；`variant=detail` 返回全尺寸无损 WebP |
 | GET /textbooks/:id/document | revision 与结构化 document |
 | PUT /textbooks/:id/document | 人工替换文档，包括章节调整、内容拆分/合并 |
 | PATCH /textbooks/:id/contents/:contentId | 修改一个完整内容块 |

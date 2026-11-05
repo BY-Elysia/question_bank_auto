@@ -57,6 +57,8 @@ for (const [name, schema] of Object.entries(schemas)) {
 }
 const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
 function content(name) {
+  if (name === 'PageImage')
+    return { ...content('PNG'), 'image/webp': { schema: { type: 'string', format: 'binary' } } };
   if (name === 'ImageUpload')
     return {
       'multipart/form-data': {
@@ -98,6 +100,15 @@ for (const [method, path, operationId, input, output, status] of [
       required: true,
       schema: { type: 'string', minLength: 1, maxLength: 300 },
     });
+  if (operationId === 'getPageImage')
+    parameters.push({
+      name: 'variant',
+      in: 'query',
+      required: false,
+      schema: { type: 'string', enum: ['original', 'preview', 'detail'], default: 'original' },
+      description:
+        'Original PNG, lightweight WebP preview, or full-resolution lossless WebP detail',
+    });
   (paths[path] ??= {})[method] = {
     operationId,
     summary: operationId,
@@ -106,6 +117,9 @@ for (const [method, path, operationId, input, output, status] of [
     ...(input ? { requestBody: { required: true, content: content(input) } } : {}),
     responses: {
       [status]: { description: 'Success', ...(output ? { content: content(output) } : {}) },
+      ...(operationId === 'getPageImage'
+        ? { 304: { description: 'Authenticated cached image is unchanged' } }
+        : {}),
       400: { description: 'Invalid request' },
       404: { description: 'Not found' },
       409: { description: 'Revision conflict or active task' },

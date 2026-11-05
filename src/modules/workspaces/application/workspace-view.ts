@@ -38,6 +38,8 @@ export class WorkspaceView {
       pages: book.pages.map((p) => ({
         ...p,
         imageUrl: `/api/textbooks/${id}/pages/${p.number}/image`,
+        previewUrl: `/api/textbooks/${id}/pages/${p.number}/image?variant=preview`,
+        detailUrl: `/api/textbooks/${id}/pages/${p.number}/image?variant=detail`,
       })),
       revision: book.revision,
       document: book.document,

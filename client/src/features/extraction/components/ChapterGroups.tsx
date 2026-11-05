@@ -73,7 +73,12 @@ export function ChapterGroups({
                 }}
                 onClick={(e) => select(p.number, e.shiftKey)}
               >
-                <img src={p.imageUrl} loading="lazy" alt={`第 ${p.number} 页`} />
+                <img
+                  src={p.previewUrl || p.imageUrl}
+                  loading="lazy"
+                  decoding="async"
+                  alt={`第 ${p.number} 页`}
+                />
                 <span className="thumb-check">{checked && <Check size={12} />}</span>
                 <div>
                   <b>{String(p.number).padStart(2, '0')}</b>

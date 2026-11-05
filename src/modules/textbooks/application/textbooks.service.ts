@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BookRepository } from '../ports/book.repository.js';
-import type { PageImagePort } from '../ports/assets.port.js';
+import type { PageImagePort, PageImageVariant } from '../ports/assets.port.js';
 import type { TextbookAssets } from '../ports/assets.port.js';
 import { emptyDocument } from '../domain/book.js';
 import { Book } from '../domain/book.js';
@@ -87,13 +87,15 @@ export class TextbooksService {
     await this.store.create(book);
     return book;
   }
-  async asset(id: string, page?: number) {
+  async asset(id: string, page?: number, variant: PageImageVariant = 'original') {
     const book = await this.store.read(id);
     if (page === undefined && book.sourceKind === 'images')
       fail(404, 'This textbook was uploaded as images');
     if (page !== undefined && !book.pages.some((p) => p.number === page))
       fail(404, 'Page not found');
-    return page === undefined ? this.assets.source(id) : this.images.read(id, page);
+    return page === undefined
+      ? this.assets.source(id)
+      : this.images.read(id, page, undefined, variant);
   }
   async remove(id: string, owner?: string) {
     await this.store.remove(id, (book) => {

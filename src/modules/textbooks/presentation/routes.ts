@@ -4,7 +4,7 @@ export const textbookRoutes = [
   ['get', '/api/textbooks/{id}', 'getTextbook', null, 'Book', 200],
   ['delete', '/api/textbooks/{id}', 'deleteTextbook', null, null, 204],
   ['get', '/api/textbooks/{id}/source', 'downloadSource', null, 'PDF', 200],
-  ['get', '/api/textbooks/{id}/pages/{page}/image', 'getPageImage', null, 'PNG', 200],
+  ['get', '/api/textbooks/{id}/pages/{page}/image', 'getPageImage', null, 'PageImage', 200],
   ['get', '/api/textbooks/{id}/document', 'getDocument', null, 'DocumentResponse', 200],
   ['put', '/api/textbooks/{id}/document', 'replaceDocument', 'ReplaceDocument', 'Book', 200],
   ['patch', '/api/textbooks/{id}/contents/{contentId}', 'editContent', 'EditContent', 'Book', 200],

@@ -16,7 +16,9 @@ export const WorkspaceList = z.array(
 );
 export const WorkspaceViewResponse = z.strictObject({
   workspace: Workspace,
-  pages: z.array(Page.extend({ imageUrl: z.string() })),
+  pages: z.array(
+    Page.extend({ imageUrl: z.string(), previewUrl: z.string(), detailUrl: z.string() }),
+  ),
   revision: z.number().int(),
   document: Document,
   proposals: z.array(Proposal),

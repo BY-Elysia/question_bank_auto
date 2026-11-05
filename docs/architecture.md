@@ -89,6 +89,7 @@ workspace/
 └── books/<book-id>/               # 根课本及内部章节课本，由清单关联
     ├── source.pdf                # 仅 PDF 根课本存在
     ├── pages/<page>.png           # 工作区自动准备的标准 PNG
+    ├── pages/display/*.webp       # 可再生成的预览/无损显示图，不参与模型或导出
     ├── state.json                # 正式文档、任务、检查点、候选
     ├── revisions/<revision>.json # 不可变文档快照
     └── runs/<job-id>/

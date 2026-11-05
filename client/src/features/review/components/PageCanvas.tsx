@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, Maximize, Focus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Content, WorkspaceView } from '@/shared/contracts';
+import { PageImage } from './PageImage';
 export function PageCanvas({
   pages,
   page,
@@ -18,8 +19,7 @@ export function PageCanvas({
   onSelect: (c: Content) => void;
 }) {
   const [zoom, setZoom] = useState(100),
-    [boxes, setBoxes] = useState(true),
-    [failed, setFailed] = useState(false);
+    [boxes, setBoxes] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const current = pages.find((p) => p.number === page);
@@ -73,40 +73,17 @@ export function PageCanvas({
         onPointerCancel={() => (drag.current = null)}
       >
         {current && (
-          <div className="page-image" style={{ width: `${zoom}%` }}>
-            <img
-              key={current.imageUrl}
-              draggable={false}
-              src={current.imageUrl}
-              alt={`教材第 ${page} 页原图`}
-              onLoad={() => setFailed(false)}
-              onError={() => setFailed(true)}
-            />
-            {!failed &&
-              boxes &&
-              contents.flatMap((c) =>
-                c.sources
-                  .filter((s) => s.page === page)
-                  .map((s, i) => (
-                    <button
-                      key={`${c.id}-${i}`}
-                      className={`source-box ${selected === c.id ? 'active' : ''}`}
-                      style={{
-                        left: `${s.box[0] * 100}%`,
-                        top: `${s.box[1] * 100}%`,
-                        width: `${(s.box[2] - s.box[0]) * 100}%`,
-                        height: `${(s.box[3] - s.box[1]) * 100}%`,
-                      }}
-                      aria-label={`定位内容 ${c.question?.label || c.id}`}
-                      onClick={() => onSelect(c)}
-                    >
-                      <span>{c.question?.label || '内容'}</span>
-                    </button>
-                  )),
-              )}
-          </div>
+          <PageImage
+            key={current.imageUrl}
+            current={current}
+            nextUrl={pages.find((p) => p.number === page + 1)?.previewUrl}
+            zoom={zoom}
+            boxes={boxes}
+            contents={contents}
+            selected={selected}
+            onSelect={onSelect}
+          />
         )}
-        {failed && <p className="error-text">页图加载失败，请检查连接并刷新。</p>}
       </div>
       <div className="canvas-footer">
         <label>

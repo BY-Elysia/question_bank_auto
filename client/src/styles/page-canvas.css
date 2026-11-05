@@ -61,6 +61,35 @@
   height: auto;
   user-select: none;
 }
+.page-image > .page-image-detail {
+  position: absolute;
+  inset: 0;
+}
+.page-image-status,
+.page-image-quality {
+  position: absolute;
+  z-index: 2;
+  padding: 10px 14px;
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.page-image-status {
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.page-image-quality {
+  top: 8px;
+  left: 8px;
+}
+.page-image-status button,
+.page-image-quality button {
+  text-decoration: underline;
+  margin-left: 8px;
+}
 .source-box {
   position: absolute;
   border: 1px solid var(--line);

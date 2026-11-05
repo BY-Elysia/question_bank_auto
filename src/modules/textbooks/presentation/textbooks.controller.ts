@@ -13,7 +13,10 @@ import {
   StreamableFile,
   Inject,
   HttpCode,
+  Req,
+  Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { TextbooksService } from '../application/textbooks.service.js';
 import { ExportService } from '../application/export.service.js';
@@ -51,9 +54,28 @@ export class TextbooksController {
       disposition: `inline; filename="${asset.filename}"`,
     });
   }
-  @Get(':id/pages/:page/image') async image(@Param('id') id: string, @Param('page') page: string) {
-    const asset = await this.books.asset(id, parse(z.coerce.number().int().positive(), page));
-    return new StreamableFile(asset.body, { type: asset.contentType });
+  @Get(':id/pages/:page/image') async image(
+    @Param('id') id: string,
+    @Param('page') page: string,
+    @Query('variant') variant: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const asset = await this.books.asset(
+      id,
+      parse(z.coerce.number().int().positive(), page),
+      parse(z.enum(['original', 'preview', 'detail']).default('original'), variant),
+    );
+    // Revalidate through the auth gate on each use; never cache privately owned
+    // textbook images in a shared proxy or bypass logout with a fresh cache hit.
+    response.setHeader('Cache-Control', 'private, no-cache');
+    if (asset.etag) response.setHeader('ETag', asset.etag);
+    if (request.fresh) {
+      asset.body.destroy();
+      response.status(304);
+      return;
+    }
+    return new StreamableFile(asset.body, { type: asset.contentType, length: asset.size });
   }
   @Get(':id/document') async document(@Param('id') id: string) {
     const book = await this.books.get(id);

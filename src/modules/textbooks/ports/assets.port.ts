@@ -4,7 +4,10 @@ export interface BinaryAsset {
   body: Readable;
   contentType: string;
   filename: string;
+  etag?: string;
+  size?: number;
 }
+export type PageImageVariant = 'original' | 'preview' | 'detail';
 export interface TextbookAssets {
   prepare(id: string, pdf: Buffer): Promise<Book['pages']>;
   prepareImages(id: string, images: Buffer[]): Promise<Book['pages']>;
@@ -14,7 +17,12 @@ export interface TextbookAssets {
 }
 export interface PageImagePort {
   ensure(id: string, page: number, signal?: AbortSignal): Promise<void>;
-  read(id: string, page: number, signal?: AbortSignal): Promise<BinaryAsset>;
+  read(
+    id: string,
+    page: number,
+    signal?: AbortSignal,
+    variant?: PageImageVariant,
+  ): Promise<BinaryAsset>;
   dataUrl(id: string, page: number, signal?: AbortSignal): Promise<string>;
 }
 export interface ArchivePort {

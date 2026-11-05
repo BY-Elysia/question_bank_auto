@@ -1,12 +1,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { BookRepository } from '../ports/book.repository.js';
-import type { PdfPort, PageImagePort } from '../ports/assets.port.js';
+import type { PdfPort, PageImagePort, PageImageVariant } from '../ports/assets.port.js';
+import { PageImageVariants } from './page-image-variants.js';
 import { FileAssets } from './file-assets.js';
 import { createReadStream } from 'node:fs';
 import { fail } from '../../../shared/errors.js';
 export class PageImages implements PageImagePort {
   private running = new Map<string, Promise<string>>();
+  private variants = new PageImageVariants();
   constructor(
     private store: BookRepository,
     private pdf: PdfPort,
@@ -27,9 +29,21 @@ export class PageImages implements PageImagePort {
   async ensure(id: string, page: number, signal?: AbortSignal) {
     await this.file(id, page, signal);
   }
-  async read(id: string, page: number, signal?: AbortSignal) {
-    const file = await this.file(id, page, signal);
-    return { body: createReadStream(file), contentType: 'image/png', filename: `${page}.png` };
+  async read(
+    id: string,
+    page: number,
+    signal?: AbortSignal,
+    variant: PageImageVariant = 'original',
+  ) {
+    const file = await this.variants.file(await this.file(id, page, signal), variant);
+    const stat = await fs.stat(file);
+    return {
+      body: createReadStream(file),
+      contentType: variant === 'original' ? 'image/png' : 'image/webp',
+      filename: `${page}.${variant === 'original' ? 'png' : 'webp'}`,
+      etag: `W/"${variant}-${stat.size}-${stat.mtimeMs}"`,
+      size: stat.size,
+    };
   }
   async dataUrl(id: string, page: number, signal?: AbortSignal) {
     return `data:image/png;base64,${(await fs.readFile(await this.file(id, page, signal))).toString('base64')}`;
