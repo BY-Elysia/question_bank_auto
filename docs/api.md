@@ -24,6 +24,8 @@
 - `document`、`revision`、`proposals`：正式内容、版本和候选。
 - `jobs`：根教材的核对、修复、补答案等任务及 issues，省略内部 stage。
 - `chapters`：章节识别名称、分组页码、处理进度与 `preview`。预览来源坐标已转换为全书页码，与根页图直接对应；未完成预览不能当正式导出。
+
+`GET /workspaces/:id?preview=omit` 只省略 `chapters[].preview` 的重复正文（置为 null），章节状态/进度和正式 document 保留。默认 `preview=include`，兼容原调用方；前端仅在打开提取阶段预览时使用完整响应。
 - `nextStep`：preparing / configure_extraction / extracting / retry / review / deleting。
 - `actions`：configure、cancel、resume、review、export、delete 的可用性。
 - `exportJsonUrl`、`exportZipUrl`：导出地址。

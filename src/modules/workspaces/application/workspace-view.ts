@@ -6,7 +6,7 @@ export class WorkspaceView {
     private workspaces: WorkspaceRepository,
     private books: BookRepository,
   ) {}
-  async get(id: string) {
+  async get(id: string, includePreview = true) {
     const workspace = await this.workspaces.read(id),
       book = await this.books.read(id);
     const active =
@@ -28,7 +28,7 @@ export class WorkspaceView {
           cursor: job?.cursor ?? 1,
           processedPages:
             job?.stage?.processedPages.length ?? child?.document.processedPages.length ?? 0,
-          preview: preview ? projectChapter(chapter, preview) : null,
+          preview: includePreview && preview ? projectChapter(chapter, preview) : null,
           imageUrls: chapter.pages.map((n) => `/api/textbooks/${id}/pages/${n}/image`),
         };
       }),

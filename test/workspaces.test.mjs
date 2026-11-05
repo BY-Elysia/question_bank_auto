@@ -165,6 +165,18 @@ test('Image upload opens a workspace view; metadata starts extraction and merges
   assert.equal(view.workspace.status, 'completed', view.workspace.error);
   assert.equal(s.skills.peak, 2);
   assert.ok(view.chapters.every((c) => c.title.startsWith('Detected ')));
+  const compact = WorkspaceViewResponse.parse(
+    await (await fetch(`${s.base}/api/workspaces/${w.id}?preview=omit`)).json(),
+  );
+  assert.deepEqual(compact.document, view.document);
+  assert.ok(compact.chapters.every((chapter) => chapter.preview === null));
+  assert.ok(view.chapters.every((chapter) => chapter.preview?.contents.length));
+  assert.deepEqual(
+    compact.chapters.map(({ preview, ...progress }) => progress),
+    view.chapters.map(({ preview, ...progress }) => progress),
+  );
+  assert.ok(JSON.stringify(compact).length < JSON.stringify(view).length);
+  assert.equal((await fetch(`${s.base}/api/workspaces/${w.id}?preview=wrong`)).status, 400);
   assert.deepEqual(view.document.processedPages, [1, 2, 3, 4]);
   assert.equal(new Set(view.document.contents.map((c) => c.id)).size, 4);
   assert.deepEqual(

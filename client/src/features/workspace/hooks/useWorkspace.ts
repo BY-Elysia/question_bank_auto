@@ -1,17 +1,20 @@
-import { workspaceState } from '../model/selectors';
+import { workspaceState, workspacePollInterval } from '../model/selectors';
 import { useCallback, useState } from 'react';
 import { useResource, useAction } from '@/shared/hooks/useAsync';
 import { workspaceApi } from '../api/workspaces';
 import { navigate } from '@/shared/navigation';
 import { downloadFile } from '@/shared/api/download';
 export function useWorkspace(id: string) {
-  const loadWorkspace = useCallback((signal: AbortSignal) => workspaceApi.get(id, signal), [id]);
-  const { data: view, error, loading, refresh } = useResource(loadWorkspace, 2000);
+  const [preview, setPreview] = useState(false);
+  const loadWorkspace = useCallback(
+    (signal: AbortSignal) => workspaceApi.get(id, signal, preview),
+    [id, preview],
+  );
+  const { data: view, error, loading, refresh } = useResource(loadWorkspace, workspacePollInterval);
   const action = useAction();
   const [confirm, setConfirm] = useState(false),
     [history, setHistory] = useState<number[] | null>(null),
-    [revision, setRevision] = useState(0),
-    [preview, setPreview] = useState(false);
+    [revision, setRevision] = useState(0);
   const w = view?.workspace;
   const { active, runningJob, canExport, step } = workspaceState(view);
   async function command(name: 'cancel' | 'resume') {

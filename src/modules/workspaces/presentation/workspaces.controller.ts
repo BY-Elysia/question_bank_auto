@@ -47,8 +47,11 @@ export class WorkspacesController {
       parse(Title, title),
     );
   }
-  @Get(':id') get(@Param('id') id: string) {
-    return this.view.get(id);
+  @Get(':id') get(@Param('id') id: string, @Query('preview') preview: unknown) {
+    return this.view.get(
+      id,
+      parse(z.enum(['include', 'omit']).default('include'), preview) === 'include',
+    );
   }
   @Delete(':id') @HttpCode(204) remove(@Param('id') id: string) {
     return this.workspaces.remove(id);

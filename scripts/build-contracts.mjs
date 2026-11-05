@@ -109,6 +109,15 @@ for (const [method, path, operationId, input, output, status] of [
       description:
         'Original PNG, lightweight WebP preview, or full-resolution lossless WebP detail',
     });
+  if (operationId === 'getWorkspace')
+    parameters.push({
+      name: 'preview',
+      in: 'query',
+      required: false,
+      schema: { type: 'string', enum: ['include', 'omit'], default: 'include' },
+      description:
+        'Omit duplicate chapter preview content when only the published document is displayed; progress fields remain available',
+    });
   (paths[path] ??= {})[method] = {
     operationId,
     summary: operationId,

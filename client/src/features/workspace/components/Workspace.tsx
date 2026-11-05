@@ -12,7 +12,12 @@ import { navigate } from '@/shared/navigation';
 import { useWorkspace } from '../hooks/useWorkspace';
 import { Configure } from '@/features/extraction/components/Configure';
 import { Processing } from '@/features/extraction/components/Processing';
-import { Review } from '@/features/review/components/Review';
+import { lazy, Suspense } from 'react';
+// Math and review tooling are unnecessary during upload/configuration. Keep
+// the entire review behind one boundary, never raw-text formula placeholders.
+const Review = lazy(() =>
+  import('@/features/review/components/Review').then((m) => ({ default: m.Review })),
+);
 export function WorkspacePage({ id }: { id: string }) {
   const {
     view,
@@ -128,12 +133,14 @@ export function WorkspacePage({ id }: { id: string }) {
           </Button>
         </div>
       )}
-      {preview && (active || view.actions.resume) && (
-        <Review view={view} onChange={refresh} preview />
-      )}
-      {!active && !view.actions.resume && view.revision > 0 && (
-        <Review view={view} onChange={refresh} />
-      )}
+      <Suspense fallback={<Loading />}>
+        {preview && (active || view.actions.resume) && (
+          <Review view={view} onChange={refresh} preview />
+        )}
+        {!active && !view.actions.resume && view.revision > 0 && (
+          <Review view={view} onChange={refresh} />
+        )}
+      </Suspense>
       {w.status === 'deleting' && <Loading />}
       <Dialog
         open={confirm}

@@ -3,7 +3,8 @@ import type { Workspace, Workspaces, WorkspaceView } from '@/shared/contracts';
 const url = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const workspaceApi = {
   list: (signal: AbortSignal) => request<Workspaces>('/workspaces', { signal }),
-  get: (id: string, signal: AbortSignal) => request<WorkspaceView>(url(id), { signal }),
+  get: (id: string, signal: AbortSignal, includePreview = true) =>
+    request<WorkspaceView>(url(id) + (includePreview ? '' : '?preview=omit'), { signal }),
   command: (id: string, command: 'cancel' | 'resume') => write(url(id) + '/' + command),
   remove: (id: string) => write(url(id), undefined, 'DELETE'),
   revisions: (id: string) =>

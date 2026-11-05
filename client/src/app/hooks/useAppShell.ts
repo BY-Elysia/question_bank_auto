@@ -20,7 +20,7 @@ export function useAppShell() {
       } catch {}
       return next;
     });
-  const health = useResource(getHealth, 15000);
+  const health = useResource(getHealth, 60000);
   useEffect(() => {
     const route = () => setHash(location.hash);
     window.addEventListener('hashchange', route);

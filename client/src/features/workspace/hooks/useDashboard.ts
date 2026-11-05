@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useResource } from '@/shared/hooks/useAsync';
 import { workspaceApi } from '../api/workspaces';
+import { dashboardPollInterval } from '../model/selectors';
 export function useDashboard() {
-  const { data, loading, error, refresh } = useResource(workspaceApi.list, 6000);
+  const { data, loading, error, refresh } = useResource(workspaceApi.list, dashboardPollInterval);
   const [query, setQuery] = useState(''),
     [filter, setFilter] = useState('all'),
     [layout, setLayout] = useState<'grid' | 'list'>('grid');

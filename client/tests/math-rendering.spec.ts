@@ -18,7 +18,7 @@ async function openFixture(page: Page, text?: string) {
   });
   expect(response.status()).toBe(201);
   const workspace = await response.json();
-  await page.route(`**/api/workspaces/${workspace.id}`, async (route) => {
+  await page.route(`**/api/workspaces/${workspace.id}*`, async (route) => {
     const original = await route.fetch();
     const view = await original.json();
     view.workspace.status = 'needs_review';
@@ -47,7 +47,7 @@ test('Slow workspace loading never flashes raw LaTeX; textbook proofs and displa
         if (node.textContent?.includes('\\lim')) state.rawMathFlashed = true;
     }).observe(document, { childList: true, subtree: true });
   });
-  await page.route(/\/assets\/(Workspace|RichText)-.*\.js$/, async (route) => {
+  await page.route(/\/assets\/(Workspace|Review|RichText)-.*\.js$/, async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await route.continue();
   });

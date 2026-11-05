@@ -1,16 +1,15 @@
 import { AccessBoundary } from './features/access/components/AccessBoundary';
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
-import { MotionConfig } from 'motion/react';
-import App from './App';
-import 'katex/dist/katex.min.css';
+import { Loading } from './components/common';
+const App = lazy(() => import('./App'));
 import './styles.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <MotionConfig reducedMotion="user">
-      <AccessBoundary>
+    <AccessBoundary>
+      <Suspense fallback={<Loading />}>
         <App />
-      </AccessBoundary>
-    </MotionConfig>
+      </Suspense>
+    </AccessBoundary>
   </React.StrictMode>,
 );

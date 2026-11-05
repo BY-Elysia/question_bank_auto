@@ -2,7 +2,9 @@ import Markdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { remarkDisplayMath } from './remarkDisplayMath';
-export default function RichText({ text }: { text: string }) {
+import { memo } from 'react';
+import 'katex/dist/katex.min.css';
+export default memo(function RichText({ text }: { text: string }) {
   return (
     <div className="rich-text">
       <Markdown
@@ -14,4 +16,4 @@ export default function RichText({ text }: { text: string }) {
       </Markdown>
     </div>
   );
-}
+});

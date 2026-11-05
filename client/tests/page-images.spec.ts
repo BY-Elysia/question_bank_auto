@@ -15,7 +15,7 @@ async function openBook(page: Page) {
   });
   expect(upload.status()).toBe(201);
   const { id } = await upload.json();
-  await page.route(`**/api/workspaces/${id}`, async (route) => {
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
     const response = await route.fetch();
     const view = await response.json();
     view.workspace.status = 'needs_review';
