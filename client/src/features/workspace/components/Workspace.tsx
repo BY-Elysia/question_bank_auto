@@ -58,7 +58,7 @@ export function WorkspacePage({ id }: { id: string }) {
     );
   const w = view.workspace;
   return (
-    <div className="workspace-page">
+    <div className={`workspace-page ${extractionComplete ? 'review-mode' : ''}`}>
       <button className="back-link" onClick={() => navigate()}>
         <ArrowLeft size={14} />
         全部工作区

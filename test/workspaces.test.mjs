@@ -509,3 +509,14 @@ test('Restart clears a stale root lock after terminal status was already persist
   assert.equal(reviewed.jobs[0].issues[0].message, 'Check source');
   assert.equal('stage' in reviewed.jobs[0], false);
 });
+
+test('Early review readiness uses only workspace metadata, without loading the textbook document', async () => {
+  const { WorkspaceView } = await import('../dist/app/modules/workspaces/application/workspace-view.js');
+  let mergedRevision = null;
+  const view = new WorkspaceView({ read: async () => ({ mergedRevision }) }, {
+    read: async () => { throw new Error('Readiness must not load the full document'); },
+  });
+  assert.deepEqual(await view.readiness('book'), { reviewReady: false });
+  mergedRevision = 1;
+  assert.deepEqual(await view.readiness('book'), { reviewReady: true });
+});

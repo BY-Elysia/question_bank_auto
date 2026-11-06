@@ -5,6 +5,7 @@ export function PageImage({
   current,
   nextUrl,
   zoom,
+  requestDetail = false,
   boxes,
   contents,
   selected,
@@ -13,13 +14,14 @@ export function PageImage({
   current: WorkspaceView['pages'][number];
   nextUrl?: string;
   zoom: number;
+  requestDetail?: boolean;
   boxes: boolean;
   contents: Content[];
   selected: string | null;
   onSelect: (content: Content) => void;
 }) {
   const image = usePageImage(current, nextUrl);
-  const detail = image.ready && (zoom > 100 || image.detailReady) && current.detailUrl;
+  const detail = image.ready && (zoom > 100 || requestDetail || image.detailReady) && current.detailUrl;
   return (
     <div
       className="page-image"

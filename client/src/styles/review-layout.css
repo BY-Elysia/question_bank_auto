@@ -90,3 +90,18 @@
   min-width: 0;
   overflow: hidden;
 }
+
+@media (min-width: 1000px) {
+  .workspace-page.review-mode { padding: 12px 20px 12px; max-width: none; }
+  .review-mode > .back-link { margin-bottom: 8px; }
+  .review-mode .workspace-heading { margin-bottom: 10px; }
+  .review-mode .workspace-heading h1 { font-size: 18px; }
+  .review-mode .workspace-heading p { margin-top: 2px; }
+  .review-mode .workspace-heading .eyebrow,
+  .review-mode > .steps, .review-mode > .job-notice { display: none; }
+  .review-mode .review-heading { margin-bottom: 8px; gap: 8px; }
+  .review-mode .review-heading h2 { font-size: 14px; }
+  .review-mode .review-heading p { display: none; }
+  .review-mode .review-layout { height: calc(100dvh - 225px); min-height: 380px; max-height: none; }
+  .review-mode .image-scroll { padding: 8px; }
+}

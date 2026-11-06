@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, Maximize, Focus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Content, WorkspaceView } from '@/shared/contracts';
@@ -21,6 +21,23 @@ export function PageCanvas({
   const [zoom, setZoom] = useState(100),
     [boxes, setBoxes] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(true);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const node = scroll.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      const style = getComputedStyle(node);
+      setViewport({ width: node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        height: node.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const source = pages.find(p => p.number === page);
+  const fitZoom = viewport.width && source?.width && source.height
+    ? Math.min(100, viewport.height * source.width / source.height / viewport.width * 100) : 100;
+  const visibleZoom = fit ? fitZoom : zoom;
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [retained, setRetained] = useState({ page, pages: [page] });
   if (retained.page !== page)
@@ -37,22 +54,22 @@ export function PageCanvas({
             variant="ghost"
             size="icon"
             aria-label="缩小"
-            disabled={zoom <= 50}
-            onClick={() => setZoom((v) => v - 25)}
+            disabled={visibleZoom <= 25}
+            onClick={() => { setFit(false); setZoom(Math.max(25, visibleZoom - 25)); }}
           >
             <Minus size={15} />
           </Button>
-          <span className="mono">{zoom}%</span>
+          <span className="mono">{fit ? '整页' : `${Math.round(zoom)}%`}</span>
           <Button
             variant="ghost"
             size="icon"
             aria-label="放大"
             disabled={zoom >= 250}
-            onClick={() => setZoom((v) => v + 25)}
+            onClick={() => { setFit(false); setZoom(Math.min(250, visibleZoom + 25)); }}
           >
             <Plus size={15} />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="适应画布" onClick={() => setZoom(100)}>
+          <Button variant="ghost" size="icon" aria-label="适应画布" onClick={() => { setZoom(100); setFit(true); }}>
             <Maximize size={15} />
           </Button>
         </div>
@@ -81,7 +98,8 @@ export function PageCanvas({
             key={current.imageUrl}
             current={current}
             nextUrl={n === page ? pages.find((p) => p.number === page + 1)?.previewUrl : undefined}
-            zoom={zoom}
+            zoom={visibleZoom}
+            requestDetail={!fit}
             boxes={boxes}
             contents={n === page ? contents : []}
             selected={selected}

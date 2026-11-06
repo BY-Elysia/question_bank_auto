@@ -47,6 +47,9 @@ export class WorkspacesController {
       parse(Title, title),
     );
   }
+  @Get(':id/readiness') readiness(@Param('id') id: string) {
+    return this.view.readiness(id);
+  }
   @Get(':id') get(@Param('id') id: string, @Query('preview') preview: unknown) {
     return this.view.get(
       id,

@@ -13,8 +13,11 @@ export default defineConfig({
       handler(_html, context) {
         const app = Object.values(context.bundle ?? {}).find(item => item.type === 'chunk' && item.name === 'App');
         if (!app) return [];
-        return [{ tag: 'script', injectTo: 'head', children:
-          `if(location.hash.startsWith('#/workspace/')){const l=document.createElement('link');l.rel='modulepreload';l.href=${JSON.stringify('/' + app.fileName)};document.head.appendChild(l);}` }];
+        const review = Object.values(context.bundle ?? {}).find(item => item.type === 'chunk' && item.name === 'Review');
+        const styles = Object.keys(context.bundle ?? {}).filter(name => /Review.*\.css$/.test(name));
+        const fonts = Object.keys(context.bundle ?? {}).filter(name => /KaTeX_(Main-Regular|Math-Italic|AMS-Regular).*\.woff2$/.test(name));
+        return [{ tag: 'script', injectTo: 'head-prepend', children:
+          `(()=>{const m=location.hash.match(/^#\\/workspace\\/([a-zA-Z0-9-]+)$/);if(!m)return;const add=(rel,href,as)=>{const l=document.createElement('link');l.rel=rel;l.href=href;if(as)l.as=as;if(as==='font'){l.type='font/woff2';l.crossOrigin='anonymous';}document.head.appendChild(l);};add('modulepreload',${JSON.stringify('/' + app.fileName)});fetch('/api/workspaces/'+m[1]+'/readiness').then(r=>r.ok?r.json():null).then(v=>{if(!v?.reviewReady)return;add('modulepreload',${JSON.stringify('/' + review?.fileName)});${JSON.stringify(styles)}.forEach(s=>add('stylesheet','/'+s));${JSON.stringify(fonts)}.forEach(s=>add('preload','/'+s,'font'));}).catch(()=>{});})()` }];
       },
     },
     async closeBundle() {

@@ -2,6 +2,7 @@ import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/do
 import {
   WorkspaceList,
   WorkspaceViewResponse,
+  WorkspaceReadiness,
 } from '../dist/app/modules/workspaces/presentation/contracts.js';
 import { workspaceRoutes } from '../dist/app/modules/workspaces/presentation/routes.js';
 import fs from 'node:fs/promises';
@@ -19,6 +20,7 @@ const schemas = {
   ExtractionSettings,
   WorkspaceList,
   WorkspaceViewResponse,
+  WorkspaceReadiness,
   Job,
   JobRequest,
   ...requests,

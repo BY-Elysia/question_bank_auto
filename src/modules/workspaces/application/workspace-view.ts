@@ -6,6 +6,10 @@ export class WorkspaceView {
     private workspaces: WorkspaceRepository,
     private books: BookRepository,
   ) {}
+  async readiness(id: string) {
+    const workspace = await this.workspaces.read(id);
+    return { reviewReady: workspace.mergedRevision !== null };
+  }
   async get(id: string, includePreview = true) {
     const workspace = await this.workspaces.read(id),
       book = await this.books.read(id);

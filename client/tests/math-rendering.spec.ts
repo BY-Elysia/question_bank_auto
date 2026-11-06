@@ -245,3 +245,25 @@ test('Historical answer findings clear only after the same content is processed 
   await expect(page.getByRole('button', { name: /问题记录/ })).toContainText('0');
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Completed workspace gives the comparison most of the screen and fits the entire source page', async ({page}) => {
+  const id = await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async route => {
+    const view = await (await route.fetch()).json();
+    if (!view.workspace) return route.fulfill({json:view});
+    view.workspace.status='needs_review'; view.workspace.mergedRevision=1;
+    view.document.processedPages=[1]; view.document.contents=contents;
+    view.revision=1; view.actions.review=true;
+    await route.fulfill({json:view});
+  });
+  await page.reload();
+  await expect(page.locator('.review-mode')).toBeVisible();
+  await expect(page.getByRole('img',{name:'教材第 1 页原图'})).toBeVisible();
+  const layout=await page.locator('.review-layout').boundingBox();
+  expect(layout!.y).toBeLessThan(280);
+  expect(layout!.height).toBeGreaterThan(650);
+  const source=await page.locator('.page-image:visible').boundingBox();
+  const scroll=await page.locator('.image-scroll').boundingBox();
+  expect(source!.height).toBeLessThanOrEqual(scroll!.height);
+  await page.request.delete(`/api/workspaces/${id}`);
+});

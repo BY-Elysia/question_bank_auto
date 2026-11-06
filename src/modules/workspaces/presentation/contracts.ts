@@ -51,3 +51,5 @@ export const WorkspaceViewResponse = z.strictObject({
     export: z.boolean(),
   }),
 });
+
+export const WorkspaceReadiness = z.strictObject({ reviewReady: z.boolean() });
