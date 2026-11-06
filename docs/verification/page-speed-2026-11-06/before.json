@@ -1,0 +1,97 @@
+{
+  "report": [
+    {
+      "pass": 0,
+      "action": "open",
+      "mathMs": 17857,
+      "imageMs": 19160
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 1133
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 817
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 400
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 366
+    },
+    {
+      "pass": 1,
+      "action": "open",
+      "mathMs": 4919,
+      "imageMs": 4966
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 101
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 283
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 351
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 332
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+      "duration": 228,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+      "duration": 259,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/3/image?variant=preview",
+      "duration": 260.69999998807907,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/4/image?variant=preview",
+      "duration": 119.89999997615814,
+      "size": 0
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+      "duration": 249.69999998807907,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+      "duration": 225.89999997615814,
+      "size": 300
+    }
+  ],
+  "errors": []
+}
