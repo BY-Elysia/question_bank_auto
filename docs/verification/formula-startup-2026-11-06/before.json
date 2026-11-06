@@ -1,0 +1,289 @@
+{
+  "report": [
+    {
+      "pass": 0,
+      "action": "open",
+      "mathMs": 15031,
+      "imageMs": 10146,
+      "fontsReadyMs": 18255,
+      "resources": [
+        {
+          "name": "https://118.178.169.122/assets/index-resNJVVC.js",
+          "start": 635,
+          "response": 965.3000000119209,
+          "end": 1699.3999999761581,
+          "bytes": 72101
+        },
+        {
+          "name": "https://118.178.169.122/assets/index-CzNQzawt.css",
+          "start": 635.1999999880791,
+          "response": 1635.8999999761581,
+          "end": 1636.199999988079,
+          "bytes": 11227
+        },
+        {
+          "name": "https://118.178.169.122/assets/App-rqfbE9iY.js",
+          "start": 1638.1000000238419,
+          "response": 2208.399999976158,
+          "end": 4635.300000011921,
+          "bytes": 63511
+        },
+        {
+          "name": "https://118.178.169.122/api/access/session",
+          "start": 1714,
+          "response": 1920.1000000238419,
+          "end": 1920.3999999761581,
+          "bytes": 37
+        },
+        {
+          "name": "https://118.178.169.122/favicon.ico",
+          "start": 1714.1000000238419,
+          "response": 2132.399999976158,
+          "end": 2132.600000023842,
+          "bytes": 124
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077?preview=omit",
+          "start": 4644.699999988079,
+          "response": 5123.100000023842,
+          "end": 7036.600000023842,
+          "bytes": 44878
+        },
+        {
+          "name": "https://118.178.169.122/api/health",
+          "start": 4647.899999976158,
+          "response": 5188.699999988079,
+          "end": 5188.899999976158,
+          "bytes": 64
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Dim6pwKd.js",
+          "start": 7040,
+          "response": 7760,
+          "end": 14599.300000011921,
+          "bytes": 105186
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Bv5fr4tV.css",
+          "start": 7040.100000023842,
+          "response": 8313.699999988079,
+          "end": 8314.199999988079,
+          "bytes": 6903
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+          "start": 7040.899999976158,
+          "response": 7504.699999988079,
+          "end": 10092.600000023842,
+          "bytes": 42410
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+          "start": 14657.699999988079,
+          "response": 15407.5,
+          "end": 16041.399999976158,
+          "bytes": 28320
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+          "start": 14671.5,
+          "response": 15869.699999988079,
+          "end": 15869.899999976158,
+          "bytes": 16440
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+          "start": 14671.5,
+          "response": 17471.399999976158,
+          "end": 18246,
+          "bytes": 26272
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+          "start": 14672.300000011921,
+          "response": 15972.899999976158,
+          "end": 16420.600000023842,
+          "bytes": 28076
+        }
+      ],
+      "longTasks": [
+        {
+          "start": 14657.800000011921,
+          "duration": 50
+        }
+      ]
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 156
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 2646
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 102
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 99
+    },
+    {
+      "pass": 1,
+      "action": "open",
+      "mathMs": 3044,
+      "imageMs": 3233,
+      "fontsReadyMs": 3234,
+      "resources": [
+        {
+          "name": "https://118.178.169.122/assets/index-resNJVVC.js",
+          "start": 235.39999997615814,
+          "response": 235.39999997615814,
+          "end": 235.39999997615814,
+          "bytes": 72101
+        },
+        {
+          "name": "https://118.178.169.122/assets/index-CzNQzawt.css",
+          "start": 235.39999997615814,
+          "response": 235.39999997615814,
+          "end": 235.39999997615814,
+          "bytes": 11227
+        },
+        {
+          "name": "https://118.178.169.122/assets/App-rqfbE9iY.js",
+          "start": 237,
+          "response": 237,
+          "end": 237,
+          "bytes": 63511
+        },
+        {
+          "name": "https://118.178.169.122/api/access/session",
+          "start": 241.69999998807907,
+          "response": 447.5,
+          "end": 447.5999999642372,
+          "bytes": 37
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077?preview=omit",
+          "start": 750.6999999880791,
+          "response": 1467.5,
+          "end": 2618,
+          "bytes": 44878
+        },
+        {
+          "name": "https://118.178.169.122/api/health",
+          "start": 751.0999999642372,
+          "response": 972.0999999642372,
+          "end": 972.3000000119209,
+          "bytes": 64
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Dim6pwKd.js",
+          "start": 2619.599999964237,
+          "response": 2619.599999964237,
+          "end": 2619.599999964237,
+          "bytes": 105186
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Bv5fr4tV.css",
+          "start": 2619.899999976158,
+          "response": 2619.899999976158,
+          "end": 2619.899999976158,
+          "bytes": 6903
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+          "start": 2620.399999976158,
+          "response": 3179.899999976158,
+          "end": 3180,
+          "bytes": 0
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+          "start": 2631.099999964237,
+          "response": 2631.099999964237,
+          "end": 2631.099999964237,
+          "bytes": 28076
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+          "start": 2631.199999988079,
+          "response": 2631.199999988079,
+          "end": 2631.199999988079,
+          "bytes": 26272
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+          "start": 2631.300000011921,
+          "response": 2631.300000011921,
+          "end": 2631.300000011921,
+          "bytes": 16440
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Size2-Regular-Dy4dx90m.woff2",
+          "start": 2631.399999976158,
+          "response": 2631.399999976158,
+          "end": 2631.399999976158,
+          "bytes": 5208
+        }
+      ],
+      "longTasks": []
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 232
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 583
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 100
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 100
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+      "duration": 559.6000000238419,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+      "duration": 240.79999995231628,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/3/image?variant=preview",
+      "duration": 587.6000000238419,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/4/image?variant=preview",
+      "duration": 103.80000001192093,
+      "size": 0
+    }
+  ],
+  "errors": []
+}

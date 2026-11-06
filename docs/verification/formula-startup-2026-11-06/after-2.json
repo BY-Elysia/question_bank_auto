@@ -1,0 +1,298 @@
+{
+  "report": [
+    {
+      "pass": 0,
+      "action": "open",
+      "mathMs": 8828,
+      "imageMs": 13567,
+      "fontsReadyMs": 13570,
+      "resources": [
+        {
+          "name": "https://118.178.169.122/assets/index-7BlkKp1e.js",
+          "start": 934.6999999880791,
+          "response": 1772.0999999642372,
+          "end": 4305.399999976158,
+          "bytes": 72131
+        },
+        {
+          "name": "https://118.178.169.122/assets/index-Dz8sPgZT.css",
+          "start": 935.0999999642372,
+          "response": 2105.5,
+          "end": 2106.399999976158,
+          "bytes": 11344
+        },
+        {
+          "name": "https://118.178.169.122/assets/App-DjfMFIqt.js",
+          "start": 941.5,
+          "response": 1935.300000011921,
+          "end": 2647.899999976158,
+          "bytes": 63499
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077/readiness",
+          "start": 942,
+          "response": 1558.0999999642372,
+          "end": 1558.8999999761581,
+          "bytes": 20
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-x2gAJ4JL.js",
+          "start": 1560.8999999761581,
+          "response": 2120.699999988079,
+          "end": 4363.599999964237,
+          "bytes": 105328
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Bv5fr4tV.css",
+          "start": 1561.300000011921,
+          "response": 2180.399999976158,
+          "end": 2181.5,
+          "bytes": 6903
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+          "start": 1561.5999999642372,
+          "response": 2561.300000011921,
+          "end": 2898.300000011921,
+          "bytes": 28076
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+          "start": 1561.800000011921,
+          "response": 2790.800000011921,
+          "end": 3018.800000011921,
+          "bytes": 26272
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+          "start": 1561.8999999761581,
+          "response": 2432.599999964237,
+          "end": 2433.5,
+          "bytes": 16440
+        },
+        {
+          "name": "https://118.178.169.122/api/access/session",
+          "start": 4345.899999976158,
+          "response": 4572.699999988079,
+          "end": 4573.300000011921,
+          "bytes": 37
+        },
+        {
+          "name": "https://118.178.169.122/favicon.ico",
+          "start": 4346,
+          "response": 4553.099999964237,
+          "end": 4553.899999976158,
+          "bytes": 124
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077?preview=omit",
+          "start": 4892.899999976158,
+          "response": 6749.199999988079,
+          "end": 8187.800000011921,
+          "bytes": 44878
+        },
+        {
+          "name": "https://118.178.169.122/api/health",
+          "start": 4896.800000011921,
+          "response": 5138.099999964237,
+          "end": 5138.699999988079,
+          "bytes": 64
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+          "start": 8196.699999988079,
+          "response": 9360,
+          "end": 13521.399999976158,
+          "bytes": 42410
+        }
+      ],
+      "longTasks": []
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 1677
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 849
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 99
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 100
+    },
+    {
+      "pass": 1,
+      "action": "open",
+      "mathMs": 2904,
+      "imageMs": 2751,
+      "fontsReadyMs": 2907,
+      "resources": [
+        {
+          "name": "https://118.178.169.122/assets/index-7BlkKp1e.js",
+          "start": 549.1999999880791,
+          "response": 549.1999999880791,
+          "end": 549.1999999880791,
+          "bytes": 72131
+        },
+        {
+          "name": "https://118.178.169.122/assets/index-Dz8sPgZT.css",
+          "start": 549.3000000119209,
+          "response": 549.3000000119209,
+          "end": 549.3000000119209,
+          "bytes": 11344
+        },
+        {
+          "name": "https://118.178.169.122/assets/App-DjfMFIqt.js",
+          "start": 554,
+          "response": 554,
+          "end": 554,
+          "bytes": 63499
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077/readiness",
+          "start": 554.1999999880791,
+          "response": 761.5,
+          "end": 762,
+          "bytes": 20
+        },
+        {
+          "name": "https://118.178.169.122/api/access/session",
+          "start": 562.8000000119209,
+          "response": 765.5,
+          "end": 765.6000000238419,
+          "bytes": 37
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-x2gAJ4JL.js",
+          "start": 762.6999999880791,
+          "response": 762.6999999880791,
+          "end": 762.6999999880791,
+          "bytes": 105328
+        },
+        {
+          "name": "https://118.178.169.122/assets/Review-Bv5fr4tV.css",
+          "start": 763.3999999761581,
+          "response": 763.3999999761581,
+          "end": 763.3999999761581,
+          "bytes": 6903
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+          "start": 763.5,
+          "response": 763.5,
+          "end": 763.5,
+          "bytes": 28076
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Main-Regular-B22Nviop.woff2",
+          "start": 763.5,
+          "response": 763.5,
+          "end": 763.5,
+          "bytes": 26272
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Math-Italic-t53AETM-.woff2",
+          "start": 763.6000000238419,
+          "response": 763.6000000238419,
+          "end": 763.6000000238419,
+          "bytes": 16440
+        },
+        {
+          "name": "https://118.178.169.122/assets/KaTeX_Size2-Regular-Dy4dx90m.woff2",
+          "start": 769.3999999761581,
+          "response": 769.3999999761581,
+          "end": 769.3999999761581,
+          "bytes": 5208
+        },
+        {
+          "name": "https://118.178.169.122/api/workspaces/35b5e091-5f00-4427-bb50-5bcb3e598077?preview=omit",
+          "start": 1071,
+          "response": 1707.699999988079,
+          "end": 2142.699999988079,
+          "bytes": 44878
+        },
+        {
+          "name": "https://118.178.169.122/api/health",
+          "start": 1072.1000000238419,
+          "response": 1332.1000000238419,
+          "end": 1332.8999999761581,
+          "bytes": 64
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+          "start": 2145.300000011921,
+          "response": 2711.899999976158,
+          "end": 2712.5,
+          "bytes": 0
+        },
+        {
+          "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+          "start": 2714.800000011921,
+          "response": 2932.100000023842,
+          "end": 2932.399999976158,
+          "bytes": 28320
+        }
+      ],
+      "longTasks": []
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 152
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 250
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 100
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 99
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+      "duration": 567.1999999880791,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+      "duration": 217.5999999642372,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/3/image?variant=preview",
+      "duration": 228.69999998807907,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/4/image?variant=preview",
+      "duration": 117,
+      "size": 0
+    }
+  ],
+  "errors": []
+}
