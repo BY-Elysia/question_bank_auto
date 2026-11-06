@@ -1,5 +1,7 @@
 # 公网访问与登录
 
+部署约定（2026-11-06）：用户已授权后续改动在验证通过后默认同步服务器，除非当次明确要求不部署。发布前检查活动任务，保留回滚配置，并完成公网验证。
+
 公网部署使用 Nginx HTTPS 入口，应用继续只绑定服务器 127.0.0.1:5002。登录页使用独立管理员账号，服务端校验 scrypt 密码摘要，登录成功设置 HttpOnly、SameSite=Strict、Secure Cookie，有效期从登录起 30 天（Max-Age 与 Expires）。关闭浏览器后再次打开、应用或容器重启后可继续登录；退出后立即撤销。
 
 部署环境必须设置 ACCESS_REQUIRED=1、ACCESS_USERNAME、ACCESS_PASSWORD_HASH，摘要格式为 16 字节十六进制 salt 和 32 字节 scrypt 结果，以冒号分隔。ACCESS_SECURE_COOKIE=0 只适用于本机 HTTP 测试。ACCESS_REQUIRED=1 但摘要缺失会拒绝启动。
