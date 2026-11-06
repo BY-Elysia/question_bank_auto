@@ -14,4 +14,4 @@ HTTPS server 块包含 `deploy/nginx-assets.conf`（部署时复制到 `/opt/que
 
 服务器采用 Let's Encrypt 公网 IP 短期证书，Certbot 定时续期并重载 Nginx。参考：[官方 IP 证书配置](https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html)。
 
-部署验证：65 项自动化测试通过；原有 7 项浏览器流程、独立登录流程和公网 HTTPS 浏览器登录／刷新／退出流程通过。证书续期演练成功，续期定时器已启用。公网应用镜像为 b888cb3，后续提交只调整测试约束与部署说明。
+最新登录验证（2026-11-06）：85 项后端测试和 2 项登录浏览器测试通过；公网关闭浏览器并重启容器后仍自动登录，退出后再次打开浏览器返回登录页。公网应用镜像为 `88e6c8a`，详见 [持久化登录验证](verification/persistent-login-2026-11-06.md)。证书续期演练曾通过，续期定时器已启用。
