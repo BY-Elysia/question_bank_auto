@@ -100,3 +100,22 @@ test('Math layout preserves prose, escaped dollars, code, aligned rows and inval
   await expect(body.locator('.katex-mathml annotation').first()).toHaveText('x^2');
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Whole question preview preserves cross-page children and supports source navigation', async ({
+  page,
+}) => {
+  const id = await openFixture(page);
+  await page.getByRole('button', { name: /^完整题目/ }).click();
+  await expect(page.locator('.content-card')).toHaveCount(1);
+  await expect(page.locator('.subquestion')).toHaveCount(2);
+  await expect(page.locator('.katex').first()).toBeVisible();
+  await page.getByRole('button', { name: /查看题目 .* 第 2 页原图/ }).click();
+  await expect(page.locator('.content-card')).toHaveCount(1);
+  await expect(page.locator('.subquestion')).toHaveCount(2);
+  await page.getByLabel('搜索完整题目').fill('不存在的题干xyz');
+  await expect(page.getByText('暂无匹配题目')).toBeVisible();
+  await page.getByLabel('搜索完整题目').fill('');
+  await page.getByRole('button', { name: '查看内容块与修复' }).click();
+  await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
+  await page.request.delete(`/api/workspaces/${id}`);
+});

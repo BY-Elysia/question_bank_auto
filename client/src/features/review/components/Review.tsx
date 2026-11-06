@@ -1,3 +1,4 @@
+import { ReviewQuestions } from './ReviewQuestions';
 import { ReviewContentList } from './ReviewContentList';
 import { ReviewJobs } from './ReviewJobs';
 import { RepairDialog } from './RepairDialog';
@@ -142,7 +143,8 @@ export function Review({
           <section className="results-panel">
             <div className="result-tabs">
               {[
-                ['content', '提取结果', document.contents.length],
+                ['content', '内容块', document.contents.length],
+                ['questions', '完整题目', document.contents.filter((c) => c.question).length],
                 ['proposals', '待审候选', pending.length],
                 ['issues', '问题记录', issues.length],
               ].map(([key, label, count]) => (
@@ -171,6 +173,7 @@ export function Review({
                   <ReviewContentList model={model} preview={preview} />
                 </>
               )}
+              {tab === 'questions' && <ReviewQuestions model={model} />}
               {tab === 'proposals' && (
                 <ReviewCandidates
                   pending={pending}

@@ -6,6 +6,8 @@
   min-height: 0;
 }
 .result-tabs {
+  overflow-x: auto;
+  flex-shrink: 0;
   display: flex;
   gap: 4px;
   padding: 0 8px;
