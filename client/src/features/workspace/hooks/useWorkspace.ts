@@ -1,5 +1,5 @@
 import { workspaceState, workspacePollInterval } from '../model/selectors';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useResource, useAction } from '@/shared/hooks/useAsync';
 import { workspaceApi } from '../api/workspaces';
 import { navigate } from '@/shared/navigation';
@@ -18,6 +18,17 @@ export function useWorkspace(id: string) {
   const w = view?.workspace;
   const { active, runningJob, canExport, step, extractionComplete, answerFailed } =
     workspaceState(view);
+  // Start the visible source image while the math/review chunk downloads.
+  // Only completed workspaces need this; upload/configuration stay lightweight.
+  useEffect(() => {
+    if (!extractionComplete || !view?.pages[0]) return;
+    const link = document.createElement('link');
+    link.rel = 'preload'; link.as = 'image';
+    link.href = view.pages[0].previewUrl || view.pages[0].imageUrl;
+    link.fetchPriority = 'high';
+    document.head.appendChild(link);
+    return () => link.remove();
+  }, [extractionComplete, id]);
   async function command(name: 'cancel' | 'resume') {
     await action.run(async () => {
       await workspaceApi.command(id, name);

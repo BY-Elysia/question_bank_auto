@@ -16,9 +16,7 @@ import { ParticleField } from '@/components/effects/ParticleField';
 import { Button } from '@/components/ui/button';
 import { Logo, Loading } from '@/components/common';
 import { Dashboard } from '@/features/workspace/components/Dashboard';
-const WorkspacePage = lazy(() =>
-  import('@/features/workspace/components/Workspace').then((m) => ({ default: m.WorkspacePage })),
-);
+import { WorkspacePage } from '@/features/workspace/components/Workspace';
 import { UploadDialog } from '@/features/workspace/components/UploadDialog';
 import { navigate } from '@/shared/navigation';
 import { useAppShell } from '@/app/hooks/useAppShell';
