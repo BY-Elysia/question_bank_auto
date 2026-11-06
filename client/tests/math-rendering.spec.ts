@@ -246,7 +246,7 @@ test('Historical answer findings clear only after the same content is processed 
   await page.request.delete(`/api/workspaces/${id}`);
 });
 
-test('Completed workspace gives the comparison most of the screen and fits the entire source page', async ({page}) => {
+test('Completed workspace fills source width by default and can switch to full page', async ({page}) => {
   const id = await openFixture(page);
   await page.route(`**/api/workspaces/${id}*`, async route => {
     const view = await (await route.fetch()).json();
@@ -264,6 +264,11 @@ test('Completed workspace gives the comparison most of the screen and fits the e
   expect(layout!.height).toBeGreaterThan(650);
   const source=await page.locator('.page-image:visible').boundingBox();
   const scroll=await page.locator('.image-scroll').boundingBox();
-  expect(source!.height).toBeLessThanOrEqual(scroll!.height);
+  expect(source!.width).toBeGreaterThan(scroll!.width - 20);
+  await page.getByRole('button',{name:'适应画布',exact:true}).click();
+  const fitted=await page.locator('.page-image:visible').boundingBox();
+  expect(fitted!.height).toBeLessThanOrEqual(scroll!.height);
+  await page.getByRole('button',{name:'适应宽度',exact:true}).click();
+  expect((await page.locator('.page-image:visible').boundingBox())!.width).toBeCloseTo(source!.width, 0);
   await page.request.delete(`/api/workspaces/${id}`);
 });

@@ -21,7 +21,7 @@ export function PageCanvas({
   const [zoom, setZoom] = useState(100),
     [boxes, setBoxes] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState(true);
+  const [fit, setFit] = useState(false);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const node = scroll.current;
@@ -69,7 +69,9 @@ export function PageCanvas({
           >
             <Plus size={15} />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="适应画布" onClick={() => { setZoom(100); setFit(true); }}>
+          <Button variant="ghost" size="sm" aria-label="适应宽度" aria-pressed={!fit && zoom === 100}
+            onClick={() => { setZoom(100); setFit(false); }}>宽度</Button>
+          <Button variant="ghost" size="icon" title="整页显示" aria-label="适应画布" onClick={() => { setZoom(100); setFit(true); }}>
             <Maximize size={15} />
           </Button>
         </div>
@@ -99,7 +101,7 @@ export function PageCanvas({
             current={current}
             nextUrl={n === page ? pages.find((p) => p.number === page + 1)?.previewUrl : undefined}
             zoom={visibleZoom}
-            requestDetail={!fit}
+            requestDetail={n === page && !fit}
             boxes={boxes}
             contents={n === page ? contents : []}
             selected={selected}

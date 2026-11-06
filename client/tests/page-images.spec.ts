@@ -72,7 +72,8 @@ test('Page previews reserve layout, preload only the next page, and retain visib
   await expect
     .poll(() => requests.some((url) => url.includes('/2/image?variant=preview')))
     .toBe(true);
-  expect(requests.some((url) => url.includes('variant=detail'))).toBe(false);
+  await expect.poll(() => requests.some((url) => url.includes('/1/image?variant=detail'))).toBe(true);
+  expect(requests.some((url) => url.includes('/2/image?variant=detail'))).toBe(false);
   const after = await canvas.boundingBox();
   expect(after!.height).toBeCloseTo(before!.height, 1);
   const preview = page.getByRole('img', { name: '教材第 1 页原图' });
