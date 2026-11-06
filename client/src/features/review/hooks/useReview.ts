@@ -1,6 +1,6 @@
 import { insertQuestion } from '../api/insertion';
 import { reviewState } from '../model/selectors';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import type { Content, WorkspaceView } from '@/shared/contracts';
 import { useAction } from '@/shared/hooks/useAsync';
 import { reviewApi } from '../api/review';
@@ -27,18 +27,6 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
     if (!c.sources.some((s) => s.page === page)) setPage(c.sources[0].page);
     setTab('questions');
   }
-  useEffect(() => {
-    if (selected) {
-      const element = window.document.getElementById(`content-${selected}`);
-      const container = element?.closest('.result-scroll');
-      if (element && container) {
-        const item = element.getBoundingClientRect(),
-          bounds = container.getBoundingClientRect();
-        if (item.top < bounds.top || item.bottom > bounds.bottom)
-          container.scrollTo({ top: container.scrollTop + item.top - bounds.top - 12 });
-      }
-    }
-  }, [selected, page, tab]);
   async function job(kind: 'verify' | 'repair' | 'answers', content?: Content) {
     await action.run(async () => {
       await reviewApi.start(view.workspace.id, {

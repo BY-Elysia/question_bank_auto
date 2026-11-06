@@ -19,6 +19,19 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
       setLimit((n) => Math.max(n, index + 1));
     }
   }, [model.selected, questions.length]);
+  // Source navigation can target a question beyond the first rendered batch.
+  // Reveal it after the expanded list has actually committed to the DOM.
+  useEffect(() => {
+    if (!model.selected) return;
+    const element = document.getElementById(`content-${model.selected}`);
+    const container = element?.closest('.result-scroll');
+    if (element && container) {
+      const item = element.getBoundingClientRect(),
+        bounds = container.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom)
+        container.scrollTo({ top: container.scrollTop + item.top - bounds.top - 12 });
+    }
+  }, [model.selected, limit, query]);
   return (
     <>
       <p>按提取顺序展示完整题目，包含跨页题干、子题、选项及已有答案与解析。</p>

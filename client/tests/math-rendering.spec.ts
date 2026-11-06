@@ -334,3 +334,42 @@ test('Workspace stays within the screen with long titles, narrow windows and enl
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Source navigation reveals a whole question beyond the first render batch', async ({
+  page,
+}) => {
+  const id = await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    const view = await (await route.fetch()).json();
+    if (!view.workspace) return route.fulfill({ json: view });
+    view.workspace.status = 'needs_review';
+    view.revision = 1;
+    view.actions.review = true;
+    view.document.contents = Array.from({ length: 12 }, (_, i) => ({
+      ...contents[1],
+      id: `question-${i + 1}`,
+      sources: [{ page: 1, box: [0.1, i / 15, 0.9, (i + 0.7) / 15] }],
+      question: {
+        ...contents[1].question,
+        label: String(i + 1),
+        prompt: `第 ${i + 1} 道题`,
+        children: [],
+        answer: null,
+        type: 'calculation',
+      },
+    }));
+    await route.fulfill({ json: view });
+  });
+  await page.reload();
+  await expect(page.locator('.content-card')).toHaveCount(10);
+  await page.getByRole('button', { name: '定位内容 12', exact: true }).click();
+  await expect(page.locator('#content-question-12')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const item = await page.locator('#content-question-12').boundingBox(),
+        panel = await page.locator('.result-scroll').boundingBox();
+      return !!item && !!panel && item.y >= panel.y && item.y < panel.y + panel.height;
+    })
+    .toBe(true);
+  await page.request.delete(`/api/workspaces/${id}`);
+});
