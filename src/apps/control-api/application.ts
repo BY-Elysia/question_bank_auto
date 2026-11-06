@@ -1,4 +1,5 @@
 import { accessConfig, accessGate } from '../../shared/auth/gate.js';
+import { FileSessionStore } from '../../shared/auth/file-session-store.js';
 import 'reflect-metadata';
 import { WorkspacesModule } from '../../modules/workspaces/workspaces.module.js';
 import {
@@ -64,7 +65,16 @@ class HealthController {
   }
 }
 export async function createApplication(options: AppOptions = {}) {
-  const services = await createServices(options);
+  const root = path.resolve(options.root ?? process.env.WORKSPACE_ROOT ?? './workspace');
+  const access = options.access ?? accessConfig();
+  const sessions = access
+    ? await FileSessionStore.open(
+        path.join(root, 'access', 'sessions.json'),
+        access.username,
+        access.passwordHash,
+      )
+    : undefined;
+  const services = await createServices({ ...options, root });
   const { books, review, exports, jobs, workspaces, workspaceView } = services;
   @Module({
     imports: [
@@ -88,7 +98,7 @@ export async function createApplication(options: AppOptions = {}) {
   class AppModule {}
   const app = await NestFactory.create(AppModule, { logger: false, bodyParser: false });
   app.use('/api/access', express.json({ limit: '2kb' }));
-  app.use(accessGate(options.access ?? accessConfig()));
+  app.use(accessGate(access, sessions));
   app.use(express.raw({ type: 'application/pdf', limit: process.env.MAX_UPLOAD_SIZE ?? '100mb' }));
   app.use(express.json({ limit: '20mb' }));
   app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist')));

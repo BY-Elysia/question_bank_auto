@@ -33,7 +33,7 @@ export function AccessBoundary({ children }: { children: ReactNode }) {
           <LockKeyhole size={22} />
         </div>
         <h1>登录教材工作台</h1>
-        <p>登录后访问你的教材、提取结果和校对记录。</p>
+        <p>登录后保持登录 30 天，可随时退出。</p>
         <form
           onSubmit={(event) => {
             event.preventDefault();
