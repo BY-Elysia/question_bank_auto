@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ContentBody } from '@/components/ContentBody';
 import { Empty } from '@/components/common';
 import type { ReviewController } from '../hooks/useReview';
@@ -11,6 +11,14 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
   const matches = questions.filter((c) =>
     JSON.stringify(c.question).toLowerCase().includes(query.toLowerCase()),
   );
+  useEffect(() => {
+    if (!model.selected) return;
+    const index = questions.findIndex((c) => c.id === model.selected);
+    if (index >= 0) {
+      setQuery('');
+      setLimit((n) => Math.max(n, index + 1));
+    }
+  }, [model.selected, questions.length]);
   return (
     <>
       <p>按提取顺序展示完整题目，包含跨页题干、子题、选项及已有答案与解析。</p>
@@ -26,7 +34,11 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
         />
       </label>
       {matches.slice(0, limit).map((c) => (
-        <article className="content-card" key={c.id}>
+        <article
+          id={`content-${c.id}`}
+          className={`content-card ${model.selected === c.id ? 'selected' : ''}`}
+          key={c.id}
+        >
           <div className="content-card-header">
             <strong>{c.question!.label ? `题目 ${c.question!.label}` : '题目'}</strong>
             <div>
@@ -46,8 +58,46 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
             </div>
           </div>
           <ContentBody content={c} />
-          <footer>
-            <button onClick={() => model.locate(c)}>查看内容块与修复</button>
+          <footer className="question-actions">
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => model.setEdit(c)}
+            >
+              编辑题目
+            </button>
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => {
+                model.setRepair(c);
+                model.setInstruction('');
+              }}
+            >
+              AI 修复
+            </button>
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => model.job('verify', c)}
+            >
+              核对本题
+            </button>
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => model.job('answers', c)}
+            >
+              补全本题答案
+            </button>
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => model.setInsertion({ anchor: c, position: 'before' })}
+            >
+              上方添加题目
+            </button>
+            <button
+              disabled={!model.editable || model.action.busy}
+              onClick={() => model.setInsertion({ anchor: c, position: 'after' })}
+            >
+              下方添加题目
+            </button>
           </footer>
         </article>
       ))}

@@ -1,0 +1,54 @@
+.account-page h1,
+.assistant-page h1 {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.account-page .panel,
+.assistant-page .panel {
+  margin-top: 20px;
+  min-width: 0;
+}
+.account-page h2 {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+.account-page td,
+.account-page th {
+  padding: 10px;
+  text-align: left;
+}
+.assistant-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+}
+.chat-messages {
+  max-height: 58vh;
+  overflow: auto;
+}
+.chat-message {
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.chat-message.user {
+  background: var(--surface-soft);
+}
+.chat-message small {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.question-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 900px) {
+  .assistant-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assistant-layout > aside {
+    max-height: 180px;
+    overflow: auto;
+  }
+}

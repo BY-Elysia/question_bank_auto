@@ -7,32 +7,39 @@ export function isQuestionCategory(text: string) {
   );
 }
 
-/** Preserve printed labels while numbering independent exercises within a comprehensive section. */
+/** Category-based exercises are independent questions, numbered by document order.
+ * Source labels stay available for traceability; inserted questions keep their chosen position.
+ */
 export function numberComprehensiveExercises(document: Document) {
   const sections = new Map(document.sections.map((s) => [s.id, s]));
-  const counts = new Map<string, number>();
-  const ordered = [...document.contents].sort(
-    (a, b) =>
-      a.sources[0]!.page - b.sources[0]!.page ||
-      a.sources[0]!.box[1] - b.sources[0]!.box[1] ||
-      a.sources[0]!.box[0] - b.sources[0]!.box[0],
-  );
-  for (const content of ordered) {
-    if (!content.question || content.kind !== 'question') continue;
-    let section = content.sectionId ? sections.get(content.sectionId) : undefined;
+  function scope(id: string | null): string {
+    let section = id ? sections.get(id) : undefined;
     const seen = new Set<string>();
-    while (section && !/综合(?:练习|习题|测试)/u.test(section.title)) {
-      if (seen.has(section.id)) {
-        section = undefined;
-        break;
-      }
+    while (section && !seen.has(section.id)) {
       seen.add(section.id);
+      if (/综合(?:练习|习题|测试)/u.test(section.title)) return section.id;
+      if (isQuestionCategory(section.title)) return section.parentId ?? '__book__';
       section = section.parentId ? sections.get(section.parentId) : undefined;
     }
-    if (!section) continue;
-    const number = (counts.get(section.id) ?? 0) + 1;
-    counts.set(section.id, number);
-    content.question.sourceLabel ??= content.question.label;
-    content.question.label = String(number);
+    return id ?? '__book__';
+  }
+  const numbered = new Set<string>();
+  for (const c of document.contents) {
+    if (
+      c.question &&
+      (['single_choice', 'multiple_choice', 'fill_blank'].includes(c.question.type) ||
+        /综合(?:练习|习题|测试)/u.test(sections.get(scope(c.sectionId))?.title ?? ''))
+    )
+      numbered.add(scope(c.sectionId));
+  }
+  const counts = new Map<string, number>();
+  for (const c of document.contents) {
+    if (!c.question || c.kind !== 'question') continue;
+    const key = scope(c.sectionId);
+    if (!numbered.has(key)) continue;
+    const number = (counts.get(key) ?? 0) + 1;
+    counts.set(key, number);
+    c.question.sourceLabel ??= c.question.label;
+    c.question.label = String(number);
   }
 }

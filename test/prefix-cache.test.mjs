@@ -129,5 +129,9 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
   await client.complete({ ...request, outputMode: 'text' });
   assert.equal(seen.at(-1).text.format.type, 'text');
   process.env.MODEL_PROTOCOL = 'chat';
-  await assert.rejects(client.complete(request), /prefix caching requires/);
+  await assert.rejects(client.complete(request), /Model response contains no text/);
+  assert.ok(
+    seen.at(-1).messages,
+    'Unsupported explicit caching falls back to a normal chat request',
+  );
 });

@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
+  UserRound,
+  MessageSquare,
   FolderOpen,
   LayoutGrid,
   Plus,
@@ -20,9 +22,20 @@ import { WorkspacePage } from '@/features/workspace/components/Workspace';
 import { UploadDialog } from '@/features/workspace/components/UploadDialog';
 import { navigate } from '@/shared/navigation';
 import { useAppShell } from '@/app/hooks/useAppShell';
+const ProfilePage = lazy(() => import('@/features/profile/components/ProfilePage'));
+const AssistantPage = lazy(() => import('@/features/assistant/components/AssistantPage'));
 export default function App() {
-  const { id, upload, setUpload, collapsed, setCollapsed, health, effects, toggleEffects } =
-    useAppShell();
+  const {
+    id,
+    section,
+    upload,
+    setUpload,
+    collapsed,
+    setCollapsed,
+    health,
+    effects,
+    toggleEffects,
+  } = useAppShell();
   return (
     <MotionConfig reducedMotion="user">
       <div
@@ -34,7 +47,10 @@ export default function App() {
             <Logo />
           </button>
           <div className="sidebar-label">工作空间</div>
-          <button className={`nav-item ${!id ? 'active' : ''}`} onClick={() => navigate()}>
+          <button
+            className={`nav-item ${!id && section === 'workspaces' ? 'active' : ''}`}
+            onClick={() => navigate()}
+          >
             <LayoutGrid size={18} />
             <span>我的工作区</span>
             <span className="nav-count">⌘</span>
@@ -49,6 +65,20 @@ export default function App() {
               <span>当前教材</span>
             </div>
           )}
+          <button
+            className={`nav-item ${section === 'assistant' ? 'active' : ''}`}
+            onClick={() => (location.hash = '/assistant')}
+          >
+            <MessageSquare size={18} />
+            <span>AI 助手</span>
+          </button>
+          <button
+            className={`nav-item ${section === 'profile' ? 'active' : ''}`}
+            onClick={() => (location.hash = '/profile')}
+          >
+            <UserRound size={18} />
+            <span>个人中心</span>
+          </button>
           <div className="sidebar-bottom">
             <div className="sidebar-tip">
               <BookOpen size={16} />
@@ -79,10 +109,19 @@ export default function App() {
               <span className="divider" />
               <span>工作空间</span>
               <span className="breadcrumb-sep">/</span>
-              <strong>{id ? '教材工作区' : '总览'}</strong>
+              <strong>
+                {section === 'profile'
+                  ? '个人中心'
+                  : section === 'assistant'
+                    ? 'AI 助手'
+                    : id
+                      ? '教材工作区'
+                      : '总览'}
+              </strong>
             </div>
             <div>
-              <span
+              <button
+                onClick={() => (location.hash = '/profile')}
                 className={`connection ${health.error ? 'offline' : ''}`}
                 title={health.error || '后端连接正常'}
               >
@@ -96,7 +135,7 @@ export default function App() {
                         ? '模型已配置'
                         : '模型待配置'}
                 </span>
-              </span>
+              </button>
               <Button
                 size="icon-sm"
                 variant="ghost"
@@ -121,14 +160,18 @@ export default function App() {
           <main>
             <AnimatePresence mode="wait">
               <motion.div
-                key={id ?? 'dashboard'}
+                key={id ?? section}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
               >
                 <Suspense fallback={<Loading />}>
-                  {id ? (
+                  {section === 'profile' ? (
+                    <ProfilePage />
+                  ) : section === 'assistant' ? (
+                    <AssistantPage />
+                  ) : id ? (
                     <WorkspacePage key={id} id={id} />
                   ) : (
                     <Dashboard onUpload={() => setUpload(true)} />

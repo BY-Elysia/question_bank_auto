@@ -1,5 +1,5 @@
 import type { WorkspaceView } from '@/shared/contracts';
-export function reviewState(view: WorkspaceView, preview: boolean, page: number, query: string) {
+export function reviewState(view: WorkspaceView, preview: boolean, page: number) {
   const document = preview
     ? {
         ...view.document,
@@ -8,9 +8,6 @@ export function reviewState(view: WorkspaceView, preview: boolean, page: number,
       }
     : view.document;
   const contents = document.contents.filter((c) => c.sources.some((s) => s.page === page));
-  const matches = contents.filter((c) =>
-    (c.question?.prompt ?? c.text).toLowerCase().includes(query.toLowerCase()),
-  );
   const pending = view.proposals.filter((p) => p.status === 'pending');
   // Keep historical findings in storage, but a later completed review of the
   // same content owns its current findings. Never clear on merely starting a run.
@@ -37,5 +34,5 @@ export function reviewState(view: WorkspaceView, preview: boolean, page: number,
     ...document.issues,
     ...jobs.filter((j) => j.baseRevision === view.revision).flatMap((j) => j.issues),
   ];
-  return { document, contents, matches, pending, jobs, activeJob, editable, issues };
+  return { document, contents, pending, jobs, activeJob, editable, issues };
 }

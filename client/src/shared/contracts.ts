@@ -17,3 +17,5 @@ export type {
 } from '../../../src/modules/workspaces/domain/workspace';
 export type Workspaces = z.infer<typeof WorkspaceList>;
 export type WorkspaceView = z.infer<typeof WorkspaceViewResponse>;
+
+export type { Conversation } from '../../../src/modules/assistant/domain/conversation';

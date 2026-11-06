@@ -1,5 +1,7 @@
+import { TextbookMetadata } from '../../textbooks/domain/metadata.js';
 import { imageUploadStorage } from './image-upload.js';
 import {
+  Patch,
   Controller,
   Get,
   Delete,
@@ -46,6 +48,13 @@ export class WorkspacesController {
       (files ?? []).map((f) => f.buffer),
       parse(Title, title),
     );
+  }
+  @Patch(':id/metadata') metadata(@Param('id') id: string, @Body() body: unknown) {
+    const input = parse(
+      z.strictObject({ revision: z.number().int().nonnegative(), metadata: TextbookMetadata }),
+      body,
+    );
+    return this.workspaces.updateMetadata(id, input.revision, input.metadata);
   }
   @Get(':id/readiness') readiness(@Param('id') id: string) {
     return this.view.readiness(id);

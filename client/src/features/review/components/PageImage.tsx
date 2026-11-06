@@ -5,7 +5,6 @@ export function PageImage({
   current,
   nextUrl,
   zoom,
-  requestDetail = false,
   boxes,
   contents,
   selected,
@@ -14,14 +13,12 @@ export function PageImage({
   current: WorkspaceView['pages'][number];
   nextUrl?: string;
   zoom: number;
-  requestDetail?: boolean;
   boxes: boolean;
   contents: Content[];
   selected: string | null;
   onSelect: (content: Content) => void;
 }) {
   const image = usePageImage(current, nextUrl);
-  const detail = image.ready && (zoom > 100 || requestDetail || image.detailReady) && current.detailUrl;
   return (
     <div
       className="page-image"
@@ -37,24 +34,10 @@ export function PageImage({
         decoding="async"
         fetchPriority="high"
         draggable={false}
-        style={{ opacity: image.ready && !image.detailReady ? 1 : 0 }}
+        style={{ opacity: image.ready ? 1 : 0 }}
         onLoad={image.loaded}
         onError={image.error}
       />
-      {detail && !image.detailFailed && (
-        <img
-          key={`detail:${image.detailAttempt}`}
-          className="page-image-detail"
-          src={detail}
-          alt=""
-          aria-hidden="true"
-          decoding="async"
-          draggable={false}
-          style={{ opacity: image.detailReady ? 1 : 0 }}
-          onLoad={image.detailLoaded}
-          onError={image.detailError}
-        />
-      )}
       {!image.ready && (
         <div className="page-image-status" role="status">
           {image.failed ? (
@@ -63,17 +46,6 @@ export function PageImage({
             </>
           ) : (
             '正在加载页图…'
-          )}
-        </div>
-      )}
-      {detail && !image.detailReady && (
-        <div className="page-image-quality" role="status">
-          {image.detailFailed ? (
-            <>
-              高清图加载失败 <button onClick={image.retryDetail}>重试</button>
-            </>
-          ) : (
-            '正在加载高清图…'
           )}
         </div>
       )}

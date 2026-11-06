@@ -5,10 +5,7 @@ export function usePageImage(current: WorkspaceView['pages'][number], nextUrl?: 
   const [original, setOriginal] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [detailReady, setDetailReady] = useState(false);
-  const [detailFailed, setDetailFailed] = useState(false);
   const [baseAttempt, setBaseAttempt] = useState(0);
-  const [detailAttempt, setDetailAttempt] = useState(0);
   const baseUrl = original ? current.imageUrl : current.previewUrl || current.imageUrl;
 
   useEffect(() => {
@@ -31,25 +28,16 @@ export function usePageImage(current: WorkspaceView['pages'][number], nextUrl?: 
     baseUrl,
     ready,
     failed,
-    detailReady,
-    detailFailed,
     baseAttempt,
-    detailAttempt,
     loaded: () => setReady(true),
     error: () => {
       if (!original && baseUrl !== current.imageUrl) setOriginal(true);
       else setFailed(true);
     },
-    detailLoaded: () => setDetailReady(true),
-    detailError: () => setDetailFailed(true),
     retryBase: () => {
       setFailed(false);
       setReady(false);
       setBaseAttempt((value) => value + 1);
-    },
-    retryDetail: () => {
-      setDetailFailed(false);
-      setDetailAttempt((value) => value + 1);
     },
   };
 }

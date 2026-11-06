@@ -3,6 +3,7 @@ export interface ModelRequest {
   cacheScope?: string;
   system: string;
   input: unknown;
+  messages?: { role: 'user' | 'assistant'; content: string }[];
   images: { page: number; url: string }[];
   signal: AbortSignal;
   role: 'vision' | 'reasoning';

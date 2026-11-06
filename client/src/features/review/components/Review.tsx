@@ -1,11 +1,10 @@
+import { InsertQuestionDialog } from './InsertQuestionDialog';
 import { ReviewQuestions } from './ReviewQuestions';
-import { ReviewContentList } from './ReviewContentList';
 import { ReviewJobs } from './ReviewJobs';
 import { RepairDialog } from './RepairDialog';
 import { ReviewIssues } from './ReviewIssues';
 import { ReviewCandidates } from './ReviewCandidates';
-import { FileText, Layers3, Search, ShieldCheck, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { FileText, Layers3 } from 'lucide-react';
 import { ErrorNote } from '@/components/common';
 import type { WorkspaceView } from '@/shared/contracts';
 import { useReview } from '../hooks/useReview';
@@ -28,8 +27,6 @@ export function Review({
     setSelected,
     tab,
     setTab,
-    query,
-    setQuery,
     edit,
     setEdit,
     width,
@@ -39,10 +36,8 @@ export function Review({
     document,
     contents,
     pending,
-    editable,
     issues,
     locate,
-    job,
     decide,
   } = model;
   return (
@@ -56,26 +51,6 @@ export function Review({
               : '点击题目联动原图，核对来源，确认修改。'}
           </p>
         </div>
-        {!preview && (
-          <div className="review-actions">
-            <Button
-              variant="outline"
-              disabled={!editable || action.busy}
-              onClick={() => job('verify')}
-            >
-              <ShieldCheck size={15} />
-              核对全书
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!editable || action.busy}
-              onClick={() => job('answers')}
-            >
-              <Sparkles size={15} />
-              补全缺失答案
-            </Button>
-          </div>
-        )}
       </div>
       <ErrorNote>{action.error}</ErrorNote>
       <ReviewJobs model={model} canReview={view.actions.review} />
@@ -87,7 +62,7 @@ export function Review({
           </div>
           <button className="tree-summary" onClick={() => setPage(1)}>
             <FileText size={15} />
-            {view.pages.length} 页 · {document.contents.length} 个内容块
+            {view.pages.length} 页 · {document.contents.filter((c) => c.question).length} 道题
           </button>
           {document.sections.map((s) => (
             <button
@@ -111,7 +86,7 @@ export function Review({
             pages={view.pages}
             page={page}
             setPage={setPage}
-            contents={contents}
+            contents={contents.filter((c) => c.question)}
             selected={selected}
             onSelect={locate}
           />
@@ -143,7 +118,6 @@ export function Review({
           <section className="results-panel">
             <div className="result-tabs">
               {[
-                ['content', '内容块', document.contents.length],
                 ['questions', '完整题目', document.contents.filter((c) => c.question).length],
                 ['proposals', '待审候选', pending.length],
                 ['issues', '问题记录', issues.length],
@@ -159,25 +133,11 @@ export function Review({
               ))}
             </div>
             <div className="result-scroll">
-              {tab === 'content' && (
-                <>
-                  <label className="search">
-                    <Search size={14} />
-                    <input
-                      aria-label="搜索当前页内容"
-                      placeholder="搜索当前页内容…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                  </label>
-                  <ReviewContentList model={model} preview={preview} />
-                </>
-              )}
               {tab === 'questions' && <ReviewQuestions model={model} />}
               {tab === 'proposals' && (
                 <ReviewCandidates
                   pending={pending}
-                  disabled={!editable || action.busy}
+                  disabled={!model.editable || action.busy}
                   onLocate={locate}
                   onDecision={decide}
                 />
@@ -188,7 +148,7 @@ export function Review({
                   onLocate={(page, contentId) => {
                     setPage(page);
                     setSelected(contentId);
-                    setTab('content');
+                    setTab('questions');
                   }}
                 />
               )}
@@ -207,6 +167,7 @@ export function Review({
         />
       )}
       <RepairDialog model={model} />
+      {model.insertion && <InsertQuestionDialog model={model} />}
     </div>
   );
 }

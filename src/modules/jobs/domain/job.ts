@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { Id, Document, Issue, Range } from '../../textbooks/domain/content.js';
 export const JobRequest = z.strictObject({
-  kind: z.enum(['parse', 'verify', 'repair', 'answers']),
+  kind: z.enum(['parse', 'verify', 'repair', 'answers', 'insert']),
+  insertion: z
+    .strictObject({ sourceBookId: Id, anchorId: Id, position: z.enum(['before', 'after']) })
+    .optional(),
   startPage: z.number().int().positive().optional(),
   endPage: z.number().int().positive().optional(),
   contentIds: z.array(Id).max(10000).optional(),

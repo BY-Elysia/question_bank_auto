@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+import type { TextbookMetadata } from '../../textbooks/domain/metadata.js';
 import { randomUUID } from 'node:crypto';
 import type { WorkspaceRepository } from '../ports/workspace.repository.js';
 import { Workspace, type ExtractionSettings } from '../domain/workspace.js';
@@ -18,6 +20,28 @@ export class WorkspacesService {
     private images: PageImagePort,
     private runner: ExtractionRunner,
   ) {}
+  async updateMetadata(id: string, expected: number, metadata: z.infer<typeof TextbookMetadata>) {
+    await this.workspaces.read(id);
+    await this.store.update(
+      id,
+      (b) => {
+        if (
+          b.workflowLock ||
+          b.jobs.some((j) => ['queued', 'running'].includes(j.status)) ||
+          b.revision !== expected
+        )
+          fail(409, 'Wait for active tasks or refresh before editing');
+        b.title = metadata.title;
+        b.extractionContext = { metadata, instructions: b.extractionContext?.instructions ?? '' };
+      },
+      true,
+    );
+    await this.workspaces.update(id, (w) => {
+      w.title = metadata.title;
+      if (w.settings) w.settings.metadata = metadata;
+    });
+    return this.get(id);
+  }
   async uploadPdf(buffer: Buffer, title: string) {
     return this.register(await this.books.upload(buffer, title), true);
   }

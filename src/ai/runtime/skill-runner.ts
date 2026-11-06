@@ -106,7 +106,13 @@ export class SkillRunner implements Skills {
             : signal.aborted
               ? 'deadline_exceeded'
               : 'provider_request_failed',
-          ...invocationTrace(system, requestInput, pages, null, id === 'answer-generate'),
+          ...invocationTrace(
+            system,
+            requestInput,
+            pages,
+            null,
+            ['answer-generate', 'question-insert'].includes(id),
+          ),
         });
         throw error;
       }
@@ -163,7 +169,13 @@ export class SkillRunner implements Skills {
         outputFormat: result.outputFormat,
         completionStatus: result.completionStatus,
         durationMs: Date.now() - startedAt,
-        ...invocationTrace(system, requestInput, pages, result.text, id === 'answer-generate'),
+        ...invocationTrace(
+          system,
+          requestInput,
+          pages,
+          result.text,
+          ['answer-generate', 'question-insert'].includes(id),
+        ),
       });
       if (validationError === null) return parsed!;
     }

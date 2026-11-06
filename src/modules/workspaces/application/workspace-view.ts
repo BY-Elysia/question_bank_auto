@@ -1,3 +1,4 @@
+import { numberComprehensiveExercises } from '../../textbooks/domain/exercise-numbering.js';
 import { projectChapter } from './merge-chapters.js';
 import type { WorkspaceRepository } from '../ports/workspace.repository.js';
 import type { BookRepository } from '../../textbooks/ports/book.repository.js';
@@ -20,9 +21,13 @@ export class WorkspaceView {
     const chapters = await Promise.all(
       workspace.chapters.map(async (chapter) => {
         if (!includePreview && ['completed', 'needs_review'].includes(chapter.status))
-          return { ...chapter, cursor: chapter.pages.length + 1,
-            processedPages: chapter.pages.length, preview: null,
-            imageUrls: chapter.pages.map((n) => `/api/textbooks/${id}/pages/${n}/image`) };
+          return {
+            ...chapter,
+            cursor: chapter.pages.length + 1,
+            processedPages: chapter.pages.length,
+            preview: null,
+            imageUrls: chapter.pages.map((n) => `/api/textbooks/${id}/pages/${n}/image`),
+          };
         let child;
         try {
           child = await this.books.read(chapter.bookId);
@@ -41,6 +46,12 @@ export class WorkspaceView {
         };
       }),
     );
+    numberComprehensiveExercises(book.document);
+    workspace.totalPages = book.pages.length;
+    if (book.extractionContext) {
+      workspace.title = book.extractionContext.metadata.title;
+      if (workspace.settings) workspace.settings.metadata = book.extractionContext.metadata;
+    }
     return {
       workspace,
       pages: book.pages.map((p) => ({

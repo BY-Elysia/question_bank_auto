@@ -511,12 +511,38 @@ test('Restart clears a stale root lock after terminal status was already persist
 });
 
 test('Early review readiness uses only workspace metadata, without loading the textbook document', async () => {
-  const { WorkspaceView } = await import('../dist/app/modules/workspaces/application/workspace-view.js');
+  const { WorkspaceView } =
+    await import('../dist/app/modules/workspaces/application/workspace-view.js');
   let mergedRevision = null;
-  const view = new WorkspaceView({ read: async () => ({ mergedRevision }) }, {
-    read: async () => { throw new Error('Readiness must not load the full document'); },
-  });
+  const view = new WorkspaceView(
+    { read: async () => ({ mergedRevision }) },
+    {
+      read: async () => {
+        throw new Error('Readiness must not load the full document');
+      },
+    },
+  );
   assert.deepEqual(await view.readiness('book'), { reviewReady: false });
   mergedRevision = 1;
   assert.deepEqual(await view.readiness('book'), { reviewReady: true });
+});
+
+test('Two workspace extractions run independently after their HTTP requests complete; cancelling one does not abort the other', async (t) => {
+  const s = await fixture(t),
+    a = await upload(s, 2),
+    b = await upload(s, 2);
+  const start = (id) =>
+    fetch(`${s.base}/api/workspaces/${id}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings()),
+    });
+  const responses = await Promise.all([start(a.id), start(b.id)]);
+  assert.ok(responses.every((r) => r.status === 202));
+  await Promise.all(responses.map((r) => r.json()));
+  await s.workspaces.cancel(a.id);
+  await s.workspaces.wait(b.id);
+  assert.equal((await s.workspaces.get(a.id)).status, 'cancelled');
+  assert.ok(['completed', 'needs_review'].includes((await s.workspaces.get(b.id)).status));
+  assert.equal((await s.store.read(b.id)).document.processedPages.length, 2);
 });

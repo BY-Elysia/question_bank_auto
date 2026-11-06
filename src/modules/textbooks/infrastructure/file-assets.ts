@@ -31,16 +31,16 @@ export class FileAssets implements TextbookAssets {
     }
     return pages;
   }
-  async copyPages(id: string, sourceId: string, numbers: number[]) {
+  async copyPages(id: string, sourceId: string, numbers: number[], offset = 0) {
     const directory = path.join(this.dir(id), 'pages');
     await fs.mkdir(directory, { recursive: true });
     const pages = [];
     for (const [index, number] of numbers.entries()) {
       const source = path.join(this.dir(sourceId), 'pages', `${number}.png`);
-      await fs.copyFile(source, path.join(directory, `${index + 1}.png`));
+      await fs.copyFile(source, path.join(directory, `${index + offset + 1}.png`));
       const image = await fs.readFile(source);
       pages.push({
-        number: index + 1,
+        number: index + offset + 1,
         width: image.readUInt32BE(16),
         height: image.readUInt32BE(20),
         status: 'ready' as const,

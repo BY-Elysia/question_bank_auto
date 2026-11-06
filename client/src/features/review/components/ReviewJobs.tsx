@@ -25,9 +25,13 @@ export function ReviewJobs({ model, canReview }: { model: ReviewController; canR
             />
             <span>
               {
-                { verify: '原文核对', repair: '内容修复', answers: '答案补全', parse: '题目提取' }[
-                  j.kind
-                ]
+                {
+                  verify: '原文核对',
+                  repair: '内容修复',
+                  answers: '答案补全',
+                  parse: '题目提取',
+                  insert: '补充题目',
+                }[j.kind]
               }
               {j.kind === 'answers' && j.error
                 ? ' · 已保存成功结果，可从断点继续。'

@@ -1,3 +1,10 @@
+import { QuestionInsertion } from '../../modules/questions/application/question-insertion.js';
+import { FileSettings } from '../../modules/profile/infrastructure/file-settings.js';
+import { FileUsage } from '../../modules/profile/infrastructure/file-usage.js';
+import { ProfileService } from '../../modules/profile/application/profile.service.js';
+import { AssistantService } from '../../modules/assistant/application/assistant.service.js';
+import { FileConversations } from '../../modules/assistant/infrastructure/file-conversations.js';
+import { EmptyAssistantContext } from '../../modules/assistant/ports/context.js';
 import type { AccessConfig } from '../../shared/auth/gate.js';
 import { WorkspaceStore } from '../../modules/workspaces/infrastructure/workspace-store.js';
 import type { WorkspaceRepository } from '../../modules/workspaces/ports/workspace.repository.js';
@@ -59,20 +66,33 @@ export async function createServices(options: AppOptions = {}) {
     images: new PageImages(store, pdf, localFiles),
     archives: new FileArchive(localFiles),
   };
-  const skills =
-    options.skills ??
-    new SkillRunner(
-      store,
-      options.model ?? new HttpModelClient(options.prefixCache ?? new FilePrefixCache(root)),
-      assets.images,
-      options.catalog ?? new FileSkillCatalog(),
-      options.records ?? new FileRunRecords(root),
-    );
+  const settings = new FileSettings(root);
+  const catalog = options.catalog ?? new FileSkillCatalog();
+  const records = options.records ?? new FileRunRecords(root);
+  const model =
+    options.model ??
+    new HttpModelClient(options.prefixCache ?? new FilePrefixCache(root), settings);
+  const profile = new ProfileService(
+    settings,
+    new FileUsage(root),
+    store,
+    (value) => new HttpModelClient(undefined, { get: async () => value }),
+  );
+  const assistant = new AssistantService(
+    new FileConversations(root),
+    model,
+    new EmptyAssistantContext(),
+    catalog,
+    records,
+  );
+  await assistant.recover();
+  const skills = options.skills ?? new SkillRunner(store, model, assets.images, catalog, records);
   const books = new TextbooksService(store, assets.files, assets.images);
   const review = new ReviewService(store),
     exports = new ExportService(store, assets.images, assets.archives);
   const parser = new TextbookWorkflow(store, skills),
     reviewWorkflow = new ReviewWorkflow(store, skills);
+  const insertion = new QuestionInsertion(store, books, assets.files, skills);
   const defaults: JobHandlers = new Map<Parameters<JobHandlers['get']>[0], JobHandler>([
     [
       'parse',
@@ -86,6 +106,7 @@ export async function createServices(options: AppOptions = {}) {
     ['verify', reviewWorkflow],
     ['repair', reviewWorkflow],
     ['answers', reviewWorkflow],
+    ['insert', insertion],
   ]);
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
@@ -101,5 +122,17 @@ export async function createServices(options: AppOptions = {}) {
   );
   const workspaceView = new WorkspaceView(workspaceStore, store);
   await workspaces.recover();
-  return { store, books, review, exports, jobs, skills, workspaces, workspaceView };
+  return {
+    store,
+    books,
+    review,
+    exports,
+    jobs,
+    skills,
+    workspaces,
+    workspaceView,
+    profile,
+    assistant,
+    insertion,
+  };
 }

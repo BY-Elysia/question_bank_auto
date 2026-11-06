@@ -18,7 +18,8 @@ export class JobsService {
         await this.store.update(book.id, (current) => {
           for (const job of current.jobs)
             if (['queued', 'running'].includes(job.status)) {
-              job.status = 'interrupted';
+              job.status =
+                job.kind === 'insert' && job.processedIds.length ? 'completed' : 'interrupted';
               addEvent(job, 'Process restarted; resume explicitly from persisted checkpoint');
             }
         });
@@ -26,6 +27,10 @@ export class JobsService {
   }
   async start(id: string, request: JobRequest, owner?: string) {
     if (!this.handlers.has(request.kind)) fail(400, 'Unsupported job kind');
+    if (request.kind === 'insert' && owner !== `insert:${id}`)
+      fail(400, 'Use the question image upload endpoint');
+    if (request.kind !== 'insert' && request.insertion)
+      fail(400, 'Insertion is only valid on insert jobs');
     const jobId = randomUUID();
     const book = await this.store.update(id, (book) => {
       if (book.workflowLock && book.workflowLock !== owner)
@@ -150,6 +155,12 @@ export class JobsService {
     } catch (error) {
       await this.store.update(bookId, (book) => {
         const job = this.find(book, jobId);
+        if (job.kind === 'insert' && job.processedIds.length) {
+          job.status = 'completed';
+          job.error = null;
+          addEvent(job, 'Insertion was already committed');
+          return;
+        }
         job.status = signal.aborted ? 'cancelled' : 'failed';
         job.error = signal.aborted ? 'Cancelled' : message(error);
         addEvent(job, job.error);

@@ -13,6 +13,19 @@ const skills = {
   async run(id, input, schema, pages, context) {
     const book = await system.store.read(context.bookId);
     await delay(book.title.includes('恢复') ? 1200 : 120, undefined, { signal: context.signal });
+    if (id === 'question-insert')
+      return schema.parse({
+        questions: [
+          {
+            label: '99',
+            type: 'fill_blank',
+            prompt: '补充题目 $x^2=4$',
+            options: [],
+            answer: null,
+            children: [],
+          },
+        ],
+      });
     if (id === 'textbook-structure-detect')
       return schema.parse({
         sections:
@@ -123,7 +136,21 @@ const access =
         secure: false,
       }
     : undefined;
-system = await createApplication({ root, skills, access });
+system = await createApplication({
+  model: {
+    async complete() {
+      await delay(800);
+      return {
+        text: '你好，这是 AI 助手回复 $x^2$。',
+        usage: { input_tokens: 10, output_tokens: 8, total_tokens: 18 },
+        model: 'test',
+      };
+    },
+  },
+  root,
+  skills,
+  access,
+});
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');
 for (const signal of ['SIGINT', 'SIGTERM'])

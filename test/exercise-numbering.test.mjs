@@ -63,7 +63,8 @@ test('Category headings split into independent exercises, numbered without losin
   const ordinary = item('7', 11, null);
   d.contents.push(ordinary);
   numberComprehensiveExercises(d);
-  assert.equal(ordinary.question.label, '7');
+  assert.equal(ordinary.question.label, '1');
+  assert.equal(ordinary.question.sourceLabel, '7');
 });
 test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and genuine groups', () => {
   const d = doc();
@@ -101,4 +102,21 @@ test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and 
   assert.equal(d.contents[8].question.label, '2');
   d.contents[0].question.answer = null;
   assert.deepEqual(questionBankExport(book).questions[0].correctOptionIds, []);
+});
+
+test('Ordinary exercise categories share their parent sequence and inserted questions use document order', () => {
+  const d = doc();
+  d.sections = [
+    { ...d.sections[0], id: 'choices', title: '一、选择题' },
+    { ...d.sections[0], id: 'blanks', title: '二、填空题' },
+  ];
+  d.contents = [item('(1)', 1, 'choices'), item('(2)', 2, 'choices'), item('(1)', 3, 'blanks')];
+  const inserted = item('99', 10, 'choices');
+  d.contents.splice(1, 0, inserted);
+  numberComprehensiveExercises(d);
+  assert.deepEqual(
+    d.contents.map((c) => c.question.label),
+    ['1', '2', '3', '4'],
+  );
+  assert.equal(inserted.question.sourceLabel, '99');
 });

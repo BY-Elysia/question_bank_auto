@@ -25,7 +25,21 @@ async function openFixture(page: Page, text?: string) {
     view.revision = 1;
     view.nextStep = 'review';
     view.actions = { ...view.actions, configure: false, review: true };
-    view.document.contents = text === undefined ? contents : [{ ...contents[0], text }];
+    view.document.contents =
+      text === undefined
+        ? contents
+        : [
+            {
+              ...contents[1],
+              question: {
+                ...contents[1].question,
+                prompt: text,
+                children: [],
+                type: 'calculation',
+                answer: null,
+              },
+            },
+          ];
     view.document.sections = [];
     await route.fulfill({ json: view });
   });
@@ -53,19 +67,19 @@ test('Slow workspace loading never flashes raw LaTeX; textbook proofs and displa
   });
   const id = await openFixture(page);
   await expect(page.getByRole('status')).toContainText('正在载入工作区');
-  await expect(page.locator('.content-card')).toHaveCount(2);
+  await expect(page.locator('.content-card')).toHaveCount(1);
   await expect(page.locator('.katex').first()).toBeVisible();
-  expect(await page.locator('.katex').count()).toBeGreaterThan(30);
+  expect(await page.locator('.katex').count()).toBeGreaterThan(15);
   expect(await page.evaluate(() => (window as any).rawMathFlashed)).toBe(false);
   await expect(page.locator('.katex-error')).toHaveCount(0);
   const paragraph = page.locator('.content-body').first();
-  await expect(paragraph.locator('.katex-display')).toHaveCount(1);
+  expect(await paragraph.locator('.katex-display').count()).toBeGreaterThanOrEqual(1);
   // A display is a sibling of prose, never a div illegally nested in a p.
   await expect(paragraph.locator('p .katex-display')).toHaveCount(0);
   await expect(page.locator('.subquestion')).toHaveCount(2);
-  await expect(page.locator('.content-card').nth(1).locator('.page-reference')).toHaveCount(2);
+  await expect(page.locator('.content-card').first().locator('.page-reference')).toHaveCount(2);
   await page.screenshot({ path: testInfo.outputPath('textbook-math-desktop.png'), fullPage: true });
-  await page.getByRole('button', { name: '编辑', exact: true }).nth(1).click();
+  await page.getByRole('button', { name: '编辑题目', exact: true }).first().click();
   await expect(page.getByRole('textbox', { name: '题干', exact: true })).toHaveValue(
     contents[1].question.prompt,
   );
@@ -115,8 +129,8 @@ test('Whole question preview preserves cross-page children and supports source n
   await page.getByLabel('搜索完整题目').fill('不存在的题干xyz');
   await expect(page.getByText('暂无匹配题目')).toBeVisible();
   await page.getByLabel('搜索完整题目').fill('');
-  await page.getByRole('button', { name: '查看内容块与修复' }).click();
-  await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '编辑题目', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^内容块/ })).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
 
@@ -246,58 +260,77 @@ test('Historical answer findings clear only after the same content is processed 
   await page.request.delete(`/api/workspaces/${id}`);
 });
 
-test('Completed workspace fills source width by default and can switch to full page', async ({page}) => {
+test('Completed workspace fills source width by default and can switch to full page', async ({
+  page,
+}) => {
   const id = await openFixture(page);
-  await page.route(`**/api/workspaces/${id}*`, async route => {
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
     const view = await (await route.fetch()).json();
-    if (!view.workspace) return route.fulfill({json:view});
-    view.workspace.status='needs_review'; view.workspace.mergedRevision=1;
-    view.document.processedPages=[1]; view.document.contents=contents;
-    view.revision=1; view.actions.review=true;
-    await route.fulfill({json:view});
+    if (!view.workspace) return route.fulfill({ json: view });
+    view.workspace.status = 'needs_review';
+    view.workspace.mergedRevision = 1;
+    view.document.processedPages = [1];
+    view.document.contents = contents;
+    view.revision = 1;
+    view.actions.review = true;
+    await route.fulfill({ json: view });
   });
   await page.reload();
   await expect(page.locator('.review-mode')).toBeVisible();
-  await expect(page.getByRole('img',{name:'教材第 1 页原图'})).toBeVisible();
-  const layout=await page.locator('.review-layout').boundingBox();
+  await expect(page.getByRole('img', { name: '教材第 1 页原图' })).toBeVisible();
+  const layout = await page.locator('.review-layout').boundingBox();
   expect(layout!.y).toBeLessThan(280);
   expect(layout!.height).toBeGreaterThan(650);
-  const source=await page.locator('.page-image:visible').boundingBox();
-  const scroll=await page.locator('.image-scroll').boundingBox();
+  const source = await page.locator('.page-image:visible').boundingBox();
+  const scroll = await page.locator('.image-scroll').boundingBox();
   expect(source!.width).toBeGreaterThan(scroll!.width - 20);
-  await page.getByRole('button',{name:'适应画布',exact:true}).click();
-  const fitted=await page.locator('.page-image:visible').boundingBox();
+  await page.getByRole('button', { name: '适应画布', exact: true }).click();
+  const fitted = await page.locator('.page-image:visible').boundingBox();
   expect(fitted!.height).toBeLessThanOrEqual(scroll!.height);
-  await page.getByRole('button',{name:'适应宽度',exact:true}).click();
-  expect((await page.locator('.page-image:visible').boundingBox())!.width).toBeCloseTo(source!.width, 0);
+  await page.getByRole('button', { name: '适应宽度', exact: true }).click();
+  expect((await page.locator('.page-image:visible').boundingBox())!.width).toBeCloseTo(
+    source!.width,
+    0,
+  );
   await page.request.delete(`/api/workspaces/${id}`);
 });
 
-test('Workspace stays within the screen with long titles, narrow windows and enlarged source images', async ({page}) => {
-  const id=await openFixture(page);
-  await page.route(`**/api/workspaces/${id}*`, async route => {
-    const view=await (await route.fetch()).json();
-    if (!view.workspace) return route.fulfill({json:view});
-    view.workspace.title='很长的教材名称'.repeat(35);
-    view.workspace.status='needs_review';view.workspace.mergedRevision=1;
-    view.document.processedPages=[1];view.document.contents=contents;
-    view.revision=1;view.actions.review=true;view.actions.export=true;
-    await route.fulfill({json:view});
+test('Workspace stays within the screen with long titles, narrow windows and enlarged source images', async ({
+  page,
+}) => {
+  const id = await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    const view = await (await route.fetch()).json();
+    if (!view.workspace) return route.fulfill({ json: view });
+    view.workspace.title = '很长的教材名称'.repeat(35);
+    view.workspace.status = 'needs_review';
+    view.workspace.mergedRevision = 1;
+    view.document.processedPages = [1];
+    view.document.contents = contents;
+    view.revision = 1;
+    view.actions.review = true;
+    view.actions.export = true;
+    await route.fulfill({ json: view });
   });
   await page.reload();
-  await page.getByRole('heading',{name:'每一处细节，都可以核对。'}).waitFor();
-  for(const width of [1920,1440,1280,1024,900,768,760,390,320]) {
-    await page.setViewportSize({width,height:1000});
-    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    expect(await page.evaluate(()=>document.body.scrollWidth)).toBeLessThanOrEqual(width);
-    for(const name of ['JSON','导出资料包']) {
-      const box=await page.getByRole('button',{name,exact:true}).boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width+1);
+  await page.getByRole('heading', { name: '每一处细节，都可以核对。' }).waitFor();
+  for (const width of [1920, 1440, 1280, 1024, 900, 768, 760, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    );
+    expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(width);
+    for (const name of ['JSON', '导出资料包']) {
+      const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
     }
   }
-  await page.getByRole('button',{name:'放大',exact:true}).click();
-  await page.getByRole('button',{name:'放大',exact:true}).click();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.getByRole('button', { name: '放大', exact: true }).click();
+  await page.getByRole('button', { name: '放大', exact: true }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await page.request.delete(`/api/workspaces/${id}`);
 });

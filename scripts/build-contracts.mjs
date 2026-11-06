@@ -1,3 +1,16 @@
+import {
+  ModelSettingsInput,
+  ModelSettingsView,
+  ModelTestResult,
+  UsageSummary,
+  profileRoutes,
+} from '../dist/app/modules/profile/presentation/contracts.js';
+import {
+  Conversation,
+  ChatInput,
+  ConversationList,
+  assistantRoutes,
+} from '../dist/app/modules/assistant/presentation/contracts.js';
 import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/domain/workspace.js';
 import {
   WorkspaceList,
@@ -15,6 +28,17 @@ import * as requests from '../dist/app/modules/textbooks/presentation/contracts.
 import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
 import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
 const schemas = {
+  ModelSettingsInput,
+  ModelSettingsView,
+  ModelTestResult,
+  UsageSummary,
+  Conversation,
+  ChatInput,
+  ConversationList,
+  MetadataUpdate: z.object({
+    revision: z.number().int().nonnegative(),
+    metadata: TextbookMetadata,
+  }),
   Book,
   Workspace,
   ExtractionSettings,
@@ -87,6 +111,24 @@ for (const [method, path, operationId, input, output, status] of [
   ...textbookRoutes,
   ...workspaceRoutes,
   ...jobRoutes,
+  ...profileRoutes,
+  ...assistantRoutes,
+  [
+    'patch',
+    '/api/workspaces/{id}/metadata',
+    'updateWorkspaceMetadata',
+    'MetadataUpdate',
+    'Workspace',
+    200,
+  ],
+  [
+    'post',
+    '/api/workspaces/{id}/questions/{anchor}/image',
+    'insertQuestionImage',
+    'ImageUpload',
+    'Job',
+    202,
+  ],
   ['get', '/api/health', 'health', null, 'Health', 200],
 ]) {
   const parameters = [...path.matchAll(/\{([^}]+)\}/g)].map(([, name]) => ({
@@ -102,6 +144,16 @@ for (const [method, path, operationId, input, output, status] of [
       required: true,
       schema: { type: 'string', minLength: 1, maxLength: 300 },
     });
+  if (operationId === 'insertQuestionImage')
+    parameters.push(
+      {
+        name: 'position',
+        in: 'query',
+        required: true,
+        schema: { type: 'string', enum: ['before', 'after'] },
+      },
+      { name: 'revision', in: 'query', required: true, schema: { type: 'integer', minimum: 0 } },
+    );
   if (operationId === 'getPageImage')
     parameters.push({
       name: 'variant',
@@ -148,7 +200,7 @@ await fs.writeFile(
         title: 'Textbook workspace backend',
         version: '0.3.0',
         description:
-          'Single-workspace backend, no user authentication. Model-backed work runs as resumable jobs.',
+          'Authenticated single-account workspace backend. Model-backed extraction, question insertion and conversations run independently of browser sessions.',
       },
       servers: [{ url: 'http://127.0.0.1:5002' }],
       paths,

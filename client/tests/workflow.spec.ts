@@ -44,8 +44,8 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await expect(page.getByRole('button', { name: '接受', exact: true })).toHaveCount(1);
   await page.getByRole('button', { name: '接受', exact: true }).click();
   await expect(page.getByText('没有待审候选')).toBeVisible();
-  await page.getByRole('button', { name: /^内容块/ }).click();
-  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  await page.getByRole('button', { name: /^完整题目/ }).click();
+  await page.getByRole('button', { name: '编辑题目', exact: true }).first().click();
   await page
     .getByRole('textbox', { name: '题干', exact: true })
     .fill('人工校对后的题目：已知 f(x) = 2x + 3，求 f(4)。');
@@ -58,9 +58,10 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await expect(page.getByText('修复后的题干：求函数值。')).toBeVisible();
   await page.getByRole('button', { name: '拒绝', exact: true }).click();
   await expect(page.getByText('没有待审候选')).toBeVisible();
-  await page.getByRole('button', { name: '核对全书' }).click();
+  await page.getByRole('button', { name: /^完整题目/ }).click();
+  await page.getByRole('button', { name: '核对本题' }).nth(1).click();
   await page.getByRole('button', { name: /问题记录/ }).click();
-  await expect(page.getByText('请核对函数中的常数项。')).toHaveCount(2);
+  await expect(page.getByText('请核对函数中的常数项。')).toHaveCount(1);
   await page.getByRole('button', { name: '定位第 2 页' }).click();
   await expect(page.getByRole('img', { name: '教材第 2 页原图' })).toBeVisible();
   await page.getByRole('button', { name: '上一页' }).click();
@@ -98,9 +99,9 @@ test('Image grouping supports selection and drag, then produces a merged documen
   await expect(page.getByText('未分配 0 / 2')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('chapter-groups.png'), fullPage: true });
   await complete(page);
-  await expect(page.locator('.content-card')).toHaveCount(1);
+  await expect(page.locator('.content-card')).toHaveCount(2);
   await page.getByRole('button', { name: '下一页' }).click();
-  await expect(page.locator('.content-card')).toHaveCount(1);
+  await expect(page.locator('.content-card')).toHaveCount(2);
 });
 test('Cancelling and reloading preserves a resumable workspace', async ({ page }) => {
   await upload(page, '恢复验证', false);
@@ -173,7 +174,7 @@ test('A rejected edit keeps the draft and can be retried without losing workspac
 }) => {
   await upload(page, '编辑冲突回归', false);
   await complete(page);
-  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  await page.getByRole('button', { name: '编辑题目', exact: true }).first().click();
   const draft = '冲突后仍然保留的人工修改';
   await page.getByRole('textbox', { name: '题干', exact: true }).fill(draft);
   let saves = 0;

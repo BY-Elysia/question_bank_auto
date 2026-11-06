@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { PrefixCache } from '../ports/prefix-cache.js';
 import { postModel, ProviderError } from './http-transport.js';
 export class ArkPrefix {
-  private pending = new Map<string, Promise<string>>();
+  private pending = new Map<string, Promise<{ id: string; usage: unknown }>>();
   constructor(private cache: PrefixCache) {}
   async complete(
     url: string,
@@ -18,11 +18,13 @@ export class ArkPrefix {
     const key = createHash('sha256')
       .update(JSON.stringify([url, apiKey, model, scope, system]))
       .digest('hex');
+    const seedUsage: unknown[] = [];
     const seed = async () => {
       const existing = await this.cache.get(key);
       if (existing && existing.expiresAt > Date.now() + 30000)
         return { id: existing.responseId, source: 'reused' };
       let pending = this.pending.get(key);
+      const ownsSeed = !pending;
       if (!pending) {
         pending = (async () => {
           const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -42,11 +44,13 @@ export class ArkPrefix {
           if (typeof result.id !== 'string' || !result.id)
             throw new Error('Prefix seed response contains no ID');
           await this.cache.set(key, { responseId: result.id, expiresAt: expiresAt * 1000 });
-          return result.id;
+          return { id: result.id, usage: result.usage ?? null };
         })().finally(() => this.pending.delete(key));
         this.pending.set(key, pending);
       }
-      return { id: await pending, source: 'created' };
+      const result = await pending;
+      if (ownsSeed) seedUsage.push(result.usage);
+      return { id: result.id, source: ownsSeed ? 'created' : 'reused' };
     };
     let prefix = await seed();
     const invoke = (id: string) =>
@@ -91,6 +95,7 @@ export class ArkPrefix {
       result,
       cache: {
         mode: 'prefix',
+        seedUsage,
         seedSource: prefix.source,
         cachedTokens: result.usage?.input_tokens_details?.cached_tokens ?? 0,
       },

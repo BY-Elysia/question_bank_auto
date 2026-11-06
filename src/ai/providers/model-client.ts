@@ -1,3 +1,5 @@
+import { environmentModelSettings, type ModelSettingsSource } from '../ports/model-settings.js';
+import { anthropicComplete } from './anthropic.js';
 import { providerSchema } from './structured-format.js';
 import type { ModelClient, ModelRequest } from '../ports/model-client.js';
 import { MemoryPrefixCache, type PrefixCache } from '../ports/prefix-cache.js';
@@ -5,7 +7,10 @@ import { ArkPrefix } from './ark-prefix.js';
 import { postModel } from './http-transport.js';
 export class HttpModelClient implements ModelClient {
   private prefix: ArkPrefix;
-  constructor(cache: PrefixCache = new MemoryPrefixCache()) {
+  constructor(
+    cache: PrefixCache = new MemoryPrefixCache(),
+    private settings?: ModelSettingsSource,
+  ) {
     this.prefix = new ArkPrefix(cache);
   }
   async complete(request: ModelRequest) {
@@ -13,19 +18,18 @@ export class HttpModelClient implements ModelClient {
       request.maxOutputTokens ?? Number(process.env.MAX_MODEL_OUTPUT_TOKENS ?? 8192);
     if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1)
       throw new Error('Invalid model output token budget');
-    const base = process.env.MODEL_BASE_URL || process.env.ARK_BASE_URL,
-      key = process.env.MODEL_API_KEY || process.env.ARK_API_KEY;
-    const model =
-      (request.role === 'vision' ? process.env.VISION_MODEL : process.env.REASONING_MODEL) ||
-      process.env.MODEL_NAME ||
-      process.env.ARK_MODEL;
+    const config = this.settings ? await this.settings.get() : environmentModelSettings();
+    const { baseUrl: base, apiKey: key, protocol } = config;
+    const model = request.role === 'vision' ? config.visionModel || config.model : config.model;
     if (!base || !key || !model)
-      throw new Error(
-        'Configure MODEL_BASE_URL, MODEL_API_KEY and MODEL_NAME (or ARK equivalents)',
-      );
-    const protocol = process.env.MODEL_PROTOCOL || 'responses';
-    if (!['responses', 'chat'].includes(protocol))
-      throw new Error('MODEL_PROTOCOL must be responses or chat');
+      throw new Error('Configure the model endpoint, API key and model name');
+    if (protocol === 'anthropic') return anthropicComplete(config, request, model, maxOutputTokens);
+    if (!['responses', 'chat'].includes(protocol)) throw new Error('Unsupported model protocol');
+    // Explicit caching is a provider capability, not a workflow assumption.
+    request = {
+      ...request,
+      cache: config.prefixCache && protocol === 'responses' ? request.cache : 'off',
+    };
     const format = request.structuredOutput
       ? {
           type: 'json_schema',
@@ -78,10 +82,14 @@ export class HttpModelClient implements ModelClient {
               model,
               max_output_tokens: maxOutputTokens,
               text: { format },
-              ...(request.structuredOutput ? { thinking: { type: 'disabled' } } : {}),
+              ...(request.structuredOutput && config.prefixCache
+                ? { thinking: { type: 'disabled' } }
+                : {}),
               input: [
                 { role: 'system', content: [{ type: 'input_text', text: request.system }] },
-                { role: 'user', content },
+                ...(request.messages
+                  ? request.messages.map((m) => ({ role: m.role, content: m.content }))
+                  : [{ role: 'user', content }]),
               ],
             }
           : {
@@ -89,7 +97,9 @@ export class HttpModelClient implements ModelClient {
               max_tokens: maxOutputTokens,
               messages: [
                 { role: 'system', content: request.system },
-                { role: 'user', content },
+                ...(request.messages
+                  ? request.messages.map((m) => ({ role: m.role, content: m.content }))
+                  : [{ role: 'user', content }]),
               ],
               ...(request.outputMode === 'text' && !request.structuredOutput
                 ? {}

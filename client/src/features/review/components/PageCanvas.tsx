@@ -28,20 +28,24 @@ export function PageCanvas({
     if (!node) return;
     const observer = new ResizeObserver(() => {
       const style = getComputedStyle(node);
-      setViewport({ width: node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-        height: node.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) });
+      setViewport({
+        width: node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        height: node.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+      });
     });
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const source = pages.find(p => p.number === page);
-  const fitZoom = viewport.width && source?.width && source.height
-    ? Math.min(100, viewport.height * source.width / source.height / viewport.width * 100) : 100;
+  const source = pages.find((p) => p.number === page);
+  const fitZoom =
+    viewport.width && source?.width && source.height
+      ? Math.min(100, ((viewport.height * source.width) / source.height / viewport.width) * 100)
+      : 100;
   const visibleZoom = fit ? fitZoom : zoom;
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [retained, setRetained] = useState({ page, pages: [page] });
   if (retained.page !== page)
-    setRetained({ page, pages: [...retained.pages.filter(n => n !== page), page].slice(-3) });
+    setRetained({ page, pages: [...retained.pages.filter((n) => n !== page), page].slice(-3) });
   return (
     <section className="canvas-panel">
       <div className="canvas-toolbar">
@@ -55,7 +59,10 @@ export function PageCanvas({
             size="icon"
             aria-label="缩小"
             disabled={visibleZoom <= 25}
-            onClick={() => { setFit(false); setZoom(Math.max(25, visibleZoom - 25)); }}
+            onClick={() => {
+              setFit(false);
+              setZoom(Math.max(25, visibleZoom - 25));
+            }}
           >
             <Minus size={15} />
           </Button>
@@ -65,13 +72,35 @@ export function PageCanvas({
             size="icon"
             aria-label="放大"
             disabled={zoom >= 250}
-            onClick={() => { setFit(false); setZoom(Math.min(250, visibleZoom + 25)); }}
+            onClick={() => {
+              setFit(false);
+              setZoom(Math.min(250, visibleZoom + 25));
+            }}
           >
             <Plus size={15} />
           </Button>
-          <Button variant="ghost" size="sm" aria-label="适应宽度" aria-pressed={!fit && zoom === 100}
-            onClick={() => { setZoom(100); setFit(false); }}>宽度</Button>
-          <Button variant="ghost" size="icon" title="整页显示" aria-label="适应画布" onClick={() => { setZoom(100); setFit(true); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="适应宽度"
+            aria-pressed={!fit && zoom === 100}
+            onClick={() => {
+              setZoom(100);
+              setFit(false);
+            }}
+          >
+            宽度
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="整页显示"
+            aria-label="适应画布"
+            onClick={() => {
+              setZoom(100);
+              setFit(true);
+            }}
+          >
             <Maximize size={15} />
           </Button>
         </div>
@@ -93,21 +122,26 @@ export function PageCanvas({
         onPointerUp={() => (drag.current = null)}
         onPointerCancel={() => (drag.current = null)}
       >
-        {retained.pages.map(n => {
-          const current = pages.find(p => p.number === n);
-          return current && <div key={current.imageUrl} hidden={n !== page}>
-          <PageImage
-            key={current.imageUrl}
-            current={current}
-            nextUrl={n === page ? pages.find((p) => p.number === page + 1)?.previewUrl : undefined}
-            zoom={visibleZoom}
-            requestDetail={n === page && !fit}
-            boxes={boxes}
-            contents={n === page ? contents : []}
-            selected={selected}
-            onSelect={onSelect}
-          />
-          </div>;
+        {retained.pages.map((n) => {
+          const current = pages.find((p) => p.number === n);
+          return (
+            current && (
+              <div key={current.imageUrl} hidden={n !== page}>
+                <PageImage
+                  key={current.imageUrl}
+                  current={current}
+                  nextUrl={
+                    n === page ? pages.find((p) => p.number === page + 1)?.previewUrl : undefined
+                  }
+                  zoom={visibleZoom}
+                  boxes={boxes}
+                  contents={n === page ? contents : []}
+                  selected={selected}
+                  onSelect={onSelect}
+                />
+              </div>
+            )
+          );
         })}
       </div>
       <div className="canvas-footer">

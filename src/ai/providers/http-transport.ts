@@ -13,13 +13,15 @@ export async function postModel(
   key: string,
   body: unknown,
   signal: AbortSignal,
+  headers: Record<string, string> = { Authorization: `Bearer ${key}` },
 ): Promise<Record<string, any>> {
   for (let attempt = 0; ; attempt++) {
     signal.throwIfAborted();
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        redirect: 'error',
         body: JSON.stringify(body),
         signal: AbortSignal.any([
           signal,

@@ -8,7 +8,7 @@ export function ReviewIssues({
   onLocate: (page: number, contentId: string | null) => void;
 }) {
   if (!issues.length)
-    return <Empty title="暂无已记录的问题">你仍可以对照原图校对，或发起全书核对。</Empty>;
+    return <Empty title="暂无已记录的问题">你仍可以对照原图校对，或针对题目发起核对。</Empty>;
   return issues.map((issue, i) => (
     <div className="issue-card" key={i}>
       <span className={`issue-level ${issue.severity}`}>

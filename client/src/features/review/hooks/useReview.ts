@@ -1,3 +1,4 @@
+import { insertQuestion } from '../api/insertion';
 import { reviewState } from '../model/selectors';
 import { useState, useEffect, useRef } from 'react';
 import type { Content, WorkspaceView } from '@/shared/contracts';
@@ -6,24 +7,25 @@ import { reviewApi } from '../api/review';
 export function useReview(view: WorkspaceView, onChange: () => void, preview: boolean) {
   const [page, setPage] = useState(1),
     [selected, setSelected] = useState<string | null>(null),
-    [tab, setTab] = useState('content'),
-    [query, setQuery] = useState(''),
+    [tab, setTab] = useState('questions'),
+    [insertion, setInsertion] = useState<{ anchor: Content; position: 'before' | 'after' } | null>(
+      null,
+    ),
     [edit, setEdit] = useState<Content | null>(null),
     [repair, setRepair] = useState<Content | null>(null),
     [instruction, setInstruction] = useState(''),
     [width, setWidth] = useState(52);
   const panel = useRef<HTMLDivElement>(null);
   const action = useAction();
-  const { document, contents, matches, pending, jobs, activeJob, editable, issues } = reviewState(
+  const { document, contents, pending, jobs, activeJob, editable, issues } = reviewState(
     view,
     preview,
     page,
-    query,
   );
   function locate(c: Content) {
     setSelected(c.id);
     if (!c.sources.some((s) => s.page === page)) setPage(c.sources[0].page);
-    setTab('content');
+    setTab('questions');
   }
   useEffect(() => {
     if (selected) {
@@ -63,15 +65,29 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
       onChange();
     });
   };
+  const insert = (file: File) =>
+    action.run(async () => {
+      if (!insertion) return;
+      await insertQuestion(
+        view.workspace.id,
+        insertion.anchor.id,
+        insertion.position,
+        view.revision,
+        file,
+      );
+      setInsertion(null);
+      onChange();
+    });
   return {
+    insertion,
+    setInsertion,
+    insert,
     page,
     setPage,
     selected,
     setSelected,
     tab,
     setTab,
-    query,
-    setQuery,
     edit,
     setEdit,
     repair,
@@ -84,7 +100,6 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
     action,
     document,
     contents,
-    matches,
     pending,
     jobs,
     activeJob,

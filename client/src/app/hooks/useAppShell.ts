@@ -22,6 +22,10 @@ export function useAppShell() {
     });
   const health = useResource(getHealth, 60000);
   useEffect(() => {
+    window.addEventListener('model-configured', health.refresh);
+    return () => window.removeEventListener('model-configured', health.refresh);
+  }, [health.refresh]);
+  useEffect(() => {
     const route = () => setHash(location.hash);
     window.addEventListener('hashchange', route);
     return () => window.removeEventListener('hashchange', route);
@@ -38,5 +42,15 @@ export function useAppShell() {
   }, []);
   const match = hash.match(/^#\/workspace\/([a-zA-Z0-9_-]{1,100})$/),
     id = match?.[1];
-  return { id, upload, setUpload, collapsed, setCollapsed, health, effects, toggleEffects };
+  return {
+    id,
+    section: hash === '#/profile' ? 'profile' : hash === '#/assistant' ? 'assistant' : 'workspaces',
+    upload,
+    setUpload,
+    collapsed,
+    setCollapsed,
+    health,
+    effects,
+    toggleEffects,
+  };
 }

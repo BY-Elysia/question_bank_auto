@@ -1,3 +1,5 @@
+import { MetadataDialog } from './MetadataDialog';
+import { useState } from 'react';
 import { ArrowLeft, Download, History, Pause, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +21,7 @@ const Review = lazy(() =>
   import('@/features/review/components/Review').then((m) => ({ default: m.Review })),
 );
 export function WorkspacePage({ id }: { id: string }) {
+  const [metadataOpen, setMetadataOpen] = useState(false);
   const {
     view,
     error,
@@ -94,6 +97,15 @@ export function WorkspacePage({ id }: { id: string }) {
               {extractionComplete ? '继续补全答案' : '恢复处理'}
             </Button>
           )}
+          {extractionComplete && (
+            <Button
+              variant="outline"
+              disabled={active || runningJob}
+              onClick={() => setMetadataOpen(true)}
+            >
+              教材信息
+            </Button>
+          )}
           {canExport && (
             <>
               <Button variant="outline" disabled={action.busy} onClick={openHistory}>
@@ -151,14 +163,24 @@ export function WorkspacePage({ id }: { id: string }) {
           </Button>
         </div>
       )}
-      <Suspense fallback={extractionComplete && view.pages[0] ? (
-        <div className="job-notice" style={{ display: 'block' }}>
-          <p role="status">正在加载题目与公式，原图可先查看。</p>
-          <img src={view.pages[0].previewUrl || view.pages[0].imageUrl}
-            alt="教材第 1 页原图" decoding="async" fetchPriority="high"
-            style={{ display: 'block', maxWidth: '100%', height: '60vh', objectFit: 'contain' }} />
-        </div>
-      ) : <Loading />}>
+      <Suspense
+        fallback={
+          extractionComplete && view.pages[0] ? (
+            <div className="job-notice" style={{ display: 'block' }}>
+              <p role="status">正在加载题目与公式，原图可先查看。</p>
+              <img
+                src={view.pages[0].previewUrl || view.pages[0].imageUrl}
+                alt="教材第 1 页原图"
+                decoding="async"
+                fetchPriority="high"
+                style={{ display: 'block', maxWidth: '100%', height: '60vh', objectFit: 'contain' }}
+              />
+            </div>
+          ) : (
+            <Loading />
+          )
+        }
+      >
         {!extractionComplete && preview && (active || view.actions.resume) && (
           <Review view={view} onChange={refresh} preview />
         )}
@@ -166,6 +188,9 @@ export function WorkspacePage({ id }: { id: string }) {
           <Review view={view} onChange={refresh} />
         )}
       </Suspense>
+      {metadataOpen && (
+        <MetadataDialog view={view} onClose={() => setMetadataOpen(false)} onSaved={refresh} />
+      )}
       {w.status === 'deleting' && <Loading />}
       <Dialog
         open={confirm}

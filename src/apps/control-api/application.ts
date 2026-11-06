@@ -1,8 +1,22 @@
+import {
+  QuestionsController,
+  INSERTION,
+  INSERTION_JOBS,
+} from '../../modules/questions/presentation/questions.controller.js';
+import {
+  ProfileController,
+  PROFILE,
+} from '../../modules/profile/presentation/profile.controller.js';
+import {
+  AssistantController,
+  ASSISTANT,
+} from '../../modules/assistant/presentation/assistant.controller.js';
 import { accessConfig, accessGate } from '../../shared/auth/gate.js';
 import { FileSessionStore } from '../../shared/auth/file-session-store.js';
 import 'reflect-metadata';
 import { WorkspacesModule } from '../../modules/workspaces/workspaces.module.js';
 import {
+  Inject,
   Module,
   Controller,
   Get,
@@ -55,14 +69,16 @@ class Errors implements ExceptionFilter {
 }
 @Controller('api')
 class HealthController {
-  @Get('health') health() {
+  constructor(
+    @Inject(PROFILE)
+    private profile: import('../../modules/profile/application/profile.service.js').ProfileService,
+  ) {}
+  @Get('health') async health() {
+    const config = await this.profile.get();
     return {
       status: 'ok',
       mode: 'single-workspace',
-      modelConfigured: Boolean(
-        (process.env.MODEL_API_KEY || process.env.ARK_API_KEY) &&
-        (process.env.MODEL_NAME || process.env.ARK_MODEL || process.env.VISION_MODEL),
-      ),
+      modelConfigured: Boolean(config.hasApiKey && config.model),
     };
   }
 }
@@ -84,14 +100,19 @@ export async function createApplication(options: AppOptions = {}) {
       JobsModule.register(jobs),
       WorkspacesModule.register(workspaces, workspaceView),
     ],
-    controllers: [HealthController],
+    controllers: [HealthController, ProfileController, AssistantController, QuestionsController],
     providers: [
+      { provide: PROFILE, useValue: services.profile },
+      { provide: INSERTION, useValue: services.insertion },
+      { provide: INSERTION_JOBS, useValue: jobs },
+      { provide: ASSISTANT, useValue: services.assistant },
       {
         provide: 'BACKGROUND_WORK_SHUTDOWN',
         useValue: {
           async onModuleDestroy() {
             await workspaces.shutdown();
             await jobs.shutdown();
+            await services.assistant.shutdown();
           },
         },
       },
@@ -106,9 +127,17 @@ export async function createApplication(options: AppOptions = {}) {
   // Serve build-time Brotli without spending CPU on each request. The whitelist
   // limits this to public hashed assets; API responses and private images bypass it.
   app.use('/assets', (req: Request, res: Response, next: NextFunction) => {
-    if (!/^[\w./-]+$/.test(req.path) || !/^\/[\w-]+\.(js|css)$/.test(req.path) ||
-        !req.acceptsEncodings('br')) return next();
-    const file = path.resolve(process.env.WEB_ROOT ?? './client/dist', 'assets', req.path.slice(1) + '.br');
+    if (
+      !/^[\w./-]+$/.test(req.path) ||
+      !/^\/[\w-]+\.(js|css)$/.test(req.path) ||
+      !req.acceptsEncodings('br')
+    )
+      return next();
+    const file = path.resolve(
+      process.env.WEB_ROOT ?? './client/dist',
+      'assets',
+      req.path.slice(1) + '.br',
+    );
     if (!fs.existsSync(file)) return next();
     res.setHeader('Content-Encoding', 'br');
     res.setHeader('Vary', 'Accept-Encoding');
@@ -116,12 +145,16 @@ export async function createApplication(options: AppOptions = {}) {
     res.type(req.path.endsWith('.css') ? 'text/css' : 'application/javascript');
     res.sendFile(file);
   });
-  app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist'), {
-    setHeaders(res, file) {
-      res.setHeader('Cache-Control', /[/\\]assets[/\\]/.test(file)
-        ? 'public, max-age=31536000, immutable' : 'no-cache');
-    },
-  }));
+  app.use(
+    express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist'), {
+      setHeaders(res, file) {
+        res.setHeader(
+          'Cache-Control',
+          /[/\\]assets[/\\]/.test(file) ? 'public, max-age=31536000, immutable' : 'no-cache',
+        );
+      },
+    }),
+  );
   app.useGlobalFilters(new Errors());
   return { app, ...services };
 }
