@@ -27,6 +27,12 @@ export interface InvocationRecord {
   providerError?: string;
   outputFormat?: string;
   completionStatus?: 'completed' | 'incomplete';
+  outputDiagnostics?: {
+    characters: number;
+    whitespaceCharacters: number;
+    syntaxOffset: number | null;
+    protocol: string;
+  };
   trace?: { system: string; input: unknown; pages: number[]; rawOutput: string | null };
 }
 export interface RunRecords {

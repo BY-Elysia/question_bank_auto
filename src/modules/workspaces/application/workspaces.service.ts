@@ -145,8 +145,14 @@ export class WorkspacesService {
     if (this.runs.has(id)) fail(409, 'Workspace is already running');
     if (!['failed', 'cancelled', 'interrupted'].includes(workspace.status))
       fail(409, 'Workspace is not resumable');
+    const answersOnly =
+      workspace.mergedRevision !== null &&
+      book.workspaceCommit === workspace.runId &&
+      book.document.processedPages.length === book.pages.length &&
+      workspace.chapters.every((c) => ['completed', 'needs_review'].includes(c.status));
     if (
       workspace.settings &&
+      !answersOnly &&
       book.revision !==
         (book.workspaceCommit === workspace.runId
           ? workspace.baseRevision + 1
@@ -156,6 +162,10 @@ export class WorkspacesService {
     await this.workspaces.update(id, (w) => {
       if (!['failed', 'cancelled', 'interrupted'].includes(w.status))
         fail(409, 'Workspace is already running');
+      if (answersOnly) {
+        w.baseRevision = book.revision - 1;
+        w.mergedRevision = book.revision;
+      }
       w.status = w.settings ? 'extracting' : 'preparing';
       w.error = null;
     });

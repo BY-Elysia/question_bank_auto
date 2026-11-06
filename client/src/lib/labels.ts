@@ -9,6 +9,9 @@ export const kindNames: Record<string, string> = {
   answer: '答案',
 };
 export const statusLabels: Record<string, string> = {
+  answers_failed: '提取完成 · 答案中断',
+  answers_running: '提取完成 · 补答案中',
+  answers_partial: '答案补全待校对',
   preparing: '准备图片',
   ready: '待配置',
   extracting: '提取中',

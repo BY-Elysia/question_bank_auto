@@ -5,8 +5,9 @@ export function invocationTrace(
   input: unknown,
   pages: number[],
   rawOutput: string | null,
+  force = false,
 ): Pick<InvocationRecord, 'trace'> {
-  return process.env.MODEL_TRACE === '1'
+  return force || process.env.MODEL_TRACE === '1'
     ? { trace: { system, input, pages: [...new Set(pages)], rawOutput } }
     : {};
 }

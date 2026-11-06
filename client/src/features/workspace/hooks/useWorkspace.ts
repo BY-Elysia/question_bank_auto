@@ -16,7 +16,8 @@ export function useWorkspace(id: string) {
     [history, setHistory] = useState<number[] | null>(null),
     [revision, setRevision] = useState(0);
   const w = view?.workspace;
-  const { active, runningJob, canExport, step } = workspaceState(view);
+  const { active, runningJob, canExport, step, extractionComplete, answerFailed } =
+    workspaceState(view);
   async function command(name: 'cancel' | 'resume') {
     await action.run(async () => {
       await workspaceApi.command(id, name);
@@ -63,6 +64,8 @@ export function useWorkspace(id: string) {
     runningJob,
     canExport,
     step,
+    extractionComplete,
+    answerFailed,
     command,
     download,
     openHistory,

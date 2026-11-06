@@ -1,3 +1,4 @@
+import { checkpointAnswer } from './answer-checkpoint.js';
 import { auditTranscription } from './transcription-audit.js';
 import { fillAnswers } from './answer-workflow.js';
 import { randomUUID } from 'node:crypto';
@@ -109,7 +110,15 @@ export class ReviewWorkflow {
           }
         }
       } else if (kind === 'answers' && content.question) {
-        const question = content.question;
+        const pending = book.proposals.find(
+          (p) =>
+            p.status === 'pending' &&
+            p.reason === 'answers' &&
+            p.contentId === content.id &&
+            JSON.stringify(p.before) === JSON.stringify(content),
+        );
+        const answerBase = pending?.after ?? content;
+        const question = answerBase.question!;
         const targets: (number | null)[] =
           question.type === 'group'
             ? question.children.flatMap((c, i) => (missingAnswer(c) ? [i] : []))
@@ -119,15 +128,27 @@ export class ReviewWorkflow {
         if (targets.length) {
           const result = await fillAnswers(
             this.skills,
-            content,
+            answerBase,
             targets,
             book.document.contents.filter((c) => c.kind === 'answer'),
             context,
             job.request.answerMode !== 'extract_visible' &&
               job.request.answerMode !== 'leave_empty',
+            async (candidate) => {
+              context.signal.throwIfAborted();
+              await checkpointAnswer(
+                this.store,
+                book.id,
+                job.id,
+                job.baseRevision,
+                content,
+                candidate,
+              );
+            },
           );
           issues = result.issues;
-          after = result.after;
+          // Answer candidates are already durable per leaf.
+          after = null;
         }
       }
       if (after && contentProblems(after).length)

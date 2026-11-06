@@ -37,6 +37,8 @@ export function WorkspacePage({ id }: { id: string }) {
     runningJob,
     canExport,
     step,
+    extractionComplete,
+    answerFailed,
     command,
     download,
     openHistory,
@@ -71,7 +73,15 @@ export function WorkspacePage({ id }: { id: string }) {
           </p>
         </div>
         <div className="workspace-tools">
-          <Status status={w.status} />
+          <Status
+            status={
+              answerFailed
+                ? 'answers_failed'
+                : extractionComplete && active
+                  ? 'answers_running'
+                  : w.status
+            }
+          />
           {view.actions.cancel && (
             <Button variant="outline" disabled={action.busy} onClick={() => command('cancel')}>
               <Pause size={14} />
@@ -81,7 +91,7 @@ export function WorkspacePage({ id }: { id: string }) {
           {view.actions.resume && (
             <Button disabled={action.busy} onClick={() => command('resume')}>
               <RotateCcw size={14} />
-              恢复处理
+              {extractionComplete ? '继续补全答案' : '恢复处理'}
             </Button>
           )}
           {canExport && (
@@ -121,12 +131,20 @@ export function WorkspacePage({ id }: { id: string }) {
       <ErrorNote>{error || action.error}</ErrorNote>
       {w.error && (
         <div className="error-note" role="alert">
-          {w.error}
+          {answerFailed
+            ? '题目提取已完成，答案补全已中断。已生成的候选与进度已保存，可继续补全答案。'
+            : w.error}
         </div>
       )}
       {w.status === 'ready' && <Configure view={view} onDone={refresh} />}
-      {active && <Processing view={view} />}
-      {(active || view.actions.resume) && !!view.chapters.length && (
+      {extractionComplete && (
+        <p className="job-notice">
+          题目提取已完成 · {view.document.processedPages.length}{' '}
+          页。答案补全单独处理，候选需确认后进入正式导出。
+        </p>
+      )}
+      {active && !extractionComplete && <Processing view={view} />}
+      {!extractionComplete && (active || view.actions.resume) && !!view.chapters.length && (
         <div className="preview-toggle">
           <Button variant="outline" onClick={() => setPreview((v) => !v)}>
             {preview ? '收起' : '查看'}已提取内容预览
@@ -134,10 +152,10 @@ export function WorkspacePage({ id }: { id: string }) {
         </div>
       )}
       <Suspense fallback={<Loading />}>
-        {preview && (active || view.actions.resume) && (
+        {!extractionComplete && preview && (active || view.actions.resume) && (
           <Review view={view} onChange={refresh} preview />
         )}
-        {!active && !view.actions.resume && view.revision > 0 && (
+        {(extractionComplete || (!active && !view.actions.resume)) && view.revision > 0 && (
           <Review view={view} onChange={refresh} />
         )}
       </Suspense>

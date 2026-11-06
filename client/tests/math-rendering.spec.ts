@@ -149,3 +149,44 @@ test('Reference exercise options render fractions, limits and roots in block and
   }
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Answer failure shows completed extraction and formal review instead of failed extraction preview', async ({
+  page,
+}) => {
+  const id = await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    const response = await route.fetch();
+    const view = await response.json();
+    view.workspace.status = 'failed';
+    view.workspace.mergedRevision = 1;
+    view.workspace.answersJobId = 'failed-answers';
+    view.workspace.error = 'The operation was aborted due to timeout';
+    view.revision = 1;
+    view.document.processedPages = [1];
+    view.document.contents = contents;
+    view.actions = { ...view.actions, resume: true, review: true, export: true };
+    view.jobs = [
+      {
+        id: 'failed-answers',
+        kind: 'answers',
+        status: 'failed',
+        error: 'The operation was aborted due to timeout',
+        issues: [],
+        supersededBy: null,
+        processedIds: [],
+        request: { cache: 'prefix' },
+      },
+    ];
+    await route.fulfill({ json: view });
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '每一处细节，都可以核对。' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '继续补全答案' })).toBeVisible();
+  await expect(page.getByText('题目提取已完成，答案补全已中断。', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '提取预览' })).toHaveCount(0);
+  await expect(page.locator('.steps > div').nth(3)).toHaveClass('current');
+  await expect(
+    page.getByText('The operation was aborted due to timeout', { exact: true }),
+  ).toHaveCount(0);
+  await page.request.delete(`/api/workspaces/${id}`);
+});

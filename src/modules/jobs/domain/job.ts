@@ -33,6 +33,8 @@ export const Job = z.strictObject({
     'interrupted',
   ]),
   request: JobRequest,
+  answerWorkflowVersion: z.number().int().positive().default(1),
+  supersededBy: Id.nullable().default(null),
   phase: z.enum(['parse', 'review']),
   baseRevision: z.number().int(),
   cursor: z.number().int(),

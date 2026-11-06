@@ -83,6 +83,7 @@ export class ExtractionRunner {
       });
       await this.finishJob(id, job.id, signal, id, resume);
     }
+    current = await this.workspaces.read(id);
     const final = await this.store.read(id);
     signal.throwIfAborted();
     await this.workspaces.update(id, (w) => {
@@ -157,6 +158,11 @@ export class ExtractionRunner {
     let job = await this.jobs.get(bookId, jobId);
     if (resume && ['failed', 'cancelled', 'interrupted'].includes(job.status))
       job = await this.jobs.resume(bookId, jobId, owner);
+    jobId = job.id;
+    if (owner === bookId && job.kind === 'answers')
+      await this.workspaces.update(owner, (w) => {
+        w.answersJobId = job.id;
+      });
     const abort = () => {
       void this.jobs.cancel(bookId, jobId).catch(() => {});
     };

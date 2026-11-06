@@ -7,6 +7,9 @@ export interface SkillContext {
 }
 export interface OutputContract {
   schema: z.ZodType;
+  /** Bounded text envelope; identity and JSON serialization remain backend-owned. */
+  parseText?(text: string): unknown;
+  maxOutputTokens?: number;
   instructions: string;
   encode?(value: unknown): unknown;
   decode(value: unknown): unknown;

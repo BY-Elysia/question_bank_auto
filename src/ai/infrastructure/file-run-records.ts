@@ -34,6 +34,9 @@ export class FileRunRecords implements RunRecords {
     }
   }
   async record(bookId: string, jobId: string, record: InvocationRecord) {
-    await atomicJson(this.file(bookId, jobId, record.id), record, 0o600);
+    const file = this.file(bookId, jobId, record.id);
+    await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+    await fs.chmod(path.dirname(file), 0o700);
+    await atomicJson(file, record, 0o600);
   }
 }

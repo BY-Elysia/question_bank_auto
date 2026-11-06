@@ -1,9 +1,9 @@
 {
   "id": "answer-generate",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "补全缺失答案及必要解析",
   "modelRole": "reasoning",
   "allowedTools": [],
   "status": "implemented",
-  "maxStructuredAttempts": 2
+  "maxStructuredAttempts": 1
 }

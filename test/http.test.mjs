@@ -23,7 +23,10 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
         return { text: 'not JSON', usage: null, model: 'test-vision' };
       }
       return {
-        text: JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
+        text:
+          id === 'answer-generate'
+            ? '<<<ANSWER>>>\n42\n<<<EXPLANATION>>>\nSteps\n<<<END>>>'
+            : JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: { total_tokens: 10 },
         model: 'test-vision',
       };
@@ -62,7 +65,9 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
   assert.equal(state.pages[1].status, 'processed');
   assert.equal(state.proposals.length, 1);
   assert.ok(requests.some((r) => r.input.validationFeedback.includes('未通过')));
-  assert.ok(requests.every((r) => r.system.includes('JSON Schema')));
+  assert.ok(
+    requests.every((r) => r.system.includes('JSON Schema') || r.system.includes('<<<ANSWER>>>')),
+  );
   assert.ok(
     requests.some(
       (r) => r.images.length === 2 && r.images[0].url.startsWith('data:image/png;base64,'),

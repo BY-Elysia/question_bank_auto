@@ -12,6 +12,7 @@ export const reviewApi = {
       cache: 'prefix' | 'off';
     },
   ) => write(url(id) + '/jobs', input),
+  resumeWorkspace: (id: string) => write(`/workspaces/${encodeURIComponent(id)}/resume`),
   command: (id: string, jobId: string, command: 'cancel' | 'resume') =>
     write(url(id) + `/jobs/${encodeURIComponent(jobId)}/${command}`),
   decide: (

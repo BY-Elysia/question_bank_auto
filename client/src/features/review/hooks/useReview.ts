@@ -52,7 +52,9 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
   }
   const commandJob = (jobId: string, command: 'cancel' | 'resume') =>
     action.run(async () => {
-      await reviewApi.command(view.workspace.id, jobId, command);
+      if (command === 'resume' && view.actions.resume && jobId === view.workspace.answersJobId)
+        await reviewApi.resumeWorkspace(view.workspace.id);
+      else await reviewApi.command(view.workspace.id, jobId, command);
       onChange();
     });
   const decide = (id: string, decision: 'accept' | 'reject') => {
