@@ -272,3 +272,32 @@ test('Completed workspace fills source width by default and can switch to full p
   expect((await page.locator('.page-image:visible').boundingBox())!.width).toBeCloseTo(source!.width, 0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Workspace stays within the screen with long titles, narrow windows and enlarged source images', async ({page}) => {
+  const id=await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async route => {
+    const view=await (await route.fetch()).json();
+    if (!view.workspace) return route.fulfill({json:view});
+    view.workspace.title='很长的教材名称'.repeat(35);
+    view.workspace.status='needs_review';view.workspace.mergedRevision=1;
+    view.document.processedPages=[1];view.document.contents=contents;
+    view.revision=1;view.actions.review=true;view.actions.export=true;
+    await route.fulfill({json:view});
+  });
+  await page.reload();
+  await page.getByRole('heading',{name:'每一处细节，都可以核对。'}).waitFor();
+  for(const width of [1920,1440,1280,1024,900,768,760,390,320]) {
+    await page.setViewportSize({width,height:1000});
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(()=>document.body.scrollWidth)).toBeLessThanOrEqual(width);
+    for(const name of ['JSON','导出资料包']) {
+      const box=await page.getByRole('button',{name,exact:true}).boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width+1);
+    }
+  }
+  await page.getByRole('button',{name:'放大',exact:true}).click();
+  await page.getByRole('button',{name:'放大',exact:true}).click();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.request.delete(`/api/workspaces/${id}`);
+});
