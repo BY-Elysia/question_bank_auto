@@ -22,7 +22,9 @@ export function PageCanvas({
     [boxes, setBoxes] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const current = pages.find((p) => p.number === page);
+  const [retained, setRetained] = useState({ page, pages: [page] });
+  if (retained.page !== page)
+    setRetained({ page, pages: [...retained.pages.filter(n => n !== page), page].slice(-3) });
   return (
     <section className="canvas-panel">
       <div className="canvas-toolbar">
@@ -72,18 +74,21 @@ export function PageCanvas({
         onPointerUp={() => (drag.current = null)}
         onPointerCancel={() => (drag.current = null)}
       >
-        {current && (
+        {retained.pages.map(n => {
+          const current = pages.find(p => p.number === n);
+          return current && <div key={current.imageUrl} hidden={n !== page}>
           <PageImage
             key={current.imageUrl}
             current={current}
-            nextUrl={pages.find((p) => p.number === page + 1)?.previewUrl}
+            nextUrl={n === page ? pages.find((p) => p.number === page + 1)?.previewUrl : undefined}
             zoom={zoom}
             boxes={boxes}
-            contents={contents}
+            contents={n === page ? contents : []}
             selected={selected}
             onSelect={onSelect}
           />
-        )}
+          </div>;
+        })}
       </div>
       <div className="canvas-footer">
         <label>

@@ -61,7 +61,7 @@ test('Page previews reserve layout, preload only the next page, and retain visib
   });
   const id = await openBook(page);
   await expect(page.getByText('正在加载页图…')).toBeVisible();
-  const canvas = page.locator('.page-image');
+  const canvas = page.locator('.page-image:visible');
   const before = await canvas.boundingBox();
   expect(before!.height / before!.width).toBeCloseTo(1.5, 2);
   await expect(page.locator('.source-box')).toHaveCount(0);
@@ -80,7 +80,7 @@ test('Page previews reserve layout, preload only the next page, and retain visib
   await expect(page.getByText('正在加载高清图…')).toBeVisible();
   await expect(preview).toHaveCSS('opacity', '1');
   releaseDetail();
-  await expect(page.locator('.page-image-detail')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.page-image-detail:visible')).toHaveCSS('opacity', '1');
   await expect(page.getByText('正在加载高清图…')).toHaveCount(0);
   const box = await page.locator('.source-box').boundingBox();
   const image = await canvas.boundingBox();
@@ -89,7 +89,10 @@ test('Page previews reserve layout, preload only the next page, and retain visib
   await page.getByRole('button', { name: '适应画布', exact: true }).click();
   await page.getByRole('button', { name: '下一页', exact: true }).click();
   await expect(page.getByRole('img', { name: '教材第 2 页原图' })).toHaveCSS('opacity', '1');
-  await expect(page.locator('.page-image-detail')).toHaveCount(0);
+  await expect(page.locator('.page-image-detail:visible')).toHaveCount(0);
+  await page.getByRole('button', { name: '上一页', exact: true }).click();
+  await expect(page.getByRole('img', { name: '教材第 1 页原图' })).toBeVisible();
+  await expect(page.locator('.page-image-detail:visible')).toHaveCSS('opacity', '1');
   await page.screenshot({ path: testInfo.outputPath('preview-loaded.png'), fullPage: true });
   await page.request.delete(`/api/workspaces/${id}`);
 });
@@ -115,10 +118,10 @@ test('Preview failure falls back to PNG; image errors retry in place and do not 
   await expect(page.getByText('高清图加载失败')).toBeVisible();
   await expect(preview).toHaveCSS('opacity', '1');
   await page.getByRole('button', { name: '重试', exact: true }).click();
-  await expect(page.locator('.page-image-detail')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.page-image-detail:visible')).toHaveCSS('opacity', '1');
   expect(originalAttempts).toBe(2);
   await page.getByRole('button', { name: '下一页', exact: true }).click();
-  await expect(page.locator('.page-image')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.page-image:visible')).toHaveAttribute('aria-busy', 'false');
   await expect(page.getByText('页图加载失败')).toHaveCount(0);
   await expect(page.getByText('高清图加载失败')).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);

@@ -151,7 +151,14 @@ export function WorkspacePage({ id }: { id: string }) {
           </Button>
         </div>
       )}
-      <Suspense fallback={<Loading />}>
+      <Suspense fallback={extractionComplete && view.pages[0] ? (
+        <div className="job-notice" style={{ display: 'block' }}>
+          <p role="status">正在加载题目与公式，原图可先查看。</p>
+          <img src={view.pages[0].previewUrl || view.pages[0].imageUrl}
+            alt="教材第 1 页原图" decoding="async" fetchPriority="high"
+            style={{ display: 'block', maxWidth: '100%', height: '60vh', objectFit: 'contain' }} />
+        </div>
+      ) : <Loading />}>
         {!extractionComplete && preview && (active || view.actions.resume) && (
           <Review view={view} onChange={refresh} preview />
         )}
