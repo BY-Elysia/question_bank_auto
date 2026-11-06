@@ -15,6 +15,10 @@ export class WorkspaceView {
       resumable = ['failed', 'interrupted', 'cancelled'].includes(workspace.status);
     const chapters = await Promise.all(
       workspace.chapters.map(async (chapter) => {
+        if (!includePreview && ['completed', 'needs_review'].includes(chapter.status))
+          return { ...chapter, cursor: chapter.pages.length + 1,
+            processedPages: chapter.pages.length, preview: null,
+            imageUrls: chapter.pages.map((n) => `/api/textbooks/${id}/pages/${n}/image`) };
         let child;
         try {
           child = await this.books.read(chapter.bookId);
@@ -43,7 +47,7 @@ export class WorkspaceView {
       })),
       revision: book.revision,
       document: book.document,
-      proposals: book.proposals,
+      proposals: book.proposals.filter((p) => p.status === 'pending'),
       jobs: book.jobs.map(({ stage, ...job }) => job),
       chapters,
       sourceUrl: book.sourceKind === 'pdf' ? `/api/textbooks/${id}/source` : null,

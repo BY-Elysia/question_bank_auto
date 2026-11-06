@@ -16,6 +16,7 @@ export function useResource<T>(
       pending = false,
       failures = 0;
     let latest: T | undefined;
+    let previousPayload: string | undefined;
     let controller: AbortController | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const available = () => !disposed && document.visibilityState !== 'hidden' && navigator.onLine;
@@ -39,7 +40,13 @@ export function useResource<T>(
         if (!disposed && !signal.aborted && !pending) {
           latest = result;
           failures = 0;
-          setData(result);
+          // Polling often returns identical documents; preserve object identity so
+          // math previews and source overlays do not render again on every poll.
+          const payload = JSON.stringify(result);
+          if (payload !== previousPayload) {
+            previousPayload = payload;
+            setData(result);
+          }
           setError('');
         }
       } catch (e) {

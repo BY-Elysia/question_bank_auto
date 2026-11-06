@@ -101,7 +101,12 @@ export async function createApplication(options: AppOptions = {}) {
   app.use(accessGate(access, sessions));
   app.use(express.raw({ type: 'application/pdf', limit: process.env.MAX_UPLOAD_SIZE ?? '100mb' }));
   app.use(express.json({ limit: '20mb' }));
-  app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist')));
+  app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist'), {
+    setHeaders(res, file) {
+      res.setHeader('Cache-Control', /[/\\]assets[/\\]/.test(file)
+        ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  }));
   app.useGlobalFilters(new Errors());
   return { app, ...services };
 }
