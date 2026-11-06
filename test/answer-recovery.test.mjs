@@ -200,3 +200,15 @@ test('Cancellation after a saved group leaf resumes only missing leaves', async 
   assert.equal(final[0].id, saved.id);
   assert.ok(final[0].after.question.children.every((q) => q.answer));
 });
+
+test('Derivation-first answers decode without guessed-answer anchoring; repeated draft corrections are rejected', () => {
+  const c = answerOutput(2);
+  const output = String.raw`<<<EXPLANATION>>>
+洛必达法则给出 $\lim_{x\to0}\frac{1}{3(1+x^2)}=\frac{1}{3}$。
+<<<ANSWER>>>
+$\frac{1}{3}$
+<<<END>>>`;
+  assert.equal(c.decode(c.parseText(output)).answers[0].text, String.raw`$\frac{1}{3}$`);
+  const draft = output.replace('洛必达法则', '不对，等下，我之前错记了，重新来。洛必达法则');
+  assert.throws(() => c.parseText(draft), /self-correction/);
+});

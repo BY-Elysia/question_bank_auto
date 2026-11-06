@@ -190,3 +190,58 @@ test('Answer failure shows completed extraction and formal review instead of fai
   ).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Historical answer findings clear only after the same content is processed again', async ({
+  page,
+}) => {
+  const id = await openFixture(page);
+  let processed = false;
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    const view = await (await route.fetch()).json();
+    view.workspace.status = 'needs_review';
+    view.revision = 1;
+    view.document.contents = contents;
+    view.actions.review = true;
+    const common = {
+      kind: 'answers',
+      baseRevision: 1,
+      request: {},
+      supersededBy: null,
+      error: null,
+    };
+    view.jobs = [
+      {
+        ...common,
+        id: 'old',
+        status: 'needs_review',
+        processedIds: [contents[0].id],
+        issues: [
+          {
+            code: 'ANSWER_INVALID_MATH',
+            message: '旧答案公式未完成',
+            contentId: contents[0].id,
+            page: 1,
+            severity: 'warning',
+          },
+        ],
+      },
+      {
+        ...common,
+        id: 'new',
+        status: 'needs_review',
+        processedIds: processed ? [contents[0].id] : [],
+        issues: [],
+      },
+    ];
+    await route.fulfill({ json: view });
+  });
+  await page.reload();
+  await page.getByRole('button', { name: /问题记录/ }).click();
+  await expect(page.getByText('旧答案公式未完成')).toBeVisible();
+  processed = true;
+  await page.reload();
+  await page.getByRole('button', { name: /问题记录/ }).click();
+  await expect(page.getByText('旧答案公式未完成')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /问题记录/ })).toContainText('0');
+  await page.request.delete(`/api/workspaces/${id}`);
+});

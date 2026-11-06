@@ -155,7 +155,7 @@ export async function fillAnswers(
           severity: 'warning',
           page: pages[0] ?? null,
           contentId: content.id,
-          message: '生成答案不是有效选项，未写入候选。',
+          message: `${childIndex === null ? '整题' : `小问 ${childIndex + 1}`}：生成答案不是有效选项，未写入候选。`,
         });
         continue;
       }
@@ -166,7 +166,7 @@ export async function fillAnswers(
           severity: 'warning',
           page: pages[0] ?? null,
           contentId: content.id,
-          message: '生成公式未通过校验，未写入候选。',
+          message: `${childIndex === null ? '整题' : `小问 ${childIndex + 1}`}：生成公式不完整或含异常字符，未写入候选。`,
         });
         continue;
       }

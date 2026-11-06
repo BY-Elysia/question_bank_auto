@@ -6,10 +6,10 @@ export function answerOutput(childIndex: number | null): OutputContract {
     schema: Result,
     maxOutputTokens: 4096,
     instructions: `本次只解一个目标。不要输出 JSON、代码围栏或反复试错过程。LaTeX 直接使用普通单反斜杠，不作 JSON 转义。只选择以下一个格式，各标记独占一行：
-<<<ANSWER>>>
-简短最终答案（证明题写结论）
 <<<EXPLANATION>>>
-必要且完整的推导，公式用 $...$ 或 $$...$$
+先完成必要且完整的推导，公式用 $...$ 或 $$...$$
+<<<ANSWER>>>
+最后给出与上述推导一致的简短最终答案（证明题写结论）
 <<<END>>>
 若原图与输入题干不一致、条件不足或无法可靠完成，停止解题，改用：
 <<<ISSUE>>>
@@ -20,10 +20,19 @@ export function answerOutput(childIndex: number | null): OutputContract {
       if (raw.length > 32000 || /[\t ]{100}|\n{20}/u.test(raw))
         throw new Error('Degenerate answer output');
       const text = raw.trim();
+      if ((text.match(/不对|等下|我之前|重新来/gu)?.length ?? 0) >= 3)
+        throw new Error('Unresolved self-correction draft');
       const markers = text.match(/^<<<[A-Z]+>>>\r?$/gm) ?? [];
       const issue = text.match(/^<<<ISSUE>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/);
       if (issue && markers.length === 2)
         return { text: '', explanation: '', issue: issue[1]!.trim() };
+      // Read legacy records as well; new requests derive first to avoid anchoring
+      // the model on a guessed answer before it has completed the calculation.
+      const derived = text.match(
+        /^<<<EXPLANATION>>>\r?\n([\s\S]+?)\r?\n<<<ANSWER>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
+      );
+      if (derived && markers.length === 3 && derived[1]!.trim() && derived[2]!.trim())
+        return { text: derived[2]!.trim(), explanation: derived[1]!.trim(), issue: '' };
       const answer = text.match(
         /^<<<ANSWER>>>\r?\n([\s\S]+?)\r?\n<<<EXPLANATION>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
       );

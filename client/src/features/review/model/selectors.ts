@@ -12,7 +12,25 @@ export function reviewState(view: WorkspaceView, preview: boolean, page: number,
     (c.question?.prompt ?? c.text).toLowerCase().includes(query.toLowerCase()),
   );
   const pending = view.proposals.filter((p) => p.status === 'pending');
-  const jobs = view.jobs;
+  // Keep historical findings in storage, but a later completed review of the
+  // same content owns its current findings. Never clear on merely starting a run.
+  const jobs = view.jobs
+    .filter((job) => !job.supersededBy)
+    .map((job, index, all) => ({
+      ...job,
+      issues: job.issues.filter(
+        (issue) =>
+          !issue.contentId ||
+          !all
+            .slice(index + 1)
+            .some(
+              (newer) =>
+                newer.kind === job.kind &&
+                newer.baseRevision === job.baseRevision &&
+                newer.processedIds.includes(issue.contentId!),
+            ),
+      ),
+    }));
   const activeJob = jobs.some((j) => ['running', 'queued'].includes(j.status));
   const editable = !preview && view.actions.review && !activeJob;
   const issues = [
