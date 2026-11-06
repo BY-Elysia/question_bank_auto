@@ -14,6 +14,8 @@ import {
 import { NestFactory } from '@nestjs/core';
 import express from 'express';
 import path from 'node:path';
+import fs from 'node:fs';
+import type { Request, NextFunction } from 'express';
 import type { Response } from 'express';
 import { DomainError } from '../../shared/errors.js';
 import { ZodError } from 'zod';
@@ -101,6 +103,19 @@ export async function createApplication(options: AppOptions = {}) {
   app.use(accessGate(access, sessions));
   app.use(express.raw({ type: 'application/pdf', limit: process.env.MAX_UPLOAD_SIZE ?? '100mb' }));
   app.use(express.json({ limit: '20mb' }));
+  // Serve build-time Brotli without spending CPU on each request. The whitelist
+  // limits this to public hashed assets; API responses and private images bypass it.
+  app.use('/assets', (req: Request, res: Response, next: NextFunction) => {
+    if (!/^[\w./-]+$/.test(req.path) || !/^\/[\w-]+\.(js|css)$/.test(req.path) ||
+        !req.acceptsEncodings('br')) return next();
+    const file = path.resolve(process.env.WEB_ROOT ?? './client/dist', 'assets', req.path.slice(1) + '.br');
+    if (!fs.existsSync(file)) return next();
+    res.setHeader('Content-Encoding', 'br');
+    res.setHeader('Vary', 'Accept-Encoding');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.type(req.path.endsWith('.css') ? 'text/css' : 'application/javascript');
+    res.sendFile(file);
+  });
   app.use(express.static(path.resolve(process.env.WEB_ROOT ?? './client/dist'), {
     setHeaders(res, file) {
       res.setHeader('Cache-Control', /[/\\]assets[/\\]/.test(file)
