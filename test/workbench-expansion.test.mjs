@@ -327,3 +327,59 @@ test('Insertion normalizes a pure choice heading without another model call and 
     ['1', '2', '3', '4', '5'],
   );
 });
+
+test('Assistant configuration is isolated from textbook credentials, persists and drives assistant requests', async (t) => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    for await (const chunk of req) {
+    }
+    requests.push({ url: req.url, authorization: req.headers.authorization });
+    res.setHeader('Content-Type', 'application/json');
+    res.end(
+      JSON.stringify({
+        choices: [{ message: { content: 'independent assistant' }, finish_reason: 'stop' }],
+      }),
+    );
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => server.close(r)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const app = await fixture(t);
+  const initial = await app.assistantConfiguration.get();
+  assert.equal(initial.hasApiKey, false);
+  const config = {
+    baseUrl: base + '/assistant',
+    apiKey: 'assistant-test-key',
+    model: 'assistant-model',
+    visionModel: '',
+    protocol: 'chat',
+    prefixCache: false,
+  };
+  await app.profile.save({
+    ...config,
+    baseUrl: base + '/textbook',
+    apiKey: 'textbook-test-key',
+    model: 'textbook-model',
+  });
+  assert.equal((await app.assistantConfiguration.get()).hasApiKey, false);
+  const saved = await fetch(app.base + '/api/assistant/model', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  assert.equal(saved.status, 200);
+  assert.equal('apiKey' in (await saved.json()), false);
+  const c = await app.assistant.create();
+  await app.assistant.send(c.id, 'test independent config');
+  await app.assistant.wait(c.id);
+  assert.equal((await app.assistant.get(c.id)).messages[1].content, 'independent assistant');
+  assert.equal(requests[0].url, '/assistant/chat/completions');
+  assert.equal(requests[0].authorization, 'Bearer assistant-test-key');
+  assert.equal((await app.profile.get()).model, 'textbook-model');
+  const disk = JSON.parse(
+    await fs.readFile(path.join(app.root, 'profile', 'assistant-model.json')),
+  );
+  assert.equal(disk.model, 'assistant-model');
+  assert.equal((await app.assistantConfiguration.test({ ...config, apiKey: '' })).ok, true);
+  assert.equal(requests.at(-1).authorization, 'Bearer assistant-test-key');
+});

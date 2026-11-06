@@ -4,7 +4,7 @@ export { ModelSettingsInput };
 export const ModelSettingsView = z
   .object({ ...ModelSettingsInput.shape })
   .omit({ apiKey: true })
-  .extend({ hasApiKey: z.boolean() });
+  .extend({ baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean() });
 export const ModelTestResult = z.object({
   ok: z.boolean(),
   durationMs: z.number(),
@@ -25,6 +25,23 @@ export const UsageSummary = z.object({
   assistant: UsageTotal,
 });
 export const profileRoutes = [
+  ['get', '/api/assistant/model', 'getAssistantModelSettings', null, 'ModelSettingsView', 200],
+  [
+    'put',
+    '/api/assistant/model',
+    'saveAssistantModelSettings',
+    'ModelSettingsInput',
+    'ModelSettingsView',
+    200,
+  ],
+  [
+    'post',
+    '/api/assistant/model/test',
+    'testAssistantModelSettings',
+    'ModelSettingsInput',
+    'ModelTestResult',
+    201,
+  ],
   ['get', '/api/profile/model', 'getModelSettings', null, 'ModelSettingsView', 200],
   [
     'put',

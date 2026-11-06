@@ -126,3 +126,36 @@ test('Model settings refresh cannot overwrite an unsaved draft', async ({ page }
   await expect.poll(() => calls).toBeGreaterThan(1);
   await expect(page.getByLabel('API 基础地址')).toHaveValue('https://my-draft.test/v1');
 });
+
+test('Home loads without textbook tools; sidebar has no create action; assistant settings are scoped', async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on('request', (r) => requests.push(r.url()));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '教材库', exact: true })).toBeVisible();
+  await expect(page.locator('.app-sidebar').getByText('新建工作区', { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole('button', { name: '新建工作区', exact: true }).first()).toBeVisible();
+  expect(
+    requests.some((u) => /\/assets\/(Workspace-|UploadDialog-|RichText-|Review-|dialog-)/.test(u)),
+  ).toBe(false);
+  expect(requests.filter((u) => u.endsWith('/api/access/session'))).toHaveLength(1);
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '今天，想聊些什么？' })).toBeVisible();
+  await expect(page.locator('.chat-composer')).toBeVisible();
+  await page.getByRole('button', { name: '模型设置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '助手模型设置', exact: true })).toBeVisible();
+  await page.getByLabel('API 基础地址').fill('https://assistant.example/v1');
+  await page.getByLabel('API Key').fill('independent-test');
+  await page.getByLabel('推理／对话模型').fill('assistant-only');
+  await page.getByRole('button', { name: '保存配置', exact: true }).click();
+  await expect(page.getByText('模型配置已保存')).toBeVisible();
+  const config = await (await page.request.get('/api/profile/model')).json();
+  expect(config.model).not.toBe('assistant-only');
+  await page.getByRole('button', { name: '返回对话', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.chat-composer')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

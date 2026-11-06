@@ -1,4 +1,8 @@
 import {
+  AssistantModelController,
+  ASSISTANT_MODEL,
+} from '../../modules/profile/presentation/assistant-model.controller.js';
+import {
   QuestionsController,
   INSERTION,
   INSERTION_JOBS,
@@ -100,8 +104,15 @@ export async function createApplication(options: AppOptions = {}) {
       JobsModule.register(jobs),
       WorkspacesModule.register(workspaces, workspaceView),
     ],
-    controllers: [HealthController, ProfileController, AssistantController, QuestionsController],
+    controllers: [
+      AssistantModelController,
+      HealthController,
+      ProfileController,
+      AssistantController,
+      QuestionsController,
+    ],
     providers: [
+      { provide: ASSISTANT_MODEL, useValue: services.assistantConfiguration },
       { provide: PROFILE, useValue: services.profile },
       { provide: INSERTION, useValue: services.insertion },
       { provide: INSERTION_JOBS, useValue: jobs },

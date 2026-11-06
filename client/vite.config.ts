@@ -34,7 +34,7 @@ export default defineConfig({
             {
               tag: 'script',
               injectTo: 'head-prepend',
-              children: `(()=>{const m=location.hash.match(/^#\\/workspace\\/([a-zA-Z0-9-]+)$/);if(!m)return;const add=(rel,href,as)=>{const l=document.createElement('link');l.rel=rel;l.href=href;if(as)l.as=as;if(as==='font'){l.type='font/woff2';l.crossOrigin='anonymous';}document.head.appendChild(l);};add('modulepreload',${JSON.stringify('/' + app.fileName)});fetch('/api/workspaces/'+m[1]+'/readiness').then(r=>r.ok?r.json():null).then(v=>{if(!v?.reviewReady)return;add('modulepreload',${JSON.stringify('/' + review?.fileName)});add('modulepreload',${JSON.stringify('/' + richText?.fileName)});${JSON.stringify(styles)}.forEach(s=>add('stylesheet','/'+s));${JSON.stringify(fonts)}.forEach(s=>add('preload','/'+s,'font'));}).catch(()=>{});})()`,
+              children: `(()=>{const m=location.hash.match(/^#\\/workspace\\/([a-zA-Z0-9-]+)$/);const add=(rel,href,as)=>{const l=document.createElement('link');l.rel=rel;l.href=href;if(as)l.as=as;if(as==='font'){l.type='font/woff2';l.crossOrigin='anonymous';}document.head.appendChild(l);};add('modulepreload',${JSON.stringify('/' + app.fileName)});if(!m)return;fetch('/api/workspaces/'+m[1]+'/readiness').then(r=>r.ok?r.json():null).then(v=>{if(!v?.reviewReady)return;add('modulepreload',${JSON.stringify('/' + review?.fileName)});add('modulepreload',${JSON.stringify('/' + richText?.fileName)});${JSON.stringify(styles)}.forEach(s=>add('stylesheet','/'+s));${JSON.stringify(fonts)}.forEach(s=>add('preload','/'+s,'font'));}).catch(()=>{});})()`,
             },
           ];
         },

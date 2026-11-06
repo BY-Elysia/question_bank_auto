@@ -1,34 +1,25 @@
 import { request, write } from '@/shared/api/http';
-export interface ModelConfig {
-  baseUrl: string;
-  apiKey?: string;
-  model: string;
-  visionModel: string;
-  protocol: 'chat' | 'responses' | 'anthropic';
-  prefixCache: boolean;
-  hasApiKey?: boolean;
-}
-export interface Usage {
-  input: number;
-  output: number;
-  cached: number;
-  total: number;
-  calls: number;
-  unreported: number;
+import type { ModelConfig, ModelScope, Usage } from '../model/configuration';
+export type { ModelConfig, ModelScope, Usage } from '../model/configuration';
+export function modelSettingsApi(scope: ModelScope) {
+  const base = scope === 'assistant' ? '/assistant/model' : '/profile/model';
+  return {
+    get: (signal?: AbortSignal) => request<ModelConfig>(base, { signal }),
+    save: (value: ModelConfig) => {
+      const { hasApiKey, ...body } = value;
+      return write<ModelConfig>(base, body, 'PUT');
+    },
+    test: (value: ModelConfig) => {
+      const { hasApiKey, ...body } = value;
+      return write<{ ok: boolean; durationMs: number; reply?: string; message?: string }>(
+        base + '/test',
+        body,
+      );
+    },
+  };
 }
 export const profileApi = {
-  get: (signal?: AbortSignal) => request<ModelConfig>('/profile/model', { signal }),
-  save: (value: ModelConfig) => {
-    const { hasApiKey, ...body } = value;
-    return write<ModelConfig>('/profile/model', body, 'PUT');
-  },
-  test: (value: ModelConfig) => {
-    const { hasApiKey, ...body } = value;
-    return write<{ ok: boolean; durationMs: number; reply?: string; message?: string }>(
-      '/profile/model/test',
-      body,
-    );
-  },
+  ...modelSettingsApi('textbook'),
   usage: (signal?: AbortSignal) =>
     request<{ workspaces: (Usage & { id: string; title: string })[]; assistant: Usage }>(
       '/profile/usage',

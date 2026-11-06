@@ -1,3 +1,4 @@
+import { ModelConfiguration } from '../../modules/profile/application/model-configuration.js';
 import type { SettingsRepository } from '../../modules/profile/ports/settings.repository.js';
 import type { UsageRepository } from '../../modules/profile/ports/usage.repository.js';
 import type { ConversationRepository } from '../../modules/assistant/ports/conversation.repository.js';
@@ -45,6 +46,8 @@ import { JobsService } from '../../modules/jobs/application/jobs.service.js';
 import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflow.js';
 import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
 export interface AppOptions {
+  assistantSettings?: SettingsRepository;
+  assistantModel?: ModelClient;
   settings?: SettingsRepository;
   usage?: UsageRepository;
   conversations?: ConversationRepository;
@@ -86,9 +89,16 @@ export async function createServices(options: AppOptions = {}) {
     store,
     (value) => new HttpModelClient(undefined, { get: async () => value }),
   );
+  const assistantSettings = options.assistantSettings ?? new FileSettings(root, 'assistant');
+  const assistantConfiguration = new ModelConfiguration(
+    assistantSettings,
+    (value) => new HttpModelClient(undefined, { get: async () => value }),
+  );
+  const assistantModel =
+    options.assistantModel ?? options.model ?? new HttpModelClient(undefined, assistantSettings);
   const assistant = new AssistantService(
     options.conversations ?? new FileConversations(root),
-    model,
+    assistantModel,
     options.assistantContext ?? new EmptyAssistantContext(),
     catalog,
     records,
@@ -141,6 +151,7 @@ export async function createServices(options: AppOptions = {}) {
     workspaceView,
     profile,
     assistant,
+    assistantConfiguration,
     insertion,
   };
 }

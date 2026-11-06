@@ -5,7 +5,6 @@ import {
   MessageSquare,
   FolderOpen,
   LayoutGrid,
-  Plus,
   PanelLeftClose,
   PanelLeftOpen,
   BookOpen,
@@ -18,8 +17,12 @@ import { ParticleField } from '@/components/effects/ParticleField';
 import { Button } from '@/components/ui/button';
 import { Logo, Loading } from '@/components/common';
 import { Dashboard } from '@/features/workspace/components/Dashboard';
-import { WorkspacePage } from '@/features/workspace/components/Workspace';
-import { UploadDialog } from '@/features/workspace/components/UploadDialog';
+const WorkspacePage = lazy(() =>
+  import('@/features/workspace/components/Workspace').then((m) => ({ default: m.WorkspacePage })),
+);
+const UploadDialog = lazy(() =>
+  import('@/features/workspace/components/UploadDialog').then((m) => ({ default: m.UploadDialog })),
+);
 import { navigate } from '@/shared/navigation';
 import { useAppShell } from '@/app/hooks/useAppShell';
 const ProfilePage = lazy(() => import('@/features/profile/components/ProfilePage'));
@@ -55,10 +58,6 @@ export default function App() {
             <span>我的工作区</span>
             <span className="nav-count">⌘</span>
           </button>
-          <button className="nav-item" onClick={() => setUpload(true)}>
-            <Plus size={18} />
-            <span>新建工作区</span>
-          </button>
           {id && (
             <div className="nav-item active current-workspace">
               <FolderOpen size={18} />
@@ -66,7 +65,7 @@ export default function App() {
             </div>
           )}
           <button
-            className={`nav-item ${section === 'assistant' ? 'active' : ''}`}
+            className={`nav-item ${section.startsWith('assistant') ? 'active' : ''}`}
             onClick={() => (location.hash = '/assistant')}
           >
             <MessageSquare size={18} />
@@ -112,7 +111,7 @@ export default function App() {
               <strong>
                 {section === 'profile'
                   ? '个人中心'
-                  : section === 'assistant'
+                  : section.startsWith('assistant')
                     ? 'AI 助手'
                     : id
                       ? '教材工作区'
@@ -121,19 +120,25 @@ export default function App() {
             </div>
             <div>
               <button
-                onClick={() => (location.hash = '/profile')}
+                onClick={() =>
+                  (location.hash = section.startsWith('assistant')
+                    ? '/assistant/settings'
+                    : '/profile')
+                }
                 className={`connection ${health.error ? 'offline' : ''}`}
                 title={health.error || '后端连接正常'}
               >
                 {health.error ? <WifiOff size={13} /> : <Wifi size={13} />}
                 <span>
-                  {health.error
-                    ? '连接中断'
-                    : health.loading
-                      ? '连接中'
-                      : health.data?.modelConfigured
-                        ? '模型已配置'
-                        : '模型待配置'}
+                  {section.startsWith('assistant')
+                    ? '助手模型设置'
+                    : health.error
+                      ? '连接中断'
+                      : health.loading
+                        ? '连接中'
+                        : health.data?.modelConfigured
+                          ? '模型已配置'
+                          : '模型待配置'}
                 </span>
               </button>
               <Button
@@ -169,6 +174,8 @@ export default function App() {
                 <Suspense fallback={<Loading />}>
                   {section === 'profile' ? (
                     <ProfilePage />
+                  ) : section === 'assistant-settings' ? (
+                    <ProfilePage scope="assistant" />
                   ) : section === 'assistant' ? (
                     <AssistantPage />
                   ) : id ? (
@@ -181,7 +188,11 @@ export default function App() {
             </AnimatePresence>
           </main>
         </div>
-        <UploadDialog open={upload} onOpenChange={setUpload} onCreated={navigate} />
+        {upload && (
+          <Suspense fallback={null}>
+            <UploadDialog open onOpenChange={setUpload} onCreated={navigate} />
+          </Suspense>
+        )}
       </div>
     </MotionConfig>
   );

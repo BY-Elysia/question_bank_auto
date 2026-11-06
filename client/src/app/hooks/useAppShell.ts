@@ -44,7 +44,14 @@ export function useAppShell() {
     id = match?.[1];
   return {
     id,
-    section: hash === '#/profile' ? 'profile' : hash === '#/assistant' ? 'assistant' : 'workspaces',
+    section:
+      hash === '#/assistant/settings'
+        ? 'assistant-settings'
+        : hash === '#/profile'
+          ? 'profile'
+          : hash === '#/assistant'
+            ? 'assistant'
+            : 'workspaces',
     upload,
     setUpload,
     collapsed,
