@@ -1,3 +1,4 @@
+import { questionBankExport } from './question-bank-export.js';
 import { transcriptionIssues } from '../domain/transcription-quality.js';
 import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
 import type { ArchivePort } from '../ports/assets.port.js';
@@ -10,6 +11,9 @@ export class ExportService {
     private images: PageImagePort,
     private archives: ArchivePort,
   ) {}
+  async questionBank(id: string) {
+    return questionBankExport(await this.store.read(id));
+  }
   async json(id: string) {
     const book = await this.store.read(id);
     return {
@@ -34,7 +38,7 @@ export class ExportService {
   async zip(id: string) {
     const book = await this.store.read(id);
     for (const page of book.pages) await this.images.ensure(id, page.number);
-    const document = await this.json(id);
+    const document = await this.questionBank(id);
     return this.archives.create(
       id,
       document,

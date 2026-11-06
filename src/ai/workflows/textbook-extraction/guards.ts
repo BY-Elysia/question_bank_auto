@@ -1,3 +1,4 @@
+import { isQuestionCategory } from '../../../modules/textbooks/domain/exercise-numbering.js';
 import type { z } from 'zod';
 import { BoundaryResult, ExtractResult, type Range } from './contracts.js';
 import type { Document, Content } from '../../../modules/textbooks/domain/content.js';
@@ -22,6 +23,10 @@ export function checkBoundary(
   const ranges = [...result.complete, ...result.pending];
   const keys = new Set<string>();
   for (const range of ranges) {
+    if (['question', 'example'].includes(range.kind) && isQuestionCategory(range.label))
+      throw new Error(
+        'Category heading must be a heading range; split each independent numbered item into its own question range',
+      );
     if (keys.has(range.key) || document.contents.some((c) => c.key === range.key))
       throw new Error(`Duplicate/already committed range ${range.key}`);
     keys.add(range.key);

@@ -1,3 +1,4 @@
+import { numberComprehensiveExercises } from '../../../modules/textbooks/domain/exercise-numbering.js';
 import { transcriptionIssues } from '../../../modules/textbooks/domain/transcription-quality.js';
 import { contextIssues } from './context-quality.js';
 import { pageCheckpoint } from './page-checkpoint.js';
@@ -123,6 +124,7 @@ export class TextbookWorkflow {
             message: `Unclosed ${pending.key}: ${pending.label}; source pages preserved for repair`,
           });
         stage.contents.sort(readingOrder);
+        numberComprehensiveExercises(stage);
         stage.issues.push(...contextIssues(stage));
         stage.issues.push(...transcriptionIssues(stage.contents));
         stage.issues.push(...sourceAnswerCoverageIssues(stage.contents));

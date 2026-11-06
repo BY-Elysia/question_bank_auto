@@ -123,8 +123,11 @@ export class TextbooksController {
     const input = parse(Restore, body);
     return this.review.restore(id, input.expectedRevision, input.revision);
   }
-  @Get(':id/export.json') json(@Param('id') id: string) {
+  @Get(':id/content.json') contentJson(@Param('id') id: string) {
     return this.exports.json(id);
+  }
+  @Get(':id/export.json') json(@Param('id') id: string) {
+    return this.exports.questionBank(id);
   }
   @Get(':id/export.zip') async zip(@Param('id') id: string) {
     const asset = await this.exports.zip(id);

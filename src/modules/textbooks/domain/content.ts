@@ -35,7 +35,10 @@ export const Leaf = z.strictObject({
   options: z.array(Option),
   answer: Answer.nullable(),
 });
-export const Question = Leaf.extend({ children: z.array(Leaf) });
+export const Question = Leaf.extend({
+  children: z.array(Leaf),
+  sourceLabel: z.string().optional(),
+});
 export const Kind = z.enum([
   'heading',
   'paragraph',

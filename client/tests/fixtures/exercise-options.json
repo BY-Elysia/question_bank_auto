@@ -1,0 +1,92 @@
+[
+  {
+    "id": "choice0",
+    "key": "choice0",
+    "kind": "question",
+    "sectionId": null,
+    "sources": [
+      {
+        "page": 1,
+        "box": [
+          0,
+          0.1,
+          1,
+          0.4
+        ]
+      }
+    ],
+    "text": "",
+    "caption": null,
+    "table": null,
+    "question": {
+      "label": "1",
+      "type": "single_choice",
+      "prompt": "（2007考研题）设函数$f(x)$在$x=0$处连续，下列命题错误的是（）。",
+      "options": [
+        {
+          "id": "A",
+          "text": "若$\\lim\\limits_{x\\to0}\\frac{f(x)}{x}$存在，则$f(0)=0$。"
+        },
+        {
+          "id": "B",
+          "text": "若$\\lim\\limits_{x\\to0}\\frac{f(x)+f(-x)}{x}$存在，则$f(0)=0$。"
+        },
+        {
+          "id": "C",
+          "text": "若$\\lim\\limits_{x\\to0}\\frac{f(x)}{x}$存在，则$f'(0)$存在。"
+        },
+        {
+          "id": "D",
+          "text": "若$\\lim\\limits_{x\\to0}\\frac{f(x)-f(-x)}{x}$存在，则$f'(0)$存在。"
+        }
+      ],
+      "answer": null,
+      "children": []
+    }
+  },
+  {
+    "id": "choice1",
+    "key": "choice1",
+    "kind": "question",
+    "sectionId": null,
+    "sources": [
+      {
+        "page": 1,
+        "box": [
+          0,
+          0.5,
+          1,
+          0.8
+        ]
+      }
+    ],
+    "text": "",
+    "caption": null,
+    "table": null,
+    "question": {
+      "label": "2",
+      "type": "single_choice",
+      "prompt": "设$y=\\ln\\sin\\sqrt{x}$，则$dy=$（）。",
+      "options": [
+        {
+          "id": "A",
+          "text": "$\\dfrac{dx}{\\sin\\sqrt{x}}$"
+        },
+        {
+          "id": "B",
+          "text": "$\\cot\\sqrt{x}\\,dx$"
+        },
+        {
+          "id": "C",
+          "text": "$\\dfrac{d(\\sin\\sqrt{x})}{\\sin\\sqrt{x}}$"
+        },
+        {
+          "id": "D",
+          "text": "$\\dfrac{d(\\sqrt{x})}{\\sin\\sqrt{x}}$"
+        }
+      ],
+      "answer": null,
+      "children": []
+    }
+  }
+]

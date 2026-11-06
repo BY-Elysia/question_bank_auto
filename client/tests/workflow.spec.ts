@@ -44,7 +44,7 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await expect(page.getByRole('button', { name: '接受', exact: true })).toHaveCount(1);
   await page.getByRole('button', { name: '接受', exact: true }).click();
   await expect(page.getByText('没有待审候选')).toBeVisible();
-  await page.getByRole('button', { name: /提取结果/ }).click();
+  await page.getByRole('button', { name: /^内容块/ }).click();
   await page.getByRole('button', { name: '编辑', exact: true }).first().click();
   await page
     .getByRole('textbox', { name: '题干', exact: true })
@@ -68,8 +68,9 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await page.getByRole('button', { name: 'JSON', exact: true }).click();
   const exported = await download;
   const data = JSON.parse(await readFile((await exported.path())!, 'utf8'));
-  expect(data.metadata.subject).toBe('数学');
-  expect(data.contents[0].question.prompt).toContain('人工校对');
+  expect(data.textbook.subject).toBe('数学');
+  expect(data.version).toBe('v1.1');
+  expect(data.questions[0].prompt.text).toContain('人工校对');
   const zipWait = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出资料包' }).click();
   expect((await zipWait).suggestedFilename()).toMatch(/\.zip$/);

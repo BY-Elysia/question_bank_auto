@@ -7,7 +7,7 @@ const WireAnswer = Answer.omit({ origin: true, review: true }).extend({
   sources: z.array(WireSource),
 });
 const WireLeaf = Leaf.extend({ answer: WireAnswer.nullable() });
-const WireQuestion = Question.extend({
+const WireQuestion = Question.omit({ sourceLabel: true }).extend({
   answer: WireAnswer.nullable(),
   children: z.array(WireLeaf),
 });

@@ -77,7 +77,7 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
     },
   );
   assert.equal(decision.status, 200);
-  const exported = await (await fetch(`${base}/api/textbooks/${book.id}/export.json`)).json();
+  const exported = await (await fetch(`${base}/api/textbooks/${book.id}/content.json`)).json();
   assert.equal(
     exported.contents.find((c) => c.key === 'q1').question.answer.origin,
     'ai_generated',

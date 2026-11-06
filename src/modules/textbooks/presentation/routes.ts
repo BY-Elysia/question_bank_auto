@@ -20,6 +20,7 @@ export const textbookRoutes = [
   ['post', '/api/textbooks/{id}/validate', 'validateDocument', null, 'Validation', 200],
   ['get', '/api/textbooks/{id}/revisions', 'listRevisions', null, 'Revisions', 200],
   ['post', '/api/textbooks/{id}/restore', 'restoreRevision', 'Restore', 'Book', 200],
-  ['get', '/api/textbooks/{id}/export.json', 'exportJson', null, 'ExportDocument', 200],
+  ['get', '/api/textbooks/{id}/export.json', 'exportJson', null, 'QuestionBankExport', 200],
+  ['get', '/api/textbooks/{id}/content.json', 'exportContent', null, 'ExportDocument', 200],
   ['get', '/api/textbooks/{id}/export.zip', 'exportZip', null, 'ZIP', 200],
 ] as const;

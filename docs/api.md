@@ -134,3 +134,7 @@ section.source 与 content.sources 都使用页码及 0–1 坐标；页清单�
 图片类内容的 sources 就是原图区域引用。ZIP 包中的 `pages/<page>.png` 与 JSON 的 pages.image 一致；调用方可按 box 裁切，不依赖外部图片 URL。未接受的模型候选不进入正式导出内容。
 
 导出 JSON 增加 `metadata`，保存旧版教材信息；未经过工作区表单的旧课本为 null。新接口的实际 schema 以生成的 OpenAPI 为准。
+
+## 题库导出（2026-11-06）
+
+`GET /api/textbooks/{id}/export.json` 默认返回 v1.1 题库结构；`export.zip` 中的 `textbook.json` 使用相同结构。选择题有 options/correctOptionIds，填空题按参考格式为 SHORT_ANSWER。无答案保持 null，未生成的评分细则为 []，默认分值为参考模板的 10 分。完整内容块和来源信息可通过 `GET /api/textbooks/{id}/content.json` 获取；此变更不改写现有教材数据。

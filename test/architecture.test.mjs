@@ -43,7 +43,7 @@ test('Only textbook capabilities remain and built Skill packages include actual 
   const spec = JSON.parse(fs.readFileSync('dist/contracts/openapi.json', 'utf8'));
   assert.equal(
     Object.values(spec.paths).reduce((n, p) => n + Object.keys(p).length, 0),
-    30,
+    31,
   );
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });

@@ -1,7 +1,12 @@
+import { isQuestionCategory } from './exercise-numbering.js';
 import type { Document, Issue, Content, Question, Leaf } from './content.js';
 export function questionProblems(question: Question | Leaf): string[] {
   const problems: string[] = [];
   const children = 'children' in question ? question.children : [];
+  if (question.type === 'group' && isQuestionCategory(question.prompt))
+    problems.push(
+      'Category heading cannot be a question group; extract its independent numbered questions separately',
+    );
   if (question.type === 'group' && !children.length) problems.push('Group has no children');
   if (question.type !== 'group' && children.length) problems.push('Only group can have children');
   if (!question.prompt.trim() && !children.length) problems.push('Empty question prompt');

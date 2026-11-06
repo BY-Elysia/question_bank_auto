@@ -114,7 +114,7 @@ test('The same HTTP controllers and workflows operate with SQLite metadata inste
     },
   );
   assert.equal(decision.status, 200);
-  const exported = await (await fetch(`${base}/api/textbooks/book/export.json`)).json();
+  const exported = await (await fetch(`${base}/api/textbooks/book/content.json`)).json();
   assert.equal(
     exported.contents.find((c) => c.id === 'c_q1').question.answer.origin,
     'ai_generated',

@@ -189,7 +189,9 @@ test('Image upload opens a workspace view; metadata starts extraction and merges
   assert.equal((await s.books.list()).length, 0);
   assert.equal((await s.store.read(w.id)).extractionContext.metadata.publisher, 'Example Press');
   const exported = await (await fetch(s.base + view.exportJsonUrl)).json();
-  assert.equal(exported.contents.length, 4);
+  assert.equal(exported.version, 'v1.1');
+  assert.equal(exported.questions.length, view.document.contents.filter((c) => c.question).length);
+  assert.ok(exported.questions.every((q) => ['LEAF', 'GROUP'].includes(q.nodeType)));
   const zip = await fetch(s.base + view.exportZipUrl);
   assert.equal(zip.status, 200);
   assert.equal(Buffer.from(await zip.arrayBuffer()).toString('hex', 0, 2), '504b');

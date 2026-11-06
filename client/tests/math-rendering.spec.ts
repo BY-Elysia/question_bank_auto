@@ -119,3 +119,33 @@ test('Whole question preview preserves cross-page children and supports source n
   await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
   await page.request.delete(`/api/workspaces/${id}`);
 });
+
+test('Reference exercise options render fractions, limits and roots in block and full preview', async ({
+  page,
+}) => {
+  const fixture = JSON.parse(
+    await readFile(new URL('./fixtures/exercise-options.json', import.meta.url), 'utf8'),
+  );
+  const id = await openFixture(page);
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    const response = await route.fetch();
+    const view = await response.json();
+    view.workspace.status = 'needs_review';
+    view.revision = 1;
+    view.nextStep = 'review';
+    view.actions.review = true;
+    view.document.contents = fixture;
+    view.document.sections = [];
+    await route.fulfill({ json: view });
+  });
+  await page.reload();
+  for (const full of [false, true]) {
+    if (full) await page.getByRole('button', { name: /^完整题目/ }).click();
+    await expect(page.locator('.question-options > div')).toHaveCount(8);
+    await expect(page.locator('.question-options .katex').first()).toBeVisible();
+    expect(await page.locator('.question-options .katex').count()).toBeGreaterThanOrEqual(8);
+    await expect(page.locator('.katex-error')).toHaveCount(0);
+    await expect(page.locator('.subquestion')).toHaveCount(0);
+  }
+  await page.request.delete(`/api/workspaces/${id}`);
+});

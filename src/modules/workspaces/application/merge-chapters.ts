@@ -1,3 +1,4 @@
+import { numberComprehensiveExercises } from '../../textbooks/domain/exercise-numbering.js';
 import { createHash } from 'node:crypto';
 import { Document, type Source } from '../../textbooks/domain/content.js';
 import type { Workspace } from '../domain/workspace.js';
@@ -51,6 +52,7 @@ export function projectChapter(chapter: Workspace['chapters'][number], document:
     })),
   );
 
+  numberComprehensiveExercises(result);
   return Document.parse(result);
 }
 export function mergeChapters(chapters: Workspace['chapters'], books: Book[], total: number) {
@@ -77,5 +79,6 @@ export function mergeChapters(chapters: Workspace['chapters'], books: Book[], to
   );
   const invalid = validateDocument(result, total);
   if (invalid.length) throw new Error(`Invalid merged chapter document: ${invalid[0]!.message}`);
+  numberComprehensiveExercises(result);
   return Document.parse(result);
 }
