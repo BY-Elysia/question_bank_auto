@@ -242,3 +242,24 @@ test('Resume reuses validated ranges from an interrupted page without publishing
   assert.equal(calls.filter((c) => c === 'first').length, 1);
   assert.equal(final.jobs[0].pagePlan, null);
 });
+
+test('Reopened question evidence cannot also become a detached paragraph or formula', () => {
+  const awaiting = {
+    ...range('q', [1], 'question', null),
+    sources: [source(1, 0.3, 1), source(2, 0.1, 0.15)],
+  };
+  const stage = { ...document(), contents: [] };
+  for (const kind of ['paragraph', 'formula', 'answer']) {
+    const fragment = { ...range('fragment', [2], kind, null), sources: [source(2, 0.1, 0.15)] };
+    const boundary = {
+      complete: [awaiting, fragment],
+      pending: [],
+      blankPages: [],
+      orphanedStarts: [],
+      reason: '',
+    };
+    assert.throws(() => checkBoundary(boundary, [1, 2], [awaiting], stage), /multiple owners/);
+    fragment.sources = [source(2, 0.2, 0.3)];
+    assert.doesNotThrow(() => checkBoundary(boundary, [1, 2], [awaiting], stage));
+  }
+});

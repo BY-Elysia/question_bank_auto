@@ -67,6 +67,16 @@ export function checkBoundary(
     })
   )
     throw new Error('Invalid orphaned-start declaration');
+  // A reopened question owns its evidenced continuation, even if another range
+  // labels the same region as ordinary prose rather than as a question.
+  for (const previous of pending.filter((r) => ['question', 'example'].includes(r.kind))) {
+    if (
+      ranges.some((r) => r.key !== previous.key && containsSameRegion(r.sources, previous.sources))
+    )
+      throw new Error(
+        `Continuation has multiple owners: ${previous.key}; keep its evidenced source regions in the original question, not a separate paragraph/formula/answer`,
+      );
+  }
   for (const previous of pending) {
     const next = ranges.find((range) => range.key === previous.key);
     if (!next || previous.sources.some((source) => !containsSameRegion([source], next.sources)))
