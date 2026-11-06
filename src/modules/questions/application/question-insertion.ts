@@ -5,6 +5,7 @@ import type { BookRepository } from '../../textbooks/ports/book.repository.js';
 import type { TextbookAssets } from '../../textbooks/ports/assets.port.js';
 import type { TextbooksService } from '../../textbooks/application/textbooks.service.js';
 import type { JobsService } from '../../jobs/application/jobs.service.js';
+import type { Job } from '../../jobs/domain/job.js';
 import type { JobHandler } from '../../jobs/ports/job-handler.js';
 import type { Skills } from '../../../ai/ports/skills.js';
 import { Question, type Content } from '../../textbooks/domain/content.js';
@@ -24,6 +25,9 @@ export class QuestionInsertion implements JobHandler {
     private assets: TextbookAssets,
     private skills: Skills,
   ) {}
+  isCommitted(job: Job) {
+    return job.processedIds.length > 0;
+  }
   async upload(
     id: string,
     anchorId: string,

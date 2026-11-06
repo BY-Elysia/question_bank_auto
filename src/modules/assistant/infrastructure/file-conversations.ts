@@ -1,3 +1,4 @@
+import { KeyedLock } from '../../../shared/concurrency/keyed-lock.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Conversation } from '../domain/conversation.js';
@@ -5,7 +6,7 @@ import type { ConversationRepository } from '../ports/conversation.repository.js
 import { atomicJson } from '../../../shared/infrastructure/atomic-json.js';
 import { fail } from '../../../shared/errors.js';
 export class FileConversations implements ConversationRepository {
-  private locks = new Map<string, Promise<unknown>>();
+  private locks = new KeyedLock();
   constructor(private root: string) {}
   private file(id: string) {
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) fail(400, 'Invalid conversation ID');
@@ -35,21 +36,12 @@ export class FileConversations implements ConversationRepository {
     await atomicJson(this.file(value.id), Conversation.parse(value), 0o600);
   }
   async update(id: string, change: (value: Conversation) => void) {
-    const previous = this.locks.get(id) ?? Promise.resolve();
-    const task = previous
-      .catch(() => {})
-      .then(async () => {
-        const value = await this.get(id);
-        change(value);
-        value.updatedAt = new Date().toISOString();
-        await this.create(value);
-        return value;
-      });
-    this.locks.set(id, task);
-    try {
-      return await task;
-    } finally {
-      if (this.locks.get(id) === task) this.locks.delete(id);
-    }
+    return this.locks.run(id, async () => {
+      const value = await this.get(id);
+      change(value);
+      value.updatedAt = new Date().toISOString();
+      await this.create(value);
+      return value;
+    });
   }
 }

@@ -1,3 +1,4 @@
+import { MetadataFields } from '@/shared/components/MetadataFields';
 import {
   Dialog,
   DialogContent,
@@ -31,19 +32,10 @@ export function MetadataDialog({
           <DialogTitle>教材基础信息</DialogTitle>
           <DialogDescription>保存后更新教材名称与导出信息，不重新提取题目。</DialogDescription>
         </DialogHeader>
-        <div className="form-grid">
-          {(['title', 'subject', 'publisher', 'version', 'courseId', 'textbookId'] as const).map(
-            (key, i) => (
-              <label className="field" key={key}>
-                {['教材名称', '学科', '出版社', '数据版本', '课程 ID', '教材 ID'][i]}
-                <input
-                  value={metadata[key]}
-                  onChange={(e) => setMetadata({ ...metadata, [key]: e.target.value })}
-                />
-              </label>
-            ),
-          )}
-        </div>
+        <MetadataFields
+          value={metadata}
+          onChange={(patch) => setMetadata({ ...metadata, ...patch })}
+        />
         <label>
           <input
             type="checkbox"

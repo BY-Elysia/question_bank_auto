@@ -41,6 +41,7 @@ function fakeSkills() {
         this.active++;
         this.peak = Math.max(this.peak, this.active);
         try {
+          if (input.page === 1 && this.structureGate) await this.structureGate();
           await delay(15, undefined, { signal: context.signal });
           if (this.failBook === context.bookId) throw new Error('Injected chapter error');
         } finally {
@@ -137,6 +138,20 @@ async function upload(system, count = 2) {
 test('Image upload opens a workspace view; metadata starts extraction and merges parallel chapters without paths or ID collisions', async (t) => {
   const s = await fixture(t),
     w = await upload(s, 4);
+  // A rendezvous proves overlapping chapter execution without depending on a
+  // 15 ms scheduling window on a busy CI machine.
+  let entered = 0,
+    release;
+  const bothChapters = new Promise((resolve) => (release = resolve));
+  s.skills.structureGate = async () => {
+    if (++entered === 2) release();
+    await Promise.race([
+      bothChapters,
+      delay(5000).then(() => {
+        throw Error('Chapters did not run concurrently');
+      }),
+    ]);
+  };
   assert.equal(w.status, 'ready');
   assert.equal(w.totalPages, 4);
   let view = WorkspaceViewResponse.parse(

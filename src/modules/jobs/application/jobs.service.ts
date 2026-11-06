@@ -1,3 +1,4 @@
+import { BackgroundTasks } from '../../../shared/concurrency/background-tasks.js';
 import { randomUUID } from 'node:crypto';
 import type { Book } from '../../textbooks/domain/book.js';
 import { emptyDocument } from '../../textbooks/domain/book.js';
@@ -7,7 +8,7 @@ import type { JobHandlers } from '../ports/job-handler.js';
 import { fail, message } from '../../../shared/errors.js';
 import { addEvent } from './job-events.js';
 export class JobsService {
-  private running = new Map<string, { abort: AbortController; promise: Promise<void> }>();
+  private running = new BackgroundTasks();
   constructor(
     private store: BookRepository,
     private handlers: JobHandlers,
@@ -18,8 +19,9 @@ export class JobsService {
         await this.store.update(book.id, (current) => {
           for (const job of current.jobs)
             if (['queued', 'running'].includes(job.status)) {
-              job.status =
-                job.kind === 'insert' && job.processedIds.length ? 'completed' : 'interrupted';
+              job.status = this.handlers.get(job.kind)?.isCommitted?.(job)
+                ? 'completed'
+                : 'interrupted';
               addEvent(job, 'Process restarted; resume explicitly from persisted checkpoint');
             }
         });
@@ -118,13 +120,7 @@ export class JobsService {
     return book.jobs.find((j) => j.id === jobId)!;
   }
   private launch(bookId: string, jobId: string) {
-    const abort = new AbortController();
-    const promise = new Promise<void>((resolve) => setImmediate(resolve))
-      .then(() => this.run(bookId, jobId, abort.signal))
-      .finally(() => {
-        this.running.delete(jobId);
-      });
-    this.running.set(jobId, { abort, promise });
+    this.running.start(jobId, (signal) => this.run(bookId, jobId, signal));
   }
   private async run(bookId: string, jobId: string, signal: AbortSignal) {
     try {
@@ -155,10 +151,10 @@ export class JobsService {
     } catch (error) {
       await this.store.update(bookId, (book) => {
         const job = this.find(book, jobId);
-        if (job.kind === 'insert' && job.processedIds.length) {
+        if (this.handlers.get(job.kind)?.isCommitted?.(job)) {
           job.status = 'completed';
           job.error = null;
-          addEvent(job, 'Insertion was already committed');
+          addEvent(job, 'Task result was already committed');
           return;
         }
         job.status = signal.aborted ? 'cancelled' : 'failed';
@@ -180,10 +176,8 @@ export class JobsService {
   }
   async cancel(id: string, jobId: string) {
     const job = this.find(await this.store.read(id), jobId);
-    const running = this.running.get(jobId);
-    if (running) {
-      running.abort.abort();
-      await running.promise;
+    if (this.running.has(jobId)) {
+      await this.running.cancel(jobId);
     } else if (['queued', 'running', 'interrupted', 'failed'].includes(job.status))
       await this.store.update(id, (book) => {
         this.find(book, jobId).status = 'cancelled';
@@ -247,10 +241,9 @@ export class JobsService {
     return this.find(await this.store.read(id), actualId);
   }
   async shutdown() {
-    for (const run of this.running.values()) run.abort.abort();
-    await Promise.allSettled([...this.running.values()].map((r) => r.promise));
+    await this.running.shutdown();
   }
   async wait(jobId: string) {
-    await this.running.get(jobId)?.promise;
+    await this.running.wait(jobId);
   }
 }

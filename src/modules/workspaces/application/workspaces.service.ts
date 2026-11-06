@@ -1,3 +1,4 @@
+import { BackgroundTasks } from '../../../shared/concurrency/background-tasks.js';
 import type { z } from 'zod';
 import type { TextbookMetadata } from '../../textbooks/domain/metadata.js';
 import { randomUUID } from 'node:crypto';
@@ -12,7 +13,7 @@ import type { ExtractionRunner } from './extraction-runner.js';
 import { fail, message } from '../../../shared/errors.js';
 export class WorkspacesService {
   private deletions = new Set<string>();
-  private runs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
+  private runs = new BackgroundTasks();
   constructor(
     private workspaces: WorkspaceRepository,
     private store: BookRepository,
@@ -123,45 +124,41 @@ export class WorkspacesService {
     });
   }
   private launch(id: string, kind: 'prepare' | 'extract') {
-    const abort = new AbortController();
-    const promise = new Promise<void>((resolve) => setImmediate(resolve))
-      .then(async () => {
-        try {
-          if (kind === 'extract') await this.runner.execute(id, abort.signal);
-          else {
-            const book = await this.store.read(id);
-            for (const page of book.pages) {
-              abort.signal.throwIfAborted();
-              await this.images.ensure(id, page.number, abort.signal);
-              await this.workspaces.update(id, (w) => {
-                w.preparedPages = page.number;
-              });
-            }
-            abort.signal.throwIfAborted();
+    this.runs.start(id, async (signal) => {
+      try {
+        if (kind === 'extract') await this.runner.execute(id, signal);
+        else {
+          const book = await this.store.read(id);
+          for (const page of book.pages) {
+            signal.throwIfAborted();
+            await this.images.ensure(id, page.number, signal);
             await this.workspaces.update(id, (w) => {
-              w.status = 'ready';
-              w.error = null;
+              w.preparedPages = page.number;
             });
           }
-        } catch (error) {
+          signal.throwIfAborted();
           await this.workspaces.update(id, (w) => {
-            w.status = abort.signal.aborted
-              ? abort.signal.reason === 'shutdown'
-                ? 'interrupted'
-                : 'cancelled'
-              : 'failed';
-            w.error = abort.signal.aborted
-              ? 'Processing stopped; resume from the saved checkpoint'
-              : message(error);
-          });
-        } finally {
-          await this.store.update(id, (b) => {
-            if (b.workflowLock === id) b.workflowLock = null;
+            w.status = 'ready';
+            w.error = null;
           });
         }
-      })
-      .finally(() => this.runs.delete(id));
-    this.runs.set(id, { abort, promise });
+      } catch (error) {
+        await this.workspaces.update(id, (w) => {
+          w.status = signal.aborted
+            ? signal.reason === 'shutdown'
+              ? 'interrupted'
+              : 'cancelled'
+            : 'failed';
+          w.error = signal.aborted
+            ? 'Processing stopped; resume from the saved checkpoint'
+            : message(error);
+        });
+      } finally {
+        await this.store.update(id, (b) => {
+          if (b.workflowLock === id) b.workflowLock = null;
+        });
+      }
+    });
   }
   async resume(id: string) {
     const workspace = await this.workspaces.read(id),
@@ -207,11 +204,7 @@ export class WorkspacesService {
   }
   async cancel(id: string) {
     await this.workspaces.read(id);
-    const run = this.runs.get(id);
-    if (run) {
-      run.abort.abort('cancel');
-      await run.promise;
-    }
+    await this.runs.cancel(id, 'cancel');
     return this.workspaces.read(id);
   }
   async remove(id: string) {
@@ -256,11 +249,10 @@ export class WorkspacesService {
     }
   }
   async wait(id: string) {
-    await this.runs.get(id)?.promise;
+    await this.runs.wait(id);
   }
   async shutdown() {
-    for (const run of this.runs.values()) run.abort.abort('shutdown');
-    await Promise.allSettled([...this.runs.values()].map((r) => r.promise));
+    await this.runs.shutdown('shutdown');
   }
   get(id: string) {
     return this.workspaces.read(id);

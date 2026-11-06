@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAction, useResource } from '@/shared/hooks/useAsync';
 import { profileApi, type ModelConfig } from '../api/profile';
 export function useProfile() {
@@ -7,13 +7,19 @@ export function useProfile() {
     action = useAction();
   const [config, setConfig] = useState<ModelConfig | null>(null),
     [notice, setNotice] = useState('');
+  const dirty = useRef(false);
+  const editConfig: typeof setConfig = (value) => {
+    dirty.current = true;
+    setConfig(value);
+  };
   useEffect(() => {
-    if (resource.data) setConfig({ ...resource.data, apiKey: '' });
+    if (resource.data && !dirty.current) setConfig({ ...resource.data, apiKey: '' });
   }, [resource.data]);
   const save = () =>
     action.run(async () => {
       if (!config) return;
       const saved = await profileApi.save(config);
+      dirty.current = false;
       setConfig({ ...saved, apiKey: '' });
       setNotice('模型配置已保存');
       window.dispatchEvent(new Event('model-configured'));
@@ -27,5 +33,5 @@ export function useProfile() {
         result.ok ? `连接成功 · ${result.durationMs} ms · ${result.reply || ''}` : result.message!,
       );
     });
-  return { config, setConfig, notice, save, test, action, resource, usage };
+  return { config, setConfig: editConfig, notice, save, test, action, resource, usage };
 }

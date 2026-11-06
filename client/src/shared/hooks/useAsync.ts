@@ -11,6 +11,9 @@ export function useResource<T>(
   const refreshRef = useRef<() => void>(() => {});
   const refresh = useCallback(() => refreshRef.current(), []);
   useEffect(() => {
+    setData(undefined);
+    setError('');
+    setLoading(true);
     let disposed = false,
       running = false,
       pending = false,

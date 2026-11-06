@@ -260,6 +260,7 @@ test('Cancelling after an insertion commit cannot turn its persisted result into
       [
         'insert',
         {
+          isCommitted: (job) => job.processedIds.length > 0,
           async execute(c) {
             await app.store.update(
               c.bookId,

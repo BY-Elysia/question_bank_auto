@@ -1,3 +1,4 @@
+import { KeyedLock } from '../../../shared/concurrency/keyed-lock.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { atomicJson } from '../../../shared/infrastructure/atomic-json.js';
@@ -9,7 +10,7 @@ import { fail } from '../../../shared/errors.js';
 
 /** A single backend process owns this volume. Atomic rename is the commit boundary. */
 export class BookStore implements BookRepository {
-  private locks = new Map<string, Promise<unknown>>();
+  private locks = new KeyedLock();
   readonly root: string;
   constructor(root: string) {
     this.root = path.resolve(root);
@@ -46,15 +47,9 @@ export class BookStore implements BookRepository {
     }
   }
   async exclusive<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.locks.get(id) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(fn);
-    this.locks.set(id, next);
-    try {
-      return await next;
-    } finally {
-      if (this.locks.get(id) === next) this.locks.delete(id);
-    }
+    return this.locks.run(id, fn);
   }
+
   async readRevision(id: string, revision: number) {
     const current = await this.read(id);
     if (!Number.isInteger(revision) || revision < 0 || revision > current.revision)

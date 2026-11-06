@@ -1,3 +1,4 @@
+import { KeyedLock } from '../../../shared/concurrency/keyed-lock.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Workspace } from '../domain/workspace.js';
@@ -6,7 +7,7 @@ import { Id } from '../../textbooks/domain/content.js';
 import { atomicJson } from '../../../shared/infrastructure/atomic-json.js';
 import { fail } from '../../../shared/errors.js';
 export class WorkspaceStore implements WorkspaceRepository {
-  private locks = new Map<string, Promise<unknown>>();
+  private locks = new KeyedLock();
   constructor(private root: string) {}
   private file(id: string) {
     if (!Id.safeParse(id).success) fail(400, 'Invalid workspace ID');
@@ -29,18 +30,8 @@ export class WorkspaceStore implements WorkspaceRepository {
       throw e;
     }
   }
-  private async locked<T>(id: string, fn: () => Promise<T>) {
-    const prior = this.locks.get(id) ?? Promise.resolve();
-    const next = prior.catch(() => {}).then(fn);
-    this.locks.set(id, next);
-    try {
-      return await next;
-    } finally {
-      if (this.locks.get(id) === next) this.locks.delete(id);
-    }
-  }
   async create(input: Workspace) {
-    await this.locked(input.id, async () => {
+    await this.locks.run(input.id, async () => {
       try {
         await this.read(input.id);
         fail(409, 'Workspace exists');
@@ -51,7 +42,7 @@ export class WorkspaceStore implements WorkspaceRepository {
     });
   }
   async update(id: string, fn: (value: Workspace) => void) {
-    return this.locked(id, async () => {
+    return this.locks.run(id, async () => {
       const value = await this.read(id);
       fn(value);
       value.updatedAt = new Date().toISOString();
@@ -60,7 +51,7 @@ export class WorkspaceStore implements WorkspaceRepository {
     });
   }
   async remove(id: string) {
-    await this.locked(id, async () => {
+    await this.locks.run(id, async () => {
       await fs.rm(this.file(id));
     });
   }

@@ -45,6 +45,7 @@ export default function AssistantPage() {
             <label className="field">
               消息
               <textarea
+                aria-label="消息"
                 rows={4}
                 maxLength={20000}
                 value={m.text}

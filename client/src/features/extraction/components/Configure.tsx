@@ -1,3 +1,4 @@
+import { MetadataFields } from '@/shared/components/MetadataFields';
 import { ArrowRight, Layers3, ScanLine, ShieldCheck, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/common';
@@ -38,28 +39,10 @@ export function Configure({ view, onDone }: { view: WorkspaceView; onDone: () =>
             <h3>教材信息</h3>
             <span>与原教材保持一致</span>
           </div>
-          <div className="form-grid">
-            {[
-              ['title', '教材名称', '例如：数学 必修第一册'],
-              ['subject', '学科', '例如：数学'],
-              ['publisher', '出版社', '选填'],
-              ['version', '数据版本', 'v1.1'],
-              ['courseId', '课程 ID', '选填'],
-              ['textbookId', '教材 ID', '选填'],
-            ].map(([key, label, placeholder]) => (
-              <label className="field" key={key}>
-                {label}
-                {['title', 'subject'].includes(key) && <span className="required">*</span>}
-                <input
-                  required={['title', 'subject'].includes(key)}
-                  maxLength={['title', 'publisher'].includes(key) ? 300 : 100}
-                  value={metadata[key as 'title']}
-                  placeholder={placeholder}
-                  onChange={(e) => setMetadata({ ...metadata, [key]: e.target.value })}
-                />
-              </label>
-            ))}
-          </div>
+          <MetadataFields
+            value={metadata}
+            onChange={(patch) => setMetadata({ ...metadata, ...patch })}
+          />
           <label className="field">
             补充提取要求
             <textarea

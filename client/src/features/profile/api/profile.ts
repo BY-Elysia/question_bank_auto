@@ -17,7 +17,7 @@ export interface Usage {
   unreported: number;
 }
 export const profileApi = {
-  get: () => request<ModelConfig>('/profile/model'),
+  get: (signal?: AbortSignal) => request<ModelConfig>('/profile/model', { signal }),
   save: (value: ModelConfig) => {
     const { hasApiKey, ...body } = value;
     return write<ModelConfig>('/profile/model', body, 'PUT');
@@ -29,8 +29,9 @@ export const profileApi = {
       body,
     );
   },
-  usage: () =>
+  usage: (signal?: AbortSignal) =>
     request<{ workspaces: (Usage & { id: string; title: string })[]; assistant: Usage }>(
       '/profile/usage',
+      { signal },
     ),
 };

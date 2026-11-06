@@ -1,3 +1,7 @@
+import type { SettingsRepository } from '../../modules/profile/ports/settings.repository.js';
+import type { UsageRepository } from '../../modules/profile/ports/usage.repository.js';
+import type { ConversationRepository } from '../../modules/assistant/ports/conversation.repository.js';
+import type { AssistantContextPort } from '../../modules/assistant/ports/context.js';
 import { QuestionInsertion } from '../../modules/questions/application/question-insertion.js';
 import { FileSettings } from '../../modules/profile/infrastructure/file-settings.js';
 import { FileUsage } from '../../modules/profile/infrastructure/file-usage.js';
@@ -41,6 +45,10 @@ import { JobsService } from '../../modules/jobs/application/jobs.service.js';
 import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflow.js';
 import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
 export interface AppOptions {
+  settings?: SettingsRepository;
+  usage?: UsageRepository;
+  conversations?: ConversationRepository;
+  assistantContext?: AssistantContextPort;
   access?: AccessConfig;
   root?: string;
   workspaceStore?: WorkspaceRepository;
@@ -66,7 +74,7 @@ export async function createServices(options: AppOptions = {}) {
     images: new PageImages(store, pdf, localFiles),
     archives: new FileArchive(localFiles),
   };
-  const settings = new FileSettings(root);
+  const settings = options.settings ?? new FileSettings(root);
   const catalog = options.catalog ?? new FileSkillCatalog();
   const records = options.records ?? new FileRunRecords(root);
   const model =
@@ -74,14 +82,14 @@ export async function createServices(options: AppOptions = {}) {
     new HttpModelClient(options.prefixCache ?? new FilePrefixCache(root), settings);
   const profile = new ProfileService(
     settings,
-    new FileUsage(root),
+    options.usage ?? new FileUsage(root),
     store,
     (value) => new HttpModelClient(undefined, { get: async () => value }),
   );
   const assistant = new AssistantService(
-    new FileConversations(root),
+    options.conversations ?? new FileConversations(root),
     model,
-    new EmptyAssistantContext(),
+    options.assistantContext ?? new EmptyAssistantContext(),
     catalog,
     records,
   );

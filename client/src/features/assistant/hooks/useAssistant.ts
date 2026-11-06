@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAction, useResource } from '@/shared/hooks/useAsync';
 import { assistantApi, type Conversation } from '../api/assistant';
 const chatPoll = (data: Conversation | null | undefined) =>
@@ -9,8 +9,16 @@ export function useAssistant() {
   const [id, setId] = useState<string | null>(() =>
       sessionStorage.getItem('assistant-conversation'),
     ),
-    [text, setText] = useState('');
-  const fetch = useCallback(() => (id ? assistantApi.get(id) : Promise.resolve(null)), [id]);
+    [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftKey = id ?? 'new';
+  const text = drafts[draftKey] ?? '';
+  const setText = (value: string) => setDrafts((d) => ({ ...d, [draftKey]: value }));
+  const selected = useRef(id);
+  selected.current = id;
+  const fetch = useCallback(
+    (signal: AbortSignal) => (id ? assistantApi.get(id, signal) : Promise.resolve(null)),
+    [id],
+  );
   const conversation = useResource(fetch, chatPoll);
   const select = (value: string) => {
     setId(value);
@@ -32,8 +40,8 @@ export function useAssistant() {
         select(current);
       }
       await assistantApi.send(current, text);
-      setText('');
-      conversation.refresh();
+      setDrafts((d) => (d[draftKey] === text ? { ...d, [draftKey]: '' } : d));
+      if (selected.current === current) conversation.refresh();
       list.refresh();
     });
   return {

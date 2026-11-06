@@ -69,3 +69,60 @@ test('Personal center hides saved keys; assistant conversation survives navigati
   await page.reload();
   await expect(page.locator('.chat-message.assistant')).toContainText('这是 AI 助手回复');
 });
+
+test('Conversation switches clear old messages and preserve independent unsent drafts', async ({
+  page,
+}) => {
+  const make = (id: string) => ({
+    id,
+    title: `对话${id}`,
+    updatedAt: new Date().toISOString(),
+    messages: [
+      { id: `${id}-message`, role: 'user', content: `消息${id}`, status: 'complete', error: null },
+    ],
+  });
+  await page.route('**/api/assistant/conversations', (r) =>
+    r.fulfill({
+      json: [
+        { id: 'a', title: '对话a', pending: false },
+        { id: 'b', title: '对话b', pending: false },
+      ],
+    }),
+  );
+  await page.route('**/api/assistant/conversations/*', async (r) => {
+    if (r.request().url().endsWith('/b')) await new Promise((resolve) => setTimeout(resolve, 500));
+    await r.fulfill({ json: make(r.request().url().split('/').pop()!) });
+  });
+  await page.goto('/#/assistant');
+  await page.getByRole('button', { name: '对话a', exact: true }).click();
+  await expect(page.locator('.chat-messages')).toContainText('消息a');
+  await page.getByLabel('消息', { exact: true }).fill('a的草稿');
+  await page.getByRole('button', { name: '对话b', exact: true }).click();
+  await expect(page.locator('.chat-messages')).not.toContainText('消息a');
+  await expect(page.getByLabel('消息', { exact: true })).toHaveValue('');
+  await page.getByLabel('消息', { exact: true }).fill('b的草稿');
+  await expect(page.locator('.chat-messages')).toContainText('消息b');
+  await page.getByRole('button', { name: '对话a', exact: true }).click();
+  await expect(page.getByLabel('消息', { exact: true })).toHaveValue('a的草稿');
+});
+
+test('Model settings refresh cannot overwrite an unsaved draft', async ({ page }) => {
+  let calls = 0;
+  await page.route('**/api/profile/model', (r) =>
+    r.fulfill({
+      json: {
+        baseUrl: `https://server${++calls}.test/v1`,
+        model: 'test',
+        visionModel: '',
+        protocol: 'chat',
+        prefixCache: false,
+        hasApiKey: true,
+      },
+    }),
+  );
+  await page.goto('/#/profile');
+  await page.getByLabel('API 基础地址').fill('https://my-draft.test/v1');
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => calls).toBeGreaterThan(1);
+  await expect(page.getByLabel('API 基础地址')).toHaveValue('https://my-draft.test/v1');
+});
