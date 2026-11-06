@@ -1,428 +1,160 @@
-# question_bank_auto
+<div align="center">
 
-一个把教材/试卷 PDF 页图逐步结构化为题库 JSON 的工具系统。
+# 析页 · Xiye
 
-当前项目已经从“纯本地文件工具”演进到“本地开发方便 + 云服务器可稳定部署”的形态，支持：
+### 让整本教材，成为可用的结构化题库。
 
-- `PDF -> 页图 -> 结构化提取 -> 题库 JSON`
-- 可视化浏览、修题、修公式、补图、改题型、生成答案
-- 工作区 `workspace` 管理
-- Redis 持久化 session
-- Docker 一体化部署
-- 工作区磁盘占用统计、清理和删除
+从 PDF 和书页图片出发，完成智能识题、跨页拼接、答案生成与逐题校对，输出标准题库 JSON。
 
-## 项目结构
+![Version](https://img.shields.io/badge/release-v2.0.0-8B75C9)
+![TypeScript](https://img.shields.io/badge/TypeScript-full_stack-3178C6)
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.21-43853D)
+![Docker](https://img.shields.io/badge/deploy-Docker-2496ED)
 
-- `frontend/`
-  Vue 3 + Vite 前端
-- `backend/`
-  TypeScript + Express 后端
-- `Dockerfile`
-  应用镜像构建文件
-- `docker-compose.yml`
-  应用 + PostgreSQL + Redis 一键启动
-- `.env.example`
-  环境变量示例
+[快速开始](#快速开始) · [产品能力](#产品能力) · [技术架构](#技术架构) · [v2.0 发布说明](docs/releases/v2.0.0.md)
 
-## 当前运行模型
+</div>
 
-系统现在以 `workspace` 为核心：
+---
 
-- 每次上传 PDF、导入 JSON、结构化提取、修复题目，都会落到同一个工作区
-- 工作区里始终有一个“当前主 JSON”
-- 用户可以随时下载“当前最新 JSON”
-- 修复多道题时，会持续覆盖主工作副本，而不是修一道下一次
+## 全面重构，为整本教材而生
 
-典型工作区目录大致如下：
+析页 v2.0 将教材处理整合为一个连续工作流：**上传材料 → 设置提取 → 智能识题 → 校对与导出**。PDF 自动转换为书页图片，工作区自动组织文件与处理进度。打开一本教材，即可在同一视图中查看原图、完整题目、选项公式、答案和来源位置。
 
-```text
-data/
-  workspaces/
-    ws_xxx/
-      workspace.json
-      uploads/
-      output_images/
-      output_json/
-        main.json
-      read_results/
-```
+这次重构覆盖前端、后端、模型工作流与部署体系。以完整题目为中心的交互，配合可追溯、可恢复的处理链路，让教材整理从分散的工具操作变成一套完整的产品体验。
 
-## 本地开发
+## 产品能力
 
-### 1. 启动后端
+### 整本提取，连贯识别
 
-```bash
-cd backend
-npm install
-npm run dev
-```
+- **PDF 与图片直接上传**：自动完成转图、页序管理和预览准备。
+- **跨页题目拼接**：衔接题干、子题、解答与结论，保留原始页码和坐标。
+- **多章并行**：按图片分组启动章节任务，由模型识别章节名称，汇总为一本教材。
+- **题型结构化**：提取选择题选项、填空、证明题及共享题干的子题；综合练习中的独立题连续编号。
+- **公式贯穿全流程**：题干、选项、答案与解析使用 LaTeX 表达，并在页面中渲染。
 
-默认地址：
+### 逐题校对，随时补齐
 
-```text
-http://127.0.0.1:5001
-```
+原图与完整题目并排展示，点击来源框即可定位对应题目。每道题都支持编辑、AI 修复、原文核对和缺失答案补全。发现漏题时，在相邻题目上方或下方上传题目图片，自动提取并插入指定位置。
 
-### 2. 启动前端
+AI 生成的答案与修复结果进入候选审核流程，确认后写入正式题库。教材基础信息可在提取后继续修改，历史版本支持查看与恢复。
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+### 工作持续，进度留存
 
-默认地址：
+每个工作区独立执行后台任务。关闭页面或退出登录，已启动的任务继续运行；取消、失败及服务重启后的任务保留检查点，可按任务状态恢复处理。题目提取与答案补全分别呈现状态，已提取的内容可以继续查看和校对。
 
-```text
-http://127.0.0.1:5173
-```
+### 独立助手，自由选择模型
 
-### 3. 本地生产构建
+AI 助手提供历史会话、居中消息区、底部输入框及公式显示，支持 Enter 发送和 Shift + Enter 换行。
 
-```bash
-cd frontend
-npm install
-npm run build
+**助手与题库分别配置 API 地址、密钥和模型。** 两套配置各自保存、各自测试连通性，支持 OpenAI 兼容 Chat Completions、Responses 和 Anthropic Messages 协议。个人中心汇总工作区与助手的 Token 用量。
 
-cd ../backend
-npm install
-npm run build
-npm start
-```
+### 标准输出，连接下一站
 
-## 关键环境变量
+导出 **v1.1 题库 JSON**，包含教材信息、独立题目与题组、选项、答案和解析；同时支持 ZIP 资料包。产品版本 v2.0.0 与题库数据格式 v1.1 分别管理，便于下游系统保持稳定接入。
 
-后端主要读取这些环境变量：
+## 快速开始
 
-- `PORT`
-  应用端口，默认 `5001`
-- `DATA_ROOT`
-  工作区数据根目录，默认 `./data`
-- `ARK_API_KEY`
-  必填，火山 Ark API Key
-- `ARK_BASE_URL`
-  默认 `https://ark.cn-beijing.volces.com/api/v3`
-- `ARK_MODEL`
-  默认 `doubao-seed-2-0-pro-260215`
-- `QUESTION_BANK_DATABASE_URL`
-  PostgreSQL 连接串
-- `QUESTION_BANK_DB_SCHEMA`
-  默认 `question_bank_auto`
-- `REDIS_URL`
-  Redis 连接串
-- `SESSION_STORE_PREFIX`
-  Redis session key 前缀
-- `SESSION_TTL_SECONDS`
-  session TTL，默认 7 天
-- `PDF_RENDER_DPI`
-  PDF 转图 DPI，默认 `180`
-- `PDF_JPEG_QUALITY`
-  JPG 质量，默认 `90`
-- `MAX_PENDING_QUEUE_PAGES`
-  跨页待补队列上限，默认 `8`
-- `WORKSPACE_DERIVED_RETENTION_DAYS`
-  自动清理旧中间产物的保留天数，默认 `7`
-- `WORKSPACE_MAINTENANCE_INTERVAL_MS`
-  自动清理任务运行间隔，默认 `12h`
-
-## PostgreSQL 迁移
-
-如果你本地直接跑后端，需要先迁移数据库：
-
-```bash
-cd backend
-npm run db:migrate
-```
-
-Docker 部署默认会在容器启动时自动执行迁移。
-
-## Docker 部署
-
-当前仓库已经内置以下部署文件：
-
-- `Dockerfile`
-- `docker-compose.yml`
-- `.env.example`
-- `docker-entrypoint.sh`
-
-### 打包内容
-
-会打进镜像的：
-
-- 后端编译产物 `backend/dist`
-- 前端编译产物 `frontend/dist`
-- Node 运行依赖
-- `poppler-utils`
-
-不会打进镜像、而是走 volume 持久化的：
-
-- `data`
-- `runtime_cache`
-- `uploads`
-- `output_images`
-- `output_json`
-- `merged_json`
-- `read_results`
-- PostgreSQL 数据
-- Redis 数据
-
-也就是说：
-
-- 代码更新靠“重建镜像”
-- 业务数据靠“卷持久化”
-
-## Ubuntu 24.04 云服务器部署流程
-
-下面这套流程就是当前项目线上使用的推荐方式：
-
-- `Ubuntu 24.04`
-- `Docker Compose`
-- `PostgreSQL + Redis` 先跟应用一起用 Docker 跑
-
-### 1. 安装 Docker
-
-如果官方 Docker 源访问慢，先直接用 Ubuntu 自带包：
-
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-v2
-sudo systemctl enable --now docker
-sudo docker --version
-sudo docker compose version
-```
-
-可选：让当前用户免 `sudo`
-
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-### 2. 拉代码
+### Docker 部署
 
 ```bash
 git clone https://github.com/BY-Elysia/question_bank_auto.git
 cd question_bank_auto
-```
-
-### 3. 配置环境变量
-
-```bash
 cp .env.example .env
-nano .env
+# 编辑 .env，填写题库模型服务地址、密钥与模型名称
+docker compose up --build -d
 ```
 
-最关键的几项：
+访问 **http://127.0.0.1:5002**。在教材库创建工作区、上传 PDF 或图片，按页面引导开始提取。助手模型从 **AI 助手 → 模型设置** 单独配置。
 
-```env
-APP_PORT=5001
-PORT=5001
-RUN_DB_MIGRATE=1
+Compose 使用命名数据卷保存教材、任务、会话和配置，默认端口绑定宿主机回环地址。公网部署采用 HTTPS 反向代理，并启用 `.env.example` 中的账号登录配置：`ACCESS_REQUIRED`、`ACCESS_USERNAME`、`ACCESS_PASSWORD_HASH`。登录会话由 HttpOnly Cookie 管理，有效期 30 天。
 
-ARK_API_KEY=你的真实ARK密钥
+### 本地开发
 
-POSTGRES_DB=question_bank_auto
-POSTGRES_USER=question_bank
-POSTGRES_PASSWORD=改成强密码
-
-QUESTION_BANK_DATABASE_URL=postgresql://question_bank:你的强密码@postgres:5432/question_bank_auto
-QUESTION_BANK_DB_SCHEMA=question_bank_auto
-
-REDIS_URL=redis://redis:6379/0
-SESSION_STORE_PREFIX=question-bank-auto:sessions
-SESSION_TTL_SECONDS=604800
-```
-
-注意：
-
-- `QUESTION_BANK_DATABASE_URL` 里的密码必须和 `POSTGRES_PASSWORD` 一致
-- 主机名 `postgres`、`redis` 不要改，因为这是 `docker-compose.yml` 里的服务名
-
-### 4. 启动
+环境：**Node.js ≥ 22.21.0**，以及 Poppler 的 `pdfinfo`、`pdftoppm`。
 
 ```bash
-sudo docker compose up -d --build
+# macOS
+brew install poppler
+# Debian / Ubuntu：apt-get install poppler-utils
+
+npm ci
+npm --prefix client ci
+cp .env.example .env
+npm run build:all
+node --env-file=.env dist/app/apps/control-api/main.js
 ```
 
-### 5. 查看状态
+前端开发服务器：`npm run dev:web`，访问 `http://127.0.0.1:5173`，请求代理到后端 5002。默认数据目录为 `./workspace`，可通过 `WORKSPACE_ROOT` 配置。
+
+### 模型配置
+
+| 用途 | 页面入口 | 持久化配置 | 环境变量 |
+| --- | --- | --- | --- |
+| 教材提取、修复、答案 | 个人中心 | `profile/model.json` | `MODEL_BASE_URL`、`MODEL_API_KEY`、`MODEL_NAME`、`MODEL_PROTOCOL` |
+| AI 助手对话 | AI 助手 → 模型设置 | `profile/assistant-model.json` | `ASSISTANT_BASE_URL`、`ASSISTANT_API_KEY`、`ASSISTANT_MODEL`、`ASSISTANT_PROTOCOL` |
+
+题库支持分别指定 `VISION_MODEL` 和 `REASONING_MODEL`。视觉提取使用支持图片输入的模型；方舟 Responses 可使用显式前缀缓存复用固定指令，其他接口按配置使用常规调用。
+
+## 技术架构
+
+### 全栈 TypeScript，清晰的职责边界
+
+| 层次 | 技术与职责 |
+| --- | --- |
+| 交互层 | React、Vite、Tailwind CSS、Radix UI、Motion；深色工作台、响应式布局和聊天界面 |
+| 前端状态与请求 | 按功能组织 components / hooks / model / api；资源轮询、取消、草稿和提交状态独立管理 |
+| HTTP 接口 | NestJS、Express；45 个业务与健康端点，统一错误映射 |
+| 领域与应用 | 模块化单体、分层架构、端口与适配器；教材、工作区、任务、校对、个人配置及助手按职责组织 |
+| 运行时契约 | Zod 校验请求、领域对象及模型输出，并生成 OpenAPI 3.1 文档 |
+| 模型执行 | 8 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |
+| 文档与公式 | Poppler、Sharp、KaTeX；PDF 转图、预览图处理与数学公式渲染 |
+| 持久化与部署 | 原子文件写入、按实体加锁、后台任务生命周期管理；Docker Compose 与持久化数据卷 |
+
+```mermaid
+flowchart LR
+    UI[React 工作台 / AI 助手] --> API[NestJS API]
+    API --> APP[应用用例与工作流]
+    APP --> DOMAIN[领域规则 / Zod 契约]
+    APP --> PORT[仓储与模型端口]
+    PORT --> FILE[文件存储 / 任务检查点]
+    PORT --> MODEL[Chat / Responses / Anthropic]
+    APP --> SKILL[版本化 SKILL.md]
+    APP --> PDF[PDF 与图片处理端口]
+```
+
+### 模型工作流，面向可追溯的结果
+
+**章节识别 → 跨页边界分析 → 题目提取 → 结构校验 → 答案与修复候选 → 确认导出。**
+
+每一步由明确的输入输出契约约束。执行器固定 Skill 版本与指令哈希，保存调用用量、诊断信息和任务检查点；通过 `MODEL_TRACE=1` 可记录模型原始输出，定位格式失败与内容缺失的来源。恢复任务复用已完成的有效结果。
+
+新增模型协议通过模型适配器接入；数据库存储通过仓储端口替换；助手上下文通过 `AssistantContextPort` 扩展。页面组件、业务规则和具体基础设施各自演进。
+
+### 加载性能与执行模型
+
+首页并行获取登录状态与应用脚本，教材详情、上传弹窗和公式模块按需加载。相同轮询结果保留对象引用，减少公式重复渲染；原图使用常规预览资源及邻页预加载。静态资源在构建时生成 Brotli 压缩版本。
+
+当前部署采用 **单后端进程管理独占数据卷**，支持多个逻辑工作区独立异步运行。文件仓储与任务执行接口为后续数据库和执行基础设施扩展提供边界。
+
+## 质量验证
+
+v2.0 发布验证包含 **109 项后端测试、23 项 Chrome 浏览器端测**，覆盖 PDF/图片上传、章节并行、跨页拼接、逐题操作、任务恢复、导出、模型协议、配置隔离、公式与移动端布局。
 
 ```bash
-sudo docker compose ps
-sudo docker compose logs -f app
+npm run check       # 构建、OpenAPI 校验、类型检查和后端测试
+npm run build:web   # 前端类型检查与生产构建
+npm run test:web    # Playwright 浏览器端测
 ```
 
-### 6. 开放安全组端口
+可控模型响应用于稳定回归，本地 HTTP 服务验证供应商协议。真实模型验证使用已配置的服务运行 `npm run test:live` 或 `npm run test:live:workspaces`。
 
-如果暂时直接通过公网 IP 访问，需要开放：
+## 深入了解
 
-- `TCP:5001`
-
-浏览器访问：
-
-```text
-http://你的公网IP:5001
-```
-
-后续如果接域名和 HTTPS，建议只对外开放：
-
-- `TCP:80`
-- `TCP:443`
-
-## 服务器更新流程
-
-以后你修改代码后，服务器更新只需要：
-
-```bash
-cd ~/workspaces/question_bank_auto
-git pull
-sudo docker compose up -d --build
-```
-
-常用辅助命令：
-
-查看状态：
-
-```bash
-sudo docker compose ps
-```
-
-查看日志：
-
-```bash
-sudo docker compose logs -f app
-```
-
-停止服务：
-
-```bash
-sudo docker compose down
-```
-
-## 当前用户流程
-
-### 1. 上传 PDF
-
-- PDF 会上传到当前工作区
-- 原始 PDF 会保存
-- 转图后的页图会落到 `output_images/`
-
-### 2. 生成或导入 JSON
-
-- 导入后会进入当前工作区
-- 工作区里会有主 JSON 工作副本
-
-### 3. 结构化提取
-
-- 提取结果持续写回当前主 JSON
-- session 状态放在 Redis
-
-### 4. 可视化修复
-
-- 修公式、补图、改题型、生成答案，都会持续覆盖当前主 JSON
-- 用户可以随时点击“下载当前最新 JSON”
-
-### 5. 导入本地 `uploads/`
-
-如果 JSON 里的图片 URL 还指向本地 `/uploads/...`：
-
-- 可视化页支持上传本地 `uploads` 文件夹
-- 后端会把图片导入服务器
-- 并把 JSON 里的图片地址改写成服务器可访问 URL
-
-## 文件上传策略
-
-为了适应服务器环境，上传已经不再使用纯内存缓存。
-
-当前策略是：
-
-- 上传先落到磁盘临时目录
-- 后端按需读取文件
-- 请求结束后自动清理临时上传文件
-
-这样可以显著降低：
-
-- 大 PDF 上传时的内存峰值
-- 批量图片修复时的内存压力
-- 公网用户同时操作时的崩溃风险
-
-## 工作区空间管理
-
-现在系统已经支持工作区空间管理。
-
-前端顶部导航会显示：
-
-- 当前 `workspaceId`
-- 当前工作区占用大小
-- 文件数
-- 资产数
-
-并支持：
-
-- `刷新空间`
-- `清理中间产物`
-- `删除当前工作区`
-
-### 清理规则
-
-“清理中间产物”只会清：
-
-- `output_images`
-- `read_results`
-
-不会清：
-
-- 当前主 `main.json`
-- 用户上传图片
-- 必要的工作结果
-
-### 自动清理
-
-后端启动后会定期清理“长时间未更新工作区”的中间产物。
-
-默认规则：
-
-- 超过 `7` 天未更新的工作区
-- 自动清掉旧页图和读结果
-- repair 快照只保留少量最新版本
-
-可通过环境变量调整：
-
-- `WORKSPACE_DERIVED_RETENTION_DAYS`
-- `WORKSPACE_MAINTENANCE_INTERVAL_MS`
-
-## 当前适合的部署定位
-
-这套系统目前最适合：
-
-- `1 台 Linux 云服务器`
-- `Docker Compose`
-- `1 个应用容器`
-- `1 个 PostgreSQL 容器`
-- `1 个 Redis 容器`
-
-如果后续文件量继续增长，建议下一步演进为：
-
-- PostgreSQL 用托管版
-- Redis 用托管版
-- PDF、图片、归档 JSON 迁对象存储
-- 域名 + HTTPS + 反向代理
-
-## 已知说明
-
-- 公网直接通过 `IP:5001` 访问时，浏览器的 File System Access API 可能不可用，所以页面会退化为普通文件上传入口
-- 首次 Docker 构建通常最慢，因为要拉基础镜像、安装系统包和依赖
-- 前端构建目前有大 chunk 警告，但不影响运行
-
-## 推荐的实际运维习惯
-
-- 代码改动后：`git pull && docker compose up -d --build`
-- 定期查看：当前工作区空间占用
-- 大批量处理完成后：手动清理中间产物
-- 不再需要的任务：直接删除工作区
-- 发布前：备份 `.env`、数据库卷和 `data/`
-
-## Git 说明
-
-- 默认分支：`main`
-- 推送前不要把真实密钥写入仓库
-- `.env` 不应提交到 Git
+- [v2.0.0 发布说明](docs/releases/v2.0.0.md)
+- [更新日志](CHANGELOG.md)
+- [后端架构](docs/architecture.md) · [前端架构](docs/frontend-architecture.md)
+- [工作台与扩展边界](docs/workbench-architecture.md)
+- [识题工作流](docs/extraction-workflow.md) · [Skill 指令目录](src/ai/skills/README.md)
+- [API 使用指南](docs/api.md) · OpenAPI 构建产物：`dist/contracts/openapi.json`
+- [整体重构验证](docs/verification/architecture-refactor-2026-11-07.md) · [首页与助手验证](docs/verification/home-chat-2026-11-07.md)

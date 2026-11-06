@@ -1,0 +1,16 @@
+services:
+  textbook:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:5002:5002"
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      WORKSPACE_ROOT: /workspace
+    volumes:
+      - textbook-workspace:/workspace
+    restart: unless-stopped
+    stop_grace_period: 30s
+volumes:
+  textbook-workspace:

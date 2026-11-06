@@ -1,0 +1,122 @@
+.dashboard {
+  max-width: 1380px;
+  padding: 42px 52px 28px;
+  margin: auto;
+}
+.eyebrow {
+  color: #9998a8;
+  font:
+    10px 'SFMono-Regular',
+    Consolas,
+    monospace;
+  letter-spacing: 1.8px;
+  margin-bottom: 10px;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+.page-heading h1 {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -1px;
+  line-height: 1.4;
+}
+.page-heading p {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
+}
+.library-welcome {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  border: 1px solid #393344;
+  border-radius: 13px;
+  background: #1c1c26;
+  overflow: hidden;
+}
+.welcome-copy {
+  padding: 26px 30px;
+}
+.soft-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #aaa1de;
+}
+.welcome-copy h2 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin: 11px 0 9px;
+}
+.welcome-copy p {
+  font-size: 12px;
+  color: #b2b1bf;
+  line-height: 1.8;
+  max-width: 280px;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--primary);
+  font-size: 12px;
+}
+.text-link:hover {
+  color: #dedee5;
+}
+.welcome-copy .text-link {
+  margin-top: 18px;
+  font-weight: 550;
+}
+.welcome-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  padding: 30px 28px 30px 10px;
+  gap: 12px;
+}
+.welcome-steps > div {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  align-items: flex-start;
+  gap: 12px;
+  background: #22222c;
+  border: 1px solid #393344;
+  border-radius: 9px;
+  padding: 20px 16px;
+  min-height: 140px;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.welcome-steps > div:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 18px #00000012;
+}
+.welcome-step-number {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  color: #9998a8;
+  font: 10px monospace;
+}
+.welcome-steps svg {
+  color: #aaa1de;
+  stroke-width: 1.4;
+}
+.welcome-steps strong {
+  font-weight: 550;
+  font-size: 12px;
+}
+.welcome-steps small {
+  font-size: 10px;
+  color: #9998a8;
+  white-space: nowrap;
+}

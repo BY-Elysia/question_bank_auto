@@ -1,0 +1,230 @@
+import {
+  ModelSettingsInput,
+  ModelSettingsView,
+  ModelTestResult,
+  UsageSummary,
+  profileRoutes,
+} from '../dist/app/modules/profile/presentation/contracts.js';
+import {
+  Conversation,
+  ChatInput,
+  ConversationList,
+  assistantRoutes,
+} from '../dist/app/modules/assistant/presentation/contracts.js';
+import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/domain/workspace.js';
+import {
+  WorkspaceList,
+  WorkspaceViewResponse,
+  WorkspaceReadiness,
+} from '../dist/app/modules/workspaces/presentation/contracts.js';
+import { workspaceRoutes } from '../dist/app/modules/workspaces/presentation/routes.js';
+import fs from 'node:fs/promises';
+import { TextbookMetadata } from '../dist/app/modules/textbooks/domain/metadata.js';
+import { z } from 'zod';
+import { Book, Proposal } from '../dist/app/modules/textbooks/domain/book.js';
+import { Document, Issue, Page } from '../dist/app/modules/textbooks/domain/content.js';
+import { Job, JobRequest } from '../dist/app/modules/jobs/domain/job.js';
+import * as requests from '../dist/app/modules/textbooks/presentation/contracts.js';
+import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
+import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
+const schemas = {
+  ModelSettingsInput,
+  ModelSettingsView,
+  ModelTestResult,
+  UsageSummary,
+  Conversation,
+  ChatInput,
+  ConversationList,
+  MetadataUpdate: z.object({
+    revision: z.number().int().nonnegative(),
+    metadata: TextbookMetadata,
+  }),
+  Book,
+  Workspace,
+  ExtractionSettings,
+  WorkspaceList,
+  WorkspaceViewResponse,
+  WorkspaceReadiness,
+  Job,
+  JobRequest,
+  ...requests,
+  BookList: z.array(
+    Book.pick({ id: true, title: true, revision: true, updatedAt: true }).extend({
+      pageCount: z.number().int(),
+    }),
+  ),
+  DocumentResponse: z.object({ revision: z.number().int(), document: Document }),
+  ProposalList: z.array(Proposal),
+  JobList: z.array(Job.omit({ stage: true })),
+  Validation: z.object({ issues: z.array(Issue) }),
+  Revisions: z.array(z.object({ revision: z.number().int() })),
+  Health: z.object({
+    status: z.literal('ok'),
+    mode: z.literal('single-workspace'),
+    modelConfigured: z.boolean(),
+  }),
+  ExportDocument: Document.extend({
+    schemaVersion: z.literal('1.0'),
+    id: z.string(),
+    title: z.string(),
+    metadata: TextbookMetadata.nullable(),
+    revision: z.number().int(),
+    pages: z.array(Page.extend({ image: z.string() })),
+    validation: z.array(Issue),
+    reviewIssues: z.array(Issue),
+    pendingProposalCount: z.number().int(),
+  }),
+};
+const components = { schemas: {} };
+for (const [name, schema] of Object.entries(schemas)) {
+  const json = z.toJSONSchema(schema);
+  delete json.$schema;
+  components.schemas[name] = json;
+}
+const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
+function content(name) {
+  if (name === 'PageImage')
+    return { ...content('PNG'), 'image/webp': { schema: { type: 'string', format: 'binary' } } };
+  if (name === 'ImageUpload')
+    return {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          required: ['images'],
+          properties: {
+            images: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 500,
+              items: { type: 'string', format: 'binary' },
+            },
+          },
+        },
+      },
+    };
+  return binaries[name]
+    ? { [binaries[name]]: { schema: { type: 'string', format: 'binary' } } }
+    : { 'application/json': { schema: { $ref: `#/components/schemas/${name}` } } };
+}
+const paths = {};
+for (const [method, path, operationId, input, output, status] of [
+  ...textbookRoutes,
+  ...workspaceRoutes,
+  ...jobRoutes,
+  ...profileRoutes,
+  ...assistantRoutes,
+  [
+    'patch',
+    '/api/workspaces/{id}/metadata',
+    'updateWorkspaceMetadata',
+    'MetadataUpdate',
+    'Workspace',
+    200,
+  ],
+  [
+    'post',
+    '/api/workspaces/{id}/questions/{anchor}/image',
+    'insertQuestionImage',
+    'ImageUpload',
+    'Job',
+    202,
+  ],
+  ['get', '/api/health', 'health', null, 'Health', 200],
+]) {
+  const parameters = [...path.matchAll(/\{([^}]+)\}/g)].map(([, name]) => ({
+    name,
+    in: 'path',
+    required: true,
+    schema: name === 'page' ? { type: 'integer', minimum: 1 } : { type: 'string' },
+  }));
+  if (['uploadTextbook', 'uploadWorkspacePdf', 'uploadWorkspaceImages'].includes(operationId))
+    parameters.push({
+      name: 'title',
+      in: 'query',
+      required: true,
+      schema: { type: 'string', minLength: 1, maxLength: 300 },
+    });
+  if (operationId === 'insertQuestionImage')
+    parameters.push(
+      {
+        name: 'position',
+        in: 'query',
+        required: true,
+        schema: { type: 'string', enum: ['before', 'after'] },
+      },
+      { name: 'revision', in: 'query', required: true, schema: { type: 'integer', minimum: 0 } },
+    );
+  if (operationId === 'getPageImage')
+    parameters.push({
+      name: 'variant',
+      in: 'query',
+      required: false,
+      schema: { type: 'string', enum: ['original', 'preview', 'detail'], default: 'original' },
+      description:
+        'Original PNG, lightweight WebP preview, or full-resolution lossless WebP detail',
+    });
+  if (operationId === 'getWorkspace')
+    parameters.push({
+      name: 'preview',
+      in: 'query',
+      required: false,
+      schema: { type: 'string', enum: ['include', 'omit'], default: 'include' },
+      description:
+        'Omit duplicate chapter preview content when only the published document is displayed; progress fields remain available',
+    });
+  (paths[path] ??= {})[method] = {
+    operationId,
+    summary: operationId,
+    parameters,
+    security: [],
+    ...(input ? { requestBody: { required: true, content: content(input) } } : {}),
+    responses: {
+      [status]: { description: 'Success', ...(output ? { content: content(output) } : {}) },
+      ...(operationId === 'getPageImage'
+        ? { 304: { description: 'Authenticated cached image is unchanged' } }
+        : {}),
+      400: { description: 'Invalid request' },
+      404: { description: 'Not found' },
+      409: { description: 'Revision conflict or active task' },
+      500: { description: 'Operation failed' },
+    },
+  };
+}
+await fs.mkdir('dist/contracts', { recursive: true });
+await fs.writeFile(
+  'dist/contracts/openapi.json',
+  JSON.stringify(
+    {
+      openapi: '3.1.0',
+      info: {
+        title: 'Textbook workspace backend',
+        version: JSON.parse(await fs.readFile('package.json', 'utf8')).version,
+        description:
+          'Authenticated single-account workspace backend. Model-backed extraction, question insertion and conversations run independently of browser sessions.',
+      },
+      servers: [{ url: 'http://127.0.0.1:5002' }],
+      paths,
+      components,
+    },
+    null,
+    2,
+  ),
+);
+const catalog = [];
+for (const entry of await fs.readdir('src/ai/skills', { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const source = `src/ai/skills/${entry.name}`,
+    target = `dist/app/ai/skills/${entry.name}`;
+  const definition = JSON.parse(await fs.readFile(`${source}/definition.json`, 'utf8'));
+  const markdown = await fs.readFile(`${source}/SKILL.md`, 'utf8');
+  if (!markdown.includes(`name: ${definition.id}\n`))
+    throw new Error(`Missing/mismatched Skill: ${entry.name}`);
+  await fs.mkdir(target, { recursive: true });
+  for (const file of ['SKILL.md', 'definition.json'])
+    await fs.copyFile(`${source}/${file}`, `${target}/${file}`);
+  catalog.push(definition);
+}
+await fs.writeFile('dist/contracts/skills.json', JSON.stringify(catalog, null, 2));
+console.log(
+  `Built ${Object.values(paths).reduce((n, p) => n + Object.keys(p).length, 0)} endpoints and ${catalog.length} Skill packages.`,
+);

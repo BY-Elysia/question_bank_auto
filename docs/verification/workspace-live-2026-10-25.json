@@ -1,0 +1,45 @@
+{
+  "startedAt": "2026-10-25T07:38:25.118Z",
+  "checks": [
+    "PDF automatic conversion",
+    "Image upload and workspace creation",
+    "Parallel chapters, automatic titles, ordered merge and missing-answer proposals",
+    "Provider confirms nonzero prefix-cache hits"
+  ],
+  "modelCalls": 10,
+  "cachedTokens": 11076,
+  "chapters": [
+    {
+      "title": "Chapter 1: Arithmetic",
+      "pages": [
+        1
+      ],
+      "status": "completed"
+    },
+    {
+      "title": "Chapter 2: Geometry",
+      "pages": [
+        2
+      ],
+      "status": "completed"
+    }
+  ],
+  "answers": [
+    {
+      "text": "5",
+      "origin": "ai_generated"
+    },
+    {
+      "text": "12",
+      "origin": "ai_generated"
+    }
+  ],
+  "passed": true,
+  "finishedAt": "2026-10-25T07:39:37.385Z",
+  "fixture": "Two original pages: arithmetic 2+3 and rectangle area 4x3",
+  "modelCallsNote": "Successful skill invocation records; excludes prefix seed HTTP requests and transport retries.",
+  "scope": "Small synthetic sample; not a full textbook accuracy evaluation.",
+  "models": [
+    "doubao-seed-2-0-pro-260215"
+  ]
+}

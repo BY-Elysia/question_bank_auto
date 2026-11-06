@@ -1,0 +1,186 @@
+import { invocationTrace } from './invocation-trace.js';
+import { createHash, randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import type { ModelClient } from '../ports/model-client.js';
+import type { PageImagePort } from '../../modules/textbooks/ports/assets.port.js';
+import type { BookRepository } from '../../modules/textbooks/ports/book.repository.js';
+import type { SkillId, SkillCatalog, RunRecords } from '../ports/skill-catalog.js';
+import {
+  StructuredOutputError,
+  type Skills,
+  type SkillContext,
+  type OutputContract,
+} from '../ports/skills.js';
+export class SkillRunner implements Skills {
+  constructor(
+    private store: BookRepository,
+    private model: ModelClient,
+    private images: PageImagePort,
+    private catalog: SkillCatalog,
+    private records: RunRecords,
+  ) {}
+  async run<T extends z.ZodType>(
+    id: SkillId,
+    input: unknown,
+    schema: T,
+    pages: number[],
+    context: SkillContext,
+    output?: OutputContract,
+  ): Promise<z.infer<T>> {
+    const budget = Number(process.env.MAX_SKILL_DURATION_MS ?? 180000);
+    if (!Number.isFinite(budget) || budget < 1) throw new Error('Invalid skill duration budget');
+    const signal = AbortSignal.any([context.signal, AbortSignal.timeout(budget)]);
+    const definition = await this.catalog.get(id);
+    const instructions = definition.instructions;
+    const hash = createHash('sha256').update(instructions).digest('hex');
+    await this.records.pin(context.bookId, context.jobId, id, {
+      hash,
+      version: definition.version,
+    });
+    const book = await this.store.read(context.bookId);
+    const images = await Promise.all(
+      [...new Set(pages)].map(async (page) => {
+        if (!book.pages.some((p) => p.number === page))
+          throw new Error('Skill requested an unknown page');
+        return {
+          page,
+          url: await this.images.dataUrl(book.id, page, signal),
+        };
+      }),
+    );
+    const wireSchema = output?.schema ?? schema;
+    const system = output?.parseText
+      ? `${instructions}\n${output.instructions}`
+      : `${instructions}\n${output?.instructions ?? ''}\n输出一个紧凑 JSON 对象，字段名严格遵守契约，不输出缩进、围栏或额外文字。数学反斜杠须正确 JSON 转义。\n只输出 JSON，不要代码围栏。输出 JSON Schema：\n${JSON.stringify(z.toJSONSchema(wireSchema))}`;
+    let feedback = '';
+    for (let attempt = 0; attempt < (output?.parseText ? 1 : 2); attempt++) {
+      signal.throwIfAborted();
+      const invocationId = randomUUID();
+      const startedAt = Date.now();
+      const requestInput = {
+        task: output?.encode ? output.encode(input) : input,
+        context: book.extractionContext,
+        validationFeedback: feedback,
+        outputContract: output?.parseText
+          ? 'Return only the specified text envelope. Do not serialize as JSON.'
+          : 'Return one compact JSON object matching the system schema. No padding or commentary.',
+      };
+      let result;
+      try {
+        result = await this.model.complete({
+          system,
+          outputMode: 'text',
+          ...(output?.maxOutputTokens ? { maxOutputTokens: output.maxOutputTokens } : {}),
+          cache:
+            attempt > 0
+              ? 'off'
+              : (book.jobs.find((j) => j.id === context.jobId)?.request.cache ?? 'prefix'),
+          ...(attempt > 0
+            ? {
+                structuredOutput: {
+                  name: id.replaceAll('-', '_'),
+                  schema: z.toJSONSchema(wireSchema),
+                },
+              }
+            : {}),
+          cacheScope: book.workspaceId ?? book.id,
+          input: requestInput,
+          images,
+          signal,
+          role: definition.modelRole,
+        });
+      } catch (error) {
+        await this.records.record(book.id, context.jobId, {
+          id: invocationId,
+          skill: id,
+          version: definition.version,
+          instructionHash: hash,
+          model: 'unavailable',
+          usage: null,
+          at: new Date().toISOString(),
+          attempt,
+          durationMs: Date.now() - startedAt,
+          // Transport error messages may contain headers or provider bodies; do not persist them.
+          providerError: context.signal.aborted
+            ? 'aborted'
+            : signal.aborted
+              ? 'deadline_exceeded'
+              : 'provider_request_failed',
+          ...invocationTrace(
+            system,
+            requestInput,
+            pages,
+            null,
+            ['answer-generate', 'question-insert'].includes(id),
+          ),
+        });
+        throw error;
+      }
+      let parsed: z.infer<T> | undefined;
+      let validationError: string | null = null;
+      let syntaxOffset: number | null = null;
+      if (result.completionStatus === 'incomplete') {
+        validationError = 'Incomplete model output';
+        feedback =
+          '上次模型输出未完成或被截断；不要省略原文，请重新完整输出。如仍超出预算，停止并保留检查点。';
+      } else
+        try {
+          const text = result.text
+            .trim()
+            .replace(/^```(?:json)?\s*/, '')
+            .replace(/\s*```$/, '');
+          const value = wireSchema.parse(
+            output?.parseText ? output.parseText(result.text) : JSON.parse(text),
+          );
+          parsed = schema.parse(output ? output.decode(value) : value);
+        } catch (error) {
+          if (error instanceof SyntaxError)
+            syntaxOffset = Number(error.message.match(/position (\d+)/)?.[1] ?? NaN);
+          // Keep summary diagnostics safe; raw source output is available only in opt-in local traces.
+          validationError =
+            error instanceof z.ZodError
+              ? error.issues
+                  .map((i) => `${i.path.join('.')}: ${i.code}`)
+                  .join('; ')
+                  .slice(0, 2000)
+              : output?.parseText
+                ? 'Invalid answer text envelope'
+                : 'Invalid JSON syntax';
+          feedback = `上次输出未通过结构校验：${validationError}。重新对照原图输出紧凑 JSON；字符串用双引号，LaTeX 反斜杠在 JSON 中写成双反斜杠。不要复述错误响应。`;
+        }
+      await this.records.record(book.id, context.jobId, {
+        id: invocationId,
+        skill: id,
+        version: definition.version,
+        instructionHash: hash,
+        model: result.model,
+        usage: result.usage,
+        cache:
+          result.cache ?? (attempt > 0 ? { mode: 'off', reason: 'structured_output_retry' } : null),
+        at: new Date().toISOString(),
+        attempt,
+        validationError,
+        outputDiagnostics: {
+          characters: result.text.length,
+          whitespaceCharacters: result.text.match(/\s/g)?.length ?? 0,
+          syntaxOffset: Number.isFinite(syntaxOffset) ? syntaxOffset : null,
+          protocol: output?.parseText ? 'answer-envelope-v1' : 'json',
+        },
+        outputFormat: result.outputFormat,
+        completionStatus: result.completionStatus,
+        durationMs: Date.now() - startedAt,
+        ...invocationTrace(
+          system,
+          requestInput,
+          pages,
+          result.text,
+          ['answer-generate', 'question-insert'].includes(id),
+        ),
+      });
+      if (validationError === null) return parsed!;
+    }
+    throw new StructuredOutputError(
+      `${id}: invalid structured output (output contract validation failed)`,
+    );
+  }
+}

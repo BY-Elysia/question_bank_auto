@@ -1,0 +1,28 @@
+/* The document never becomes a horizontal canvas. Large content scrolls only
+   within the source viewer, formula block, or result panel that owns it. */
+html, body, #root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+.app-shell, .main-shell, .main-shell > main, .workspace-page,
+.review, .review-layout, .comparison, .canvas-panel, .results-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.app-shell, .workspace-page { width: 100%; }
+.workspace-heading { flex-wrap: wrap; }
+.workspace-heading > div { min-width: 0; max-width: 100%; }
+.workspace-heading > div:first-child { flex: 1 1 240px; }
+.workspace-tools, .review-actions { max-width: 100%; flex-wrap: wrap; }
+.review-heading > div { min-width: 0; }
+.job-notice { min-width: 0; overflow-wrap: anywhere; flex-wrap: wrap; }
+.canvas-toolbar > div { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.rich-text { min-width: 0; max-width: 100%; overflow-wrap: anywhere; overflow-x: auto; }
+@media (max-width: 1000px) {
+  .review-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .workspace-heading > div:first-child { flex-basis: auto; }
+}

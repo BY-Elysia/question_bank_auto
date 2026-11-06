@@ -1,0 +1,249 @@
+import { MetadataDialog } from './MetadataDialog';
+import { useState } from 'react';
+import { ArrowLeft, Download, History, Pause, RotateCcw, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Steps, Status, ErrorNote, Loading } from '@/components/common';
+import { navigate } from '@/shared/navigation';
+import { useWorkspace } from '../hooks/useWorkspace';
+import { Configure } from '@/features/extraction/components/Configure';
+import { Processing } from '@/features/extraction/components/Processing';
+import { lazy, Suspense } from 'react';
+// Math and review tooling are unnecessary during upload/configuration. Keep
+// the entire review behind one boundary, never raw-text formula placeholders.
+const Review = lazy(() =>
+  import('@/features/review/components/Review').then((m) => ({ default: m.Review })),
+);
+export function WorkspacePage({ id }: { id: string }) {
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const {
+    view,
+    error,
+    loading,
+    refresh,
+    action,
+    confirm,
+    setConfirm,
+    history,
+    setHistory,
+    revision,
+    setRevision,
+    preview,
+    setPreview,
+    active,
+    runningJob,
+    canExport,
+    step,
+    extractionComplete,
+    answerFailed,
+    command,
+    download,
+    openHistory,
+    remove,
+    restore,
+  } = useWorkspace(id);
+  if (loading && !view) return <Loading />;
+  if (!view)
+    return (
+      <div className="workspace-page">
+        <ErrorNote>{error}</ErrorNote>
+        <Button onClick={refresh}>重试</Button>
+        <Button variant="ghost" onClick={() => navigate()}>
+          返回工作区
+        </Button>
+      </div>
+    );
+  const w = view.workspace;
+  return (
+    <div className={`workspace-page ${extractionComplete ? 'review-mode' : ''}`}>
+      <button className="back-link" onClick={() => navigate()}>
+        <ArrowLeft size={14} />
+        全部工作区
+      </button>
+      <div className="workspace-heading">
+        <div>
+          <div className="eyebrow">TEXTBOOK WORKSPACE</div>
+          <h1>{w.title}</h1>
+          <p>
+            {w.sourceKind === 'pdf' ? 'PDF 教材' : '图片教材'} · {w.totalPages} 页{' '}
+            <span className="mono">REV.{String(view.revision).padStart(2, '0')}</span>
+          </p>
+        </div>
+        <div className="workspace-tools">
+          <Status
+            status={
+              answerFailed
+                ? 'answers_failed'
+                : extractionComplete && active
+                  ? 'answers_running'
+                  : w.status
+            }
+          />
+          {view.actions.cancel && (
+            <Button variant="outline" disabled={action.busy} onClick={() => command('cancel')}>
+              <Pause size={14} />
+              暂停处理
+            </Button>
+          )}
+          {view.actions.resume && (
+            <Button disabled={action.busy} onClick={() => command('resume')}>
+              <RotateCcw size={14} />
+              {extractionComplete ? '继续补全答案' : '恢复处理'}
+            </Button>
+          )}
+          {extractionComplete && (
+            <Button
+              variant="outline"
+              disabled={active || runningJob}
+              onClick={() => setMetadataOpen(true)}
+            >
+              教材信息
+            </Button>
+          )}
+          {canExport && (
+            <>
+              <Button variant="outline" disabled={action.busy} onClick={openHistory}>
+                <History size={15} />
+                历史
+              </Button>
+              <Button
+                variant="outline"
+                disabled={action.busy}
+                onClick={() => download(view.exportJsonUrl, 'json')}
+              >
+                <Download size={15} />
+                JSON
+              </Button>
+              <Button disabled={action.busy} onClick={() => download(view.exportZipUrl, 'zip')}>
+                <Download size={15} />
+                导出资料包
+              </Button>
+            </>
+          )}
+          {view.actions.delete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={action.busy || runningJob}
+              aria-label="删除工作区"
+              onClick={() => setConfirm(true)}
+            >
+              <Trash2 size={16} />
+            </Button>
+          )}
+        </div>
+      </div>
+      <Steps step={step} />
+      <ErrorNote>{error || action.error}</ErrorNote>
+      {w.error && (
+        <div className="error-note" role="alert">
+          {answerFailed
+            ? '题目提取已完成，答案补全已中断。已生成的候选与进度已保存，可继续补全答案。'
+            : w.error}
+        </div>
+      )}
+      {w.status === 'ready' && <Configure view={view} onDone={refresh} />}
+      {extractionComplete && (
+        <p className="job-notice">
+          题目提取已完成 · {view.document.processedPages.length}{' '}
+          页。答案补全单独处理，候选需确认后进入正式导出。
+        </p>
+      )}
+      {active && !extractionComplete && <Processing view={view} />}
+      {!extractionComplete && (active || view.actions.resume) && !!view.chapters.length && (
+        <div className="preview-toggle">
+          <Button variant="outline" onClick={() => setPreview((v) => !v)}>
+            {preview ? '收起' : '查看'}已提取内容预览
+          </Button>
+        </div>
+      )}
+      <Suspense
+        fallback={
+          extractionComplete && view.pages[0] ? (
+            <div className="job-notice" style={{ display: 'block' }}>
+              <p role="status">正在加载题目与公式，原图可先查看。</p>
+              <img
+                src={view.pages[0].previewUrl || view.pages[0].imageUrl}
+                alt="教材第 1 页原图"
+                decoding="async"
+                fetchPriority="high"
+                style={{ display: 'block', maxWidth: '100%', height: '60vh', objectFit: 'contain' }}
+              />
+            </div>
+          ) : (
+            <Loading />
+          )
+        }
+      >
+        {!extractionComplete && preview && (active || view.actions.resume) && (
+          <Review view={view} onChange={refresh} preview />
+        )}
+        {(extractionComplete || (!active && !view.actions.resume)) && view.revision > 0 && (
+          <Review view={view} onChange={refresh} />
+        )}
+      </Suspense>
+      {metadataOpen && (
+        <MetadataDialog view={view} onClose={() => setMetadataOpen(false)} onSaved={refresh} />
+      )}
+      {w.status === 'deleting' && <Loading />}
+      <Dialog
+        open={confirm}
+        onOpenChange={(v) => {
+          if (!action.busy) setConfirm(v);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除这个工作区？</DialogTitle>
+            <DialogDescription>
+              将删除「{w.title}」的原图、提取结果、章节任务与修复记录。此操作无法撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <ErrorNote>{action.error}</ErrorNote>
+          <div className="dialog-actions">
+            <Button variant="outline" onClick={() => setConfirm(false)}>
+              保留工作区
+            </Button>
+            <Button variant="destructive" disabled={action.busy} onClick={remove}>
+              确认删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={history !== null}
+        onOpenChange={(v) => {
+          if (!v && !action.busy) setHistory(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>文档版本</DialogTitle>
+            <DialogDescription>恢复旧版会创建新的修订，不会抹去历史记录。</DialogDescription>
+          </DialogHeader>
+          <label className="field">
+            选择要恢复的版本
+            <select value={revision} onChange={(e) => setRevision(Number(e.target.value))}>
+              {history?.map((r) => (
+                <option key={r} value={r}>
+                  修订 {r}
+                  {r === view.revision ? ' · 当前版本' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ErrorNote>{action.error}</ErrorNote>
+          <Button disabled={revision === view.revision || action.busy} onClick={restore}>
+            恢复为新修订
+          </Button>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -1,0 +1,107 @@
+.workspace-page {
+  padding: 28px 34px 40px;
+  max-width: 1800px;
+  margin: auto;
+}
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 25px;
+}
+.back-link:hover {
+  color: var(--teal);
+}
+.workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.workspace-heading h1 {
+  font-size: 25px;
+  font-weight: 550;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.workspace-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.workspace-heading .mono {
+  margin-left: 13px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.workspace-heading .eyebrow {
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+.workspace-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.workspace-tools .status {
+  margin-right: 6px;
+}
+.workspace-tools [data-slot='button'] {
+  font-size: 12px;
+}
+.steps {
+  display: flex;
+  padding: 26px 0 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 28px;
+  max-width: 100%;
+  gap: 12px;
+}
+.steps > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  white-space: nowrap;
+}
+.steps > div:last-child {
+  flex: 0;
+}
+.steps > div > span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font: 9px monospace;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.steps > div > i {
+  height: 1px;
+  flex: 1;
+  background: var(--surface-soft);
+  margin-left: 4px;
+}
+.steps .current {
+  color: var(--foreground);
+}
+.steps .current > span {
+  border-color: var(--line);
+  background: var(--surface-soft);
+  color: var(--foreground);
+  box-shadow: 0 4px 18px #00000012;
+}
+.steps .done {
+  color: var(--muted);
+}
+.steps .done > span {
+  border-color: var(--line);
+  color: var(--muted);
+}

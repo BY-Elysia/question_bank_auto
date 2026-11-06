@@ -1,0 +1,89 @@
+{
+  "report": [
+    {
+      "pass": 0,
+      "action": "open",
+      "mathMs": 18646,
+      "imageMs": 11044,
+      "fontsReadyMs": 19729
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 962
+    },
+    {
+      "pass": 0,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 950
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 117
+    },
+    {
+      "pass": 0,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 100
+    },
+    {
+      "pass": 1,
+      "action": "open",
+      "mathMs": 3571,
+      "imageMs": 3100,
+      "fontsReadyMs": 3572
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 2,
+      "visibleMs": 112
+    },
+    {
+      "pass": 1,
+      "action": "下一页",
+      "page": 3,
+      "visibleMs": 282
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 2,
+      "visibleMs": 100
+    },
+    {
+      "pass": 1,
+      "action": "上一页",
+      "page": 1,
+      "visibleMs": 100
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/1/image?variant=preview",
+      "duration": 248.5,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/2/image?variant=preview",
+      "duration": 226.19999998807907,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/3/image?variant=preview",
+      "duration": 260.2999999523163,
+      "size": 300
+    },
+    {
+      "name": "https://118.178.169.122/api/textbooks/35b5e091-5f00-4427-bb50-5bcb3e598077/pages/4/image?variant=preview",
+      "duration": 119.69999998807907,
+      "size": 0
+    }
+  ],
+  "errors": []
+}

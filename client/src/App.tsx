@@ -1,0 +1,199 @@
+import { lazy, Suspense } from 'react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
+import {
+  UserRound,
+  MessageSquare,
+  FolderOpen,
+  LayoutGrid,
+  PanelLeftClose,
+  PanelLeftOpen,
+  BookOpen,
+  Command,
+  Wifi,
+  WifiOff,
+  Sparkles,
+} from 'lucide-react';
+import { ParticleField } from '@/components/effects/ParticleField';
+import { Button } from '@/components/ui/button';
+import { Logo, Loading } from '@/components/common';
+import { Dashboard } from '@/features/workspace/components/Dashboard';
+const WorkspacePage = lazy(() =>
+  import('@/features/workspace/components/Workspace').then((m) => ({ default: m.WorkspacePage })),
+);
+const UploadDialog = lazy(() =>
+  import('@/features/workspace/components/UploadDialog').then((m) => ({ default: m.UploadDialog })),
+);
+import { navigate } from '@/shared/navigation';
+import { useAppShell } from '@/app/hooks/useAppShell';
+const ProfilePage = lazy(() => import('@/features/profile/components/ProfilePage'));
+const AssistantPage = lazy(() => import('@/features/assistant/components/AssistantPage'));
+export default function App() {
+  const {
+    id,
+    section,
+    upload,
+    setUpload,
+    collapsed,
+    setCollapsed,
+    health,
+    effects,
+    toggleEffects,
+  } = useAppShell();
+  return (
+    <MotionConfig reducedMotion="user">
+      <div
+        className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}
+        data-effects={effects ? 'on' : 'off'}
+      >
+        <aside className="app-sidebar">
+          <button className="brand-button" onClick={() => navigate()} aria-label="析页首页">
+            <Logo />
+          </button>
+          <div className="sidebar-label">工作空间</div>
+          <button
+            className={`nav-item ${!id && section === 'workspaces' ? 'active' : ''}`}
+            onClick={() => navigate()}
+          >
+            <LayoutGrid size={18} />
+            <span>我的工作区</span>
+            <span className="nav-count">⌘</span>
+          </button>
+          {id && (
+            <div className="nav-item active current-workspace">
+              <FolderOpen size={18} />
+              <span>当前教材</span>
+            </div>
+          )}
+          <button
+            className={`nav-item ${section.startsWith('assistant') ? 'active' : ''}`}
+            onClick={() => (location.hash = '/assistant')}
+          >
+            <MessageSquare size={18} />
+            <span>AI 助手</span>
+          </button>
+          <button
+            className={`nav-item ${section === 'profile' ? 'active' : ''}`}
+            onClick={() => (location.hash = '/profile')}
+          >
+            <UserRound size={18} />
+            <span>个人中心</span>
+          </button>
+          <div className="sidebar-bottom">
+            <div className="sidebar-tip">
+              <BookOpen size={16} />
+              <p>
+                你的材料与整理记录
+                <br />
+                都保存在工作区中。
+              </p>
+            </div>
+            <div className="local-profile">
+              <span>析</span>
+              <div>
+                教材工作台<small>独立工作空间</small>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <div className="main-shell">
+          <ParticleField enabled={effects} />
+          <header className="app-topbar">
+            <div>
+              <button
+                aria-label={collapsed ? '展开导航' : '收起导航'}
+                onClick={() => setCollapsed((v) => !v)}
+              >
+                {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              </button>
+              <span className="divider" />
+              <span>工作空间</span>
+              <span className="breadcrumb-sep">/</span>
+              <strong>
+                {section === 'profile'
+                  ? '个人中心'
+                  : section.startsWith('assistant')
+                    ? 'AI 助手'
+                    : id
+                      ? '教材工作区'
+                      : '总览'}
+              </strong>
+            </div>
+            <div>
+              <button
+                onClick={() =>
+                  (location.hash = section.startsWith('assistant')
+                    ? '/assistant/settings'
+                    : '/profile')
+                }
+                className={`connection ${health.error ? 'offline' : ''}`}
+                title={health.error || '后端连接正常'}
+              >
+                {health.error ? <WifiOff size={13} /> : <Wifi size={13} />}
+                <span>
+                  {section.startsWith('assistant')
+                    ? '助手模型设置'
+                    : health.error
+                      ? '连接中断'
+                      : health.loading
+                        ? '连接中'
+                        : health.data?.modelConfigured
+                          ? '模型已配置'
+                          : '模型待配置'}
+                </span>
+              </button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="effects-toggle"
+                onClick={toggleEffects}
+                aria-label="粒子动效"
+                aria-pressed={effects}
+                title={effects ? '关闭粒子动效（遵循系统减少动态设置）' : '开启粒子动效'}
+              >
+                <Sparkles size={15} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setUpload(true)}
+                className="shortcut"
+              >
+                <Command size={13} />K
+              </Button>
+            </div>
+          </header>
+          <main>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={id ?? section}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <Suspense fallback={<Loading />}>
+                  {section === 'profile' ? (
+                    <ProfilePage />
+                  ) : section === 'assistant-settings' ? (
+                    <ProfilePage scope="assistant" />
+                  ) : section === 'assistant' ? (
+                    <AssistantPage />
+                  ) : id ? (
+                    <WorkspacePage key={id} id={id} />
+                  ) : (
+                    <Dashboard onUpload={() => setUpload(true)} />
+                  )}
+                </Suspense>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
+        {upload && (
+          <Suspense fallback={null}>
+            <UploadDialog open onOpenChange={setUpload} onCreated={navigate} />
+          </Suspense>
+        )}
+      </div>
+    </MotionConfig>
+  );
+}

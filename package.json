@@ -1,0 +1,49 @@
+{
+  "name": "@question-bank/backend",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Workspace-based textbook PDF/image extraction, review, repair and JSON export backend",
+  "engines": {
+    "node": ">=22.21.0"
+  },
+  "scripts": {
+    "build": "node scripts/clean-app.mjs && tsc -p tsconfig.build.json && node scripts/build-contracts.mjs",
+    "contracts:build": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "redocly lint dist/contracts/openapi.json",
+    "test": "node --test test/*.test.mjs",
+    "test:live": "node scripts/live-e2e.mjs",
+    "check": "npm run build && npm run lint && npm run typecheck && npm test",
+    "start:api": "node dist/app/apps/control-api/main.js",
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/*.mjs\" \"test/**/*.mjs\"",
+    "test:live:workspaces": "node scripts/live-workspaces.mjs",
+    "dev:web": "npm --prefix client run dev",
+    "build:web": "npm --prefix client run build",
+    "build:all": "npm run build && npm run build:web",
+    "test:web": "npm --prefix client test",
+    "check:all": "npm run check && npm run build:web && npm run test:web"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.67.1",
+    "@types/archiver": "8.0.0",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "prettier": "3.9.10",
+    "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "archiver": "8.0.0",
+    "express": "5.3.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "overrides": {
+    "multer": "2.5.0"
+  }
+}

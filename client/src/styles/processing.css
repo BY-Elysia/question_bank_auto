@@ -1,0 +1,164 @@
+.processing {
+  padding: 16px 12px 10px;
+}
+.processing-heading {
+  text-align: center;
+}
+.processing-heading .eyebrow {
+  justify-content: center;
+  margin-top: 22px;
+}
+.processing-heading h2 {
+  font-size: 24px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.processing-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.scan-orb {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  margin: 0 auto;
+  color: var(--muted);
+  position: relative;
+  box-shadow: 0 4px 18px #00000012;
+}
+.scan-orb i {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 24px;
+  height: 1px;
+  background: var(--surface-soft);
+  box-shadow: 0 4px 18px #00000012;
+  animation: scan 3s ease-in-out infinite;
+}
+@keyframes scan {
+  50% {
+    transform: translateY(32px);
+  }
+}
+.progress-summary {
+  max-width: 620px;
+  margin: 32px auto;
+}
+.progress-summary > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--foreground);
+  margin-bottom: 13px;
+}
+.progress-summary strong {
+  font-size: 23px;
+  font-weight: 500;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.progress-summary small {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.progress-track {
+  height: 4px;
+  background: var(--surface-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-track > div {
+  height: 100%;
+  background: var(--surface-soft);
+  border-radius: 4px;
+}
+.progress-summary p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 13px;
+  text-align: center;
+}
+.process-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  color: var(--foreground);
+  margin: 30px 0;
+}
+.process-flow > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  padding: 12px 20px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.process-flow svg {
+  width: 16px;
+}
+.process-flow .highlight {
+  border-color: var(--line);
+  color: var(--foreground);
+  background: var(--surface-soft);
+}
+.chapter-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.chapter-progress {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 21px;
+}
+.chapter-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.chapter-progress .mono {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.chapter-progress h3 {
+  font-size: 14px;
+  margin: 19px 0;
+  font-weight: 500;
+}
+.chapter-progress footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 14px;
+}
+.chapter-progress .error-text {
+  margin-top: 12px;
+}
+.live-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 26px 0 6px;
+}
+.preview-toggle {
+  text-align: center;
+  margin: 20px 0;
+}

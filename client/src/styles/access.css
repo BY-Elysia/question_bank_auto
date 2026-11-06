@@ -1,0 +1,39 @@
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 30%, #32283c44, transparent 60%);
+}
+.login-card {
+  width: min(100%, 410px);
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #1c1c23;
+  box-shadow: 0 16px 70px #0003;
+}
+.login-card .brand {
+  margin-bottom: 36px;
+}
+.login-icon {
+  color: #aa93d7;
+  margin-bottom: 18px;
+}
+.login-card h1 {
+  font-size: 23px;
+  margin-bottom: 12px;
+}
+.login-card > p {
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 28px;
+  font-size: 12px;
+}
+.logout-button {
+  position: fixed;
+  bottom: 16px;
+  right: 20px;
+  z-index: 10;
+  box-shadow: 0 3px 12px #0004;
+}

@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-25",
+  "model": "doubao-seed-2-0-pro-260215",
+  "fixture": "test/fixtures/textbook.mjs",
+  "outcome": "passed across parse and follow-up HTTP phases on the same textbook",
+  "phases": [
+    {
+      "kind": "parse",
+      "startedAt": "2026-10-25T07:01:17.315Z",
+      "finishedAt": "2026-10-25T07:04:49.867Z",
+      "calls": 11,
+      "jobStatus": "needs_review",
+      "harnessAdjustment": "Accept source-answer association proposals as well as inline source answers; initial inline-only assertion was corrected."
+    },
+    {
+      "kind": "follow-up",
+      "startedAt": "2026-10-25T07:04:50.304Z",
+      "finishedAt": "2026-10-25T07:05:10.526Z",
+      "calls": 2,
+      "passed": true,
+      "checks": [
+        "Full parse, cross-page GROUP and original source answer",
+        "Generated area/perimeter answers, proposal isolation and acceptance",
+        "Real-model source verification",
+        "Manual edit, stale-write rejection, real-model repair, rejection and revision restore",
+        "JSON/ZIP export and both visualization page images"
+      ]
+    }
+  ],
+  "totalTokens": 44623,
+  "pages": 2,
+  "sectionCount": 1,
+  "questions": [
+    {
+      "label": "Exercise 1",
+      "type": "group",
+      "pages": [
+        1,
+        2
+      ],
+      "answers": [
+        {
+          "text": "12",
+          "origin": "ai_generated",
+          "review": "accepted"
+        },
+        {
+          "text": "14",
+          "origin": "ai_generated",
+          "review": "accepted"
+        }
+      ]
+    },
+    {
+      "label": "Exercise 2",
+      "type": "calculation",
+      "pages": [
+        2
+      ],
+      "answers": [
+        {
+          "text": "5",
+          "origin": "source",
+          "review": "accepted"
+        }
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "kind": "parse",
+      "status": "needs_review",
+      "error": null,
+      "issueCodes": []
+    },
+    {
+      "kind": "verify",
+      "status": "completed",
+      "error": null,
+      "issueCodes": []
+    },
+    {
+      "kind": "repair",
+      "status": "needs_review",
+      "error": null,
+      "issueCodes": [
+        "ocr_error"
+      ]
+    }
+  ],
+  "revision": 5
+}
