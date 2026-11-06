@@ -198,7 +198,7 @@ await fs.writeFile(
       openapi: '3.1.0',
       info: {
         title: 'Textbook workspace backend',
-        version: '0.3.0',
+        version: JSON.parse(await fs.readFile('package.json', 'utf8')).version,
         description:
           'Authenticated single-account workspace backend. Model-backed extraction, question insertion and conversations run independently of browser sessions.',
       },
