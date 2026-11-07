@@ -1,3 +1,4 @@
+import type { ToolContext } from '../domain/knowledge.js';
 import type { Interaction } from '../domain/run.js';
 /** Tool definitions are application-owned; adapters translate them to a runtime SDK. */
 export interface AssistantTool {
@@ -16,5 +17,5 @@ export interface AssistantTool {
   }>;
 }
 export interface AssistantToolRegistry {
-  tools(): AssistantTool[];
+  tools(context?: ToolContext): AssistantTool[];
 }

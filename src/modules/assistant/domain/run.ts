@@ -1,3 +1,4 @@
+import { KnowledgeScope } from './knowledge.js';
 import { z } from 'zod';
 export const RunInput = z.object({
   id: z.string(),
@@ -16,6 +17,14 @@ export const Interaction = z.object({
   answer: z.string().nullable(),
 });
 export const AssistantRun = z.object({
+  execution: z
+    .object({
+      conversationId: z.string(),
+      runId: z.string(),
+      principalId: z.string(),
+      scope: KnowledgeScope,
+    })
+    .optional(),
   id: z.string(),
   conversationId: z.string(),
   requestId: z.string(),

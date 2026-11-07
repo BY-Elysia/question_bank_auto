@@ -1,3 +1,4 @@
+import type { ToolContext } from '../domain/knowledge.js';
 import type { Interaction } from '../domain/run.js';
 export interface RuntimeStep {
   checkpoint: unknown[];
@@ -11,6 +12,7 @@ export interface RuntimeStep {
 /** Provider and framework objects remain opaque outside the runtime adapter. */
 export interface AgentRuntime {
   step(input: {
+    execution?: ToolContext;
     system: string;
     checkpoint: unknown[];
     inputs: string[];

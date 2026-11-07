@@ -1,3 +1,5 @@
+import type { KnowledgeLifecycle } from '../../ports/knowledge.js';
+import { DomainError } from '../../../../shared/errors.js';
 import { randomUUID } from 'node:crypto';
 import type { HarnessStore } from '../../ports/harness-store.js';
 import type { AgentRuntime } from '../../ports/runtime.js';
@@ -12,6 +14,7 @@ export class HarnessDriver {
     private store: HarnessStore,
     private runtime: AgentRuntime,
     private records: RunRecords,
+    private knowledge?: KnowledgeLifecycle,
   ) {}
   launch(id: string) {
     if (this.active.has(id)) return;
@@ -81,6 +84,7 @@ export class HarnessDriver {
           return structuredClone(r);
         });
         if (!run) return;
+        if (run.execution) await this.knowledge?.validate(run.execution);
         let pending = '',
           timer: ReturnType<typeof setTimeout> | undefined;
         const flush = () => {
@@ -94,6 +98,7 @@ export class HarnessDriver {
         let result;
         try {
           result = await this.runtime.step({
+            execution: run.execution ? { ...run.execution, step: run.attempt } : undefined,
             system: run.system,
             checkpoint: run.checkpoint,
             inputs: [],
@@ -109,14 +114,19 @@ export class HarnessDriver {
           flush();
         }
 
+        const citationResult =
+          run.execution && this.knowledge
+            ? await this.knowledge.citations(run.execution, result.text || streamed)
+            : { text: result.text || streamed, citations: [] };
         const next = this.store.update(sessionId, (s, emit) => {
           const r = s.runs.find((x) => x.id === id)!,
             m = s.conversation.messages.find((x) => x.id === messageId)!;
           r.checkpoint = result.checkpoint;
           r.usage.push(result.usage);
-          m.content = [result.text || streamed, ...result.interactions.map((q) => q.question)]
+          m.content = [citationResult.text, ...result.interactions.map((q) => q.question)]
             .filter(Boolean)
             .join('\n\n');
+          m.citations = citationResult.citations;
           const aborted = handle.abort.signal.aborted || result.stop === 'aborted';
           m.status = aborted || result.stop === 'error' ? 'failed' : 'complete';
           m.error = aborted
@@ -168,7 +178,7 @@ export class HarnessDriver {
         handle.reason = '';
       }
       throw Error('达到本次运行的轮次上限');
-    } catch {
+    } catch (error) {
       this.store.update(sessionId, (s, emit) => {
         const r = s.runs.find((x) => x.id === id)!;
         r.status =
@@ -177,7 +187,7 @@ export class HarnessDriver {
             : handle.reason === 'shutdown'
               ? 'interrupted'
               : 'failed';
-        r.error = '生成中断或失败，可从检查点继续';
+        r.error = error instanceof DomainError ? error.message : '生成中断或失败，可从检查点继续';
         for (const m of s.conversation.messages)
           if (m.status === 'pending') {
             m.status = 'failed';

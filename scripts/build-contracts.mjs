@@ -1,3 +1,5 @@
+import {ScopeInput,KnowledgeScope,CitationView} from '../dist/app/modules/assistant/domain/knowledge.js';
+import {CatalogWorkspace} from '../dist/app/modules/catalog/domain/catalog.js';
 import {
   ModelSettingsInput,
   ModelSettingsView,
@@ -32,6 +34,7 @@ import * as requests from '../dist/app/modules/textbooks/presentation/contracts.
 import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
 import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
 const schemas = {
+ ScopeInput,KnowledgeScope,CitationView,CatalogWorkspaceList:z.array(CatalogWorkspace),
   ModelSettingsInput,
   ModelSettingsView,
   ModelTestResult,

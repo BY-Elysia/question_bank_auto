@@ -39,7 +39,7 @@ src/
 ├── ai/
 │   ├── ports/                    # ModelClient、Skills、SkillCatalog、RunRecords、PrefixCache
 │   ├── workflows/textbook-extraction/ # 页队列、预读、边界、提取、检查点
-│   ├── skills/                   # 六个 SKILL.md + definition.json 包
+│   ├── skills/                   # 九个 SKILL.md + definition.json 包
 │   ├── runtime/                  # 指令执行、schema 校验、重试、版本锁定
 │   ├── infrastructure/           # 本地 Skill 目录及调用记录
 │   └── providers/                # Responses / Chat Completions HTTP 适配器
@@ -120,3 +120,7 @@ WorkspacesService 负责导入、准备、状态和生命周期；ExtractionRunn
 取消信号传递到章节任务和 HTTP 请求；Nest 生命周期钩子先停止工作区编排，再停止底层任务。重启将未完成工作区标为 interrupted，需要显式恢复。工作区删除包括根教材、内部章节和清单，删除中断可在启动恢复时继续。
 
 前缀缓存通过 PrefixCache 端口与模型适配器协作，本地实现持久化种子引用；键包含接口、凭据哈希、模型、工作区和受控系统指令。教材信息、用户要求和图片作为当前调用的数据输入，不写入系统指令种子。实际缓存行为依赖供应商实现；当前显式前缀缓存采用方舟 Responses 的 caching / previous_response_id 协议，其他供应商需提供适配器或选择 cache=off。
+
+## 助手与题库查询扩展
+
+P0 的持久化 Harness 与 P1 的独立 catalog 查询模块已上线。运行控制见 [助手 Harness](assistant-harness.md)，只读工具、权限、数据库端口与来源证据见 [教材查询架构](assistant-knowledge.md)。

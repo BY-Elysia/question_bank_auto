@@ -1,3 +1,7 @@
+import {
+  KnowledgeController,
+  KNOWLEDGE,
+} from '../../modules/assistant/presentation/knowledge.controller.js';
 import { HarnessController } from '../../modules/assistant/presentation/harness.controller.js';
 import {
   AssistantModelController,
@@ -106,6 +110,7 @@ export async function createApplication(options: AppOptions = {}) {
       WorkspacesModule.register(workspaces, workspaceView),
     ],
     controllers: [
+      KnowledgeController,
       HarnessController,
       AssistantModelController,
       HealthController,
@@ -114,6 +119,7 @@ export async function createApplication(options: AppOptions = {}) {
       QuestionsController,
     ],
     providers: [
+      { provide: KNOWLEDGE, useValue: services.knowledge },
       { provide: ASSISTANT_MODEL, useValue: services.assistantConfiguration },
       { provide: PROFILE, useValue: services.profile },
       { provide: INSERTION, useValue: services.insertion },
@@ -126,6 +132,7 @@ export async function createApplication(options: AppOptions = {}) {
             await workspaces.shutdown();
             await jobs.shutdown();
             await services.assistant.shutdown();
+            services.knowledge.close();
           },
         },
       },

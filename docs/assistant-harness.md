@@ -74,3 +74,7 @@ client/src/features/assistant/
 - `SkillCatalog / RunRecords`：指令版本与执行诊断复用现有基础设施。
 
 P0 的“确认”用于对话方案选择；数据库写入授权、附件、多代理与自动上下文压缩仍属于后续阶段。
+
+## P1 扩展
+
+工具、资料范围、权限、题库查询与来源证据已接入，完整分层和新接口见 [教材查询与来源引用](assistant-knowledge.md)。

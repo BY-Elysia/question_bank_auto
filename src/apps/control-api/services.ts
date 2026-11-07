@@ -1,3 +1,13 @@
+import { SqliteQuestionIndex } from '../../modules/catalog/infrastructure/sqlite-index.js';
+import {
+  WorkspaceCatalogReader,
+  SingleAccountCatalogAccess,
+} from '../../modules/catalog/infrastructure/workspace-reader.js';
+import { CatalogQuery } from '../../modules/catalog/application/catalog-query.js';
+import type { AccessPolicy } from '../../modules/catalog/ports/catalog.js';
+import { SqliteKnowledge } from '../../modules/assistant/infrastructure/knowledge/sqlite-knowledge.js';
+import { KnowledgeService } from '../../modules/assistant/application/knowledge/knowledge-service.js';
+import { CatalogTools } from '../../modules/assistant/application/tools/catalog-tools.js';
 import { InteractionTools } from '../../modules/assistant/application/tools/interaction-tools.js';
 import type { AssistantToolRegistry } from '../../modules/assistant/ports/tools.js';
 import { ModelConfiguration } from '../../modules/profile/application/model-configuration.js';
@@ -51,6 +61,7 @@ import { JobsService } from '../../modules/jobs/application/jobs.service.js';
 import { TextbookWorkflow } from '../../ai/workflows/textbook-extraction/workflow.js';
 import { ReviewWorkflow } from '../../modules/review/application/review-workflow.js';
 export interface AppOptions {
+  catalogAccess?: AccessPolicy;
   assistantSettings?: SettingsRepository;
   assistantModel?: ModelClient;
   assistantRuntime?: AgentRuntime;
@@ -101,19 +112,38 @@ export async function createServices(options: AppOptions = {}) {
     assistantSettings,
     (value) => new HttpModelClient(undefined, { get: async () => value }),
   );
+  const workspaceStore = options.workspaceStore ?? new WorkspaceStore(root);
+  await workspaceStore.init();
   const harnessStore = options.harnessStore ?? (await SqliteHarness.open(root));
+  const principal = options.access?.username ?? process.env.ACCESS_USERNAME ?? 'local-account';
+  const catalogQuery = new CatalogQuery(
+    new WorkspaceCatalogReader(workspaceStore, store),
+    await SqliteQuestionIndex.open(root),
+    options.catalogAccess ?? new SingleAccountCatalogAccess(principal, workspaceStore),
+  );
+  const knowledge = new KnowledgeService(
+    principal,
+    await SqliteKnowledge.open(root),
+    harnessStore,
+    catalogQuery,
+    catalog,
+    assets.images,
+  );
+  const assistantTools =
+    options.assistantTools ?? new CatalogTools(knowledge, new InteractionTools());
   const injectedModel = options.assistantModel ?? options.model;
   const runtime =
     options.assistantRuntime ??
     (injectedModel
       ? new CompleteRuntime(injectedModel)
-      : new PiRuntime(assistantSettings, options.assistantTools ?? new InteractionTools()));
+      : new PiRuntime(assistantSettings, assistantTools));
   const assistant = new HarnessService(
     harnessStore,
     runtime,
     catalog,
     records,
     options.assistantContext ?? new EmptyAssistantContext(),
+    knowledge,
   );
   await assistant.recover();
   const skills = options.skills ?? new SkillRunner(store, model, assets.images, catalog, records);
@@ -140,8 +170,6 @@ export async function createServices(options: AppOptions = {}) {
   ]);
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
-  const workspaceStore = options.workspaceStore ?? new WorkspaceStore(root);
-  await workspaceStore.init();
   const workspaceRunner = new ExtractionRunner(workspaceStore, store, books, jobs);
   const workspaces = new WorkspacesService(
     workspaceStore,
@@ -164,6 +192,7 @@ export async function createServices(options: AppOptions = {}) {
     profile,
     assistant,
     assistantConfiguration,
+    knowledge,
     insertion,
   };
 }

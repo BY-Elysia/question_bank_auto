@@ -25,3 +25,6 @@ export type {
   Interaction,
   RunEvent,
 } from '../../../src/modules/assistant/domain/run';
+
+export type {Citation,CitationView,KnowledgeScope} from '../../../src/modules/assistant/domain/knowledge';
+export type {CatalogWorkspace} from '../../../src/modules/catalog/domain/catalog';

@@ -8,7 +8,9 @@ export function useAssistant() {
   const list = useResource(assistantApi.list, 5000),
     action = useAction();
   const [id, setId] = useState<string | null>(() =>
-      sessionStorage.getItem('assistant-conversation'),
+      sessionStorage.getItem('assistant-question')
+        ? null
+        : sessionStorage.getItem('assistant-conversation'),
     ),
     [drafts, setDrafts] = useState<Record<string, string>>({});
   const draftKey = id ?? 'new';
@@ -29,7 +31,7 @@ export function useAssistant() {
     state.refresh();
     list.refresh();
   };
-  const stream = useRunFeed(activeRun?.id, refreshAll);
+  const { stream, tool } = useRunFeed(activeRun?.id, refreshAll);
   const [older, setOlder] = useState<{
     id: string;
     messages: Conversation['messages'];
@@ -126,6 +128,7 @@ export function useAssistant() {
     });
   return {
     messages,
+    tool,
     nextCursor,
     loadOlder,
     run,
@@ -140,8 +143,10 @@ export function useAssistant() {
     action,
     id,
     select,
+    adopt:(value:string)=>{if(!id)setDrafts(d=>({...d,[value]:d[value]??d.new??''}));select(value);},
     text,
     setText,
+    setDraft: (key: string, value: string) => setDrafts((d) => ({ ...d, [key]: value })),
     conversation,
     create,
     send,

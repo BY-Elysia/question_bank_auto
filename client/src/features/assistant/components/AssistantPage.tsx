@@ -1,3 +1,6 @@
+import { useKnowledge } from '../hooks/useKnowledge';
+import { KnowledgePicker } from './KnowledgePicker';
+import { AssistantMessage } from './AssistantMessage';
 import { RunControls } from './RunControls';
 import { useState, useRef, useEffect } from 'react';
 import {
@@ -12,9 +15,9 @@ import {
 import { useAssistant } from '../hooks/useAssistant';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/common';
-import RichText from '@/components/RichText';
 export default function AssistantPage() {
   const m = useAssistant();
+  const knowledge = useKnowledge(m.id, m.adopt, m.setDraft);
   const [history, setHistory] = useState(false);
   const [rename, setRename] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
@@ -108,6 +111,7 @@ export default function AssistantPage() {
             <h1>AI 助手</h1>
             <span className="chat-model-label">独立模型配置</span>
           </div>
+          <KnowledgePicker model={knowledge} disabled={!!m.activeRun} />
           <Button variant="ghost" size="sm" onClick={() => (location.hash = '/assistant/settings')}>
             <Settings2 size={15} />
             模型设置
@@ -145,26 +149,55 @@ export default function AssistantPage() {
               </Button>
             )}
 
-            {m.messages.map((message) => (
-              <article className={`chat-message ${message.role}`} key={message.id}>
-                <small>{message.role === 'user' ? '你' : 'AI 助手'}</small>
-                <RichText text={message.content} />
-                {message.status === 'pending' && (
-                  <p className="chat-thinking">
-                    <span />
-                    <span />
-                    <span />
-                    <span className="sr-only">正在回复… 切换页面不影响生成。</span>
-                  </p>
-                )}
-                <ErrorNote>{message.error}</ErrorNote>
-              </article>
-            ))}
+            {m.messages
+              .filter(
+                (message) =>
+                  message.content ||
+                  message.status === 'pending' ||
+                  message.error ||
+                  message.citations?.length,
+              )
+              .map((message) => (
+                <article className={`chat-message ${message.role}`} key={message.id}>
+                  <small>{message.role === 'user' ? '你' : 'AI 助手'}</small>
+                  <AssistantMessage message={message} conversationId={m.id!} />
+                  {message.status === 'pending' && (
+                    <p className="chat-thinking">
+                      <span />
+                      <span />
+                      <span />
+                      <span className="sr-only">正在回复… 切换页面不影响生成。</span>
+                    </p>
+                  )}
+                  <ErrorNote>{message.error}</ErrorNote>
+                </article>
+              ))}
           </div>
         </div>
         <div className="chat-composer-area">
+          {m.activeRun && m.tool && (
+            <p className="chat-tool-status" role="status">
+              {(
+                {
+                  list_workspaces: '查看可用教材',
+                  get_workspace_outline: '读取教材目录',
+                  search_questions: '查询题目',
+                  get_question: '读取完整题目',
+                  get_source_excerpt: '读取来源',
+                } as Record<string, string>
+              )[m.tool.name] ?? '读取资料'}{' '}
+              ·{' '}
+              {m.tool.status === 'running'
+                ? '进行中'
+                : m.tool.status === 'failed'
+                  ? '未完成'
+                  : '已完成'}
+            </p>
+          )}
           <RunControls run={m.run} busy={m.action.busy} onCommand={m.command} onAnswer={m.answer} />
-          <ErrorNote>{m.action.error || m.conversation.error || m.list.error}</ErrorNote>
+          <ErrorNote>
+            {m.action.error || knowledge.action.error || m.conversation.error || m.list.error}
+          </ErrorNote>
           <form
             className="chat-composer"
             onSubmit={(e) => {
@@ -182,7 +215,7 @@ export default function AssistantPage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  if (!m.action.busy && m.text.trim()) void m.send();
+                  if (!m.action.busy && !knowledge.action.busy && m.text.trim()) void m.send();
                 }
               }}
             />
@@ -202,12 +235,18 @@ export default function AssistantPage() {
               ) : (
                 <span>Enter 发送 · Shift + Enter 换行</span>
               )}
-              <Button type="submit" aria-label="发送" disabled={m.action.busy || !m.text.trim()}>
+              <Button
+                type="submit"
+                aria-label="发送"
+                disabled={m.action.busy || knowledge.action.busy || !m.text.trim()}
+              >
                 <ArrowUp size={19} />
               </Button>
             </div>
           </form>
-          <p className="chat-footnote">AI 可能出错，请核实重要信息。当前对话不访问教材或数据库。</p>
+          <p className="chat-footnote">
+            AI 可能出错，请核实重要信息。可读取选定教材，点击来源核对原文。
+          </p>
         </div>
       </section>
     </div>

@@ -1,3 +1,8 @@
+import { questionReference } from '../../dist/app/modules/catalog/domain/question-reference.js';
+import { CatalogTools } from '../../dist/app/modules/assistant/application/tools/catalog-tools.js';
+import { InteractionTools } from '../../dist/app/modules/assistant/application/tools/interaction-tools.js';
+let knowledge;
+export const bindKnowledge = (value) => (knowledge = value);
 import { setTimeout as delay } from 'node:timers/promises';
 export const assistantRuntime = {
   history: (messages) => structuredClone(messages),
@@ -12,6 +17,19 @@ export const assistantRuntime = {
       stop: 'complete',
       ...extra,
     });
+    if (i.execution?.scope.workspaceIds.length) {
+      const tools = new CatalogTools(knowledge, new InteractionTools()).tools(i.execution);
+      const call = async (name, args) =>
+        JSON.parse(
+          (await tools.find((t) => t.name === name).execute(crypto.randomUUID(), args, i.signal))
+            .text,
+        );
+      const found = await call('search_questions', {});
+      if (!found.data?.items.length) return result('没有匹配题目');
+      const full = await call('get_question', i.execution.scope.focus ? {questionRef: questionReference(i.execution.scope.focus)} : found.data.items[0]);
+      if (!full.ok) return result(full.error);
+      return result(`这道题的计算结果为 $11$。[来源:${full.data.evidence.id}]`);
+    }
     if (text.includes('询问测试') && !i.answers.length) {
       return result('我需要确认你的学科。', {
         stop: 'continue',

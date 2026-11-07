@@ -1,3 +1,4 @@
+import { Citation } from './knowledge.js';
 import { z } from 'zod';
 import { Id } from '../../textbooks/domain/content.js';
 export const ChatInput = z.strictObject({ text: z.string().trim().min(1).max(20000) });
@@ -12,6 +13,7 @@ export const Conversation = z.strictObject({
       content: z.string(),
       status: z.enum(['complete', 'pending', 'failed']),
       error: z.string().nullable(),
+      citations: z.array(Citation).optional(),
     }),
   ),
 });

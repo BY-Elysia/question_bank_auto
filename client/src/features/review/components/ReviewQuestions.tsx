@@ -72,6 +72,7 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
           </div>
           <ContentBody content={c} />
           <footer className="question-actions">
+            <button onClick={() => model.askAssistant(c)}>向助手提问</button>
             <button
               disabled={!model.editable || model.action.busy}
               onClick={() => model.setEdit(c)}

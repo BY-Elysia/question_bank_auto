@@ -1,3 +1,4 @@
+import type { KnowledgeLifecycle } from '../../ports/knowledge.js';
 import { conversationContext } from '../../domain/conversation-context.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { fail } from '../../../../shared/errors.js';
@@ -17,8 +18,9 @@ export class HarnessService {
     private catalog: SkillCatalog,
     records: RunRecords,
     private context: AssistantContextPort,
+    private knowledge?: KnowledgeLifecycle,
   ) {
-    this.driver = new HarnessDriver(store, runtime, records);
+    this.driver = new HarnessDriver(store, runtime, records, knowledge);
   }
   async recover() {
     for (const c of this.store.list())
@@ -79,6 +81,7 @@ export class HarnessService {
     if (s.runs.some(busy)) fail(409, '请先停止当前任务');
     for (const r of s.runs) await this.driver.wait(r.id);
     this.store.remove(id);
+    this.knowledge?.remove(id);
   }
   messages(id: string, after: string | undefined, limit: number) {
     return this.store.messages(id, after, limit);
@@ -89,6 +92,7 @@ export class HarnessService {
       if (existing.inputs[0]?.text !== text) fail(409, '幂等键已用于其他输入');
       return this.publicRun(existing);
     }
+    const prepared = await this.knowledge?.prepare(id);
     const skill = await this.catalog.get('assistant-chat');
     const references = await this.context.resolve({
       conversationId: id,
@@ -116,11 +120,17 @@ export class HarnessService {
         parentRunId,
         inputs: [{ id: requestId, text, mode: 'steer', status: 'queued', at: now }],
         interactions: [],
-        checkpoint: this.runtime.history(conversationContext(s.conversation)),
+        checkpoint: this.runtime.history(
+          conversationContext({
+            ...s.conversation,
+            messages: s.conversation.messages.slice(prepared?.scope.historyStart ?? 0),
+          }),
+        ),
         messageId: null,
         usage: [],
         system:
           skill.instructions +
+          (prepared?.instructions ?? '') +
           '\n必要信息缺失时使用 request_user_input；收到用户答复后继续原任务。' +
           (references.references.length
             ? '\n参考资料：' + JSON.stringify(references.references)
@@ -128,6 +138,14 @@ export class HarnessService {
         skillVersion: skill.version,
         instructionHash: createHash('sha256').update(skill.instructions).digest('hex'),
       };
+      r.instructionHash = createHash('sha256').update(r.system).digest('hex');
+      if (prepared)
+        r.execution = {
+          conversationId: id,
+          runId: r.id,
+          principalId: prepared.principalId,
+          scope: prepared.scope,
+        };
       s.runs.push(r);
       emit(r.id, 'run_state', { status: r.status });
       return r.id;

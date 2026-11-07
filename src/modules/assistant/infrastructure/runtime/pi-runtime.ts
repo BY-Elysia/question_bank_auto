@@ -85,7 +85,7 @@ export class PiRuntime implements AgentRuntime {
         model,
         systemPrompt: input.system,
         messages: checkpoint as AgentMessage[],
-        tools: this.registry.tools().map((tool) => ({
+        tools: this.registry.tools(input.execution).map((tool) => ({
           name: tool.name,
           label: tool.label,
           description: tool.description,
