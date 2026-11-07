@@ -75,3 +75,7 @@ Playwright 使用真实 HTTP、后端仓储、文件上传、PDF 渲染及导出
 - `node --test test/frontend-architecture.test.mjs`：2 项依赖边界检查通过。
 - `PW_BROWSER_CHANNEL=chrome npm run test:web`：6 项浏览器端测全部通过（约 1.4 分钟）。
 - 已检查端测生成的桌面核对页与移动首页截图；本次没有修改样式文件。
+
+## v2.1 助手
+
+`features/assistant` 按 components / hooks / api 分层。`useAssistant` 管理命令、会话草稿与消息分页；`useRunFeed` 管理 SSE 订阅、事件去重和合并刷新。`RunControls` 展示状态、排队输入与结构化问题。状态接口只返回最近 50 条消息，更早历史按需请求，流式渲染不重复拉取全量会话。

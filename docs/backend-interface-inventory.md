@@ -1,6 +1,6 @@
 # 后端接口清单（v2 基线）
 
-整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。45 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
+整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。57 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
 
 ## 通用约定
 
@@ -82,6 +82,19 @@
 | `GET /api/assistant/conversations/{id}` | `getConversation` | — | 200 Conversation |
 | `POST /api/assistant/conversations/{id}/messages` | `sendMessage` | application/json: ChatInput | 202 Conversation |
 
+| `GET /api/assistant/conversations/{id}/state` | `getAssistantState` | — | 200 AssistantState |
+| `PATCH /api/assistant/conversations/{id}` | `renameConversation` | RenameConversation | 200 Conversation |
+| `DELETE /api/assistant/conversations/{id}` | `deleteConversation` | — | 204 |
+| `GET /api/assistant/conversations/{id}/messages` | `getConversationMessages` | cursor / limit 查询参数 | 200 MessagePage |
+| `POST /api/assistant/conversations/{id}/runs` | `startAssistantRun` | StartRun | 202 AssistantRunView |
+| `GET /api/assistant/runs/{id}` | `getAssistantRun` | — | 200 AssistantRunView |
+| `POST /api/assistant/runs/{id}/inputs` | `inputAssistantRun` | InputCommand | 202 AssistantRunView |
+| `POST /api/assistant/runs/{id}/cancel` | `cancelAssistantRun` | — | 201 AssistantRunView |
+| `POST /api/assistant/runs/{id}/resume` | `resumeAssistantRun` | — | 202 AssistantRunView |
+| `POST /api/assistant/runs/{id}/retry` | `retryAssistantRun` | — | 202 AssistantRunView |
+| `POST /api/assistant/runs/{id}/interactions/{interactionId}/responses` | `answerAssistantInteraction` | InteractionAnswer | 202 AssistantRunView |
+| `GET /api/assistant/runs/{id}/events` | `streamAssistantEvents` | after / Last-Event-ID | 200 text/event-stream |
+
 
 ## profile
 
@@ -115,4 +128,6 @@ Content-Type: application/json
 {"text":"请解释导数的几何意义"}
 ```
 
-返回 202 和含 pending 消息的会话；通过 GET 同一会话读取 complete/failed。当前没有 SSE、工具调用、附件上传、取消生成或消息分页接口。配置接口读取结果不返回 apiKey；保存时留空保留同一服务域名已保存的密钥，切换域名需提供新密钥。
+该旧发送接口保持兼容。新客户端通过 `POST conversations/{id}/runs` 提交 `{text,requestId}`，订阅 `GET runs/{id}/events` 获得流式文字与状态。插话提交 `{text,requestId,mode}`，mode 为 steer / interrupt / follow_up。结构化问题通过 interactionId 提交 `{answer}`。状态接口提供最新 Run、最近 50 条消息与 nextCursor，消息接口按 cursor 向更早历史分页。恢复原 Run 用 resume，重新生成用 retry。完整语义见 [助手 Harness](assistant-harness.md)。
+
+配置读取不返回 apiKey；保存留空会保留同一服务域名的已有密钥，切换域名需提供新密钥。P0 不含附件或数据库工具。

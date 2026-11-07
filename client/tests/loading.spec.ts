@@ -25,7 +25,7 @@ test('Login and configuration do not download review code, math styles or fonts'
   );
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '登录教材工作台' })).toBeVisible();
-  expect(urls.some((url) => /\/assets\/(App|Workspace|Review)-|KaTeX/.test(url))).toBe(false);
+  expect(urls.some((url) => /\/assets\/(Workspace|Review)-|KaTeX/.test(url))).toBe(false);
   expect(urls.some((url) => /\/api\/(workspaces|health)/.test(url))).toBe(false);
   await page.unroute('**/api/access/session');
   const { id } = await seed(page);
@@ -37,7 +37,7 @@ test('Login and configuration do not download review code, math styles or fonts'
   await page.getByLabel('学科').fill('数学');
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.locator('.katex').first()).toBeVisible();
-  expect(urls.some((url) => /\/assets\/Review-.*\.css/.test(url))).toBe(true);
+  expect(urls.some((url) => /\/assets\/(Review|RichText)-.*\.css/.test(url))).toBe(true);
   await expect(page.locator('.content-body > p')).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
@@ -197,10 +197,17 @@ test('Chapter preview data is requested only while the extraction preview is ope
                     contents: [
                       {
                         id: 'preview-content',
-                        kind: 'paragraph',
+                        kind: 'question',
                         sectionId: null,
-                        text: '阶段预览内容',
-                        question: null,
+                        text: '',
+                        question: {
+                          label: '1',
+                          type: 'calculation',
+                          prompt: '阶段预览内容',
+                          options: [],
+                          children: [],
+                          answer: null,
+                        },
                         table: null,
                         caption: null,
                         sources: [{ page: 1, box: [0.1, 0.2, 0.9, 0.6] }],

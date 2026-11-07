@@ -19,3 +19,9 @@ export type Workspaces = z.infer<typeof WorkspaceList>;
 export type WorkspaceView = z.infer<typeof WorkspaceViewResponse>;
 
 export type { Conversation } from '../../../src/modules/assistant/domain/conversation';
+
+export type {
+  AssistantRunView,
+  Interaction,
+  RunEvent,
+} from '../../../src/modules/assistant/domain/run';

@@ -1,5 +1,6 @@
 // Isolated test server: real HTTP, repositories and PDF rendering; deterministic model outputs.
 import fs from 'node:fs/promises';
+import {assistantRuntime} from './assistant-runtime.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -137,6 +138,7 @@ const access =
       }
     : undefined;
 system = await createApplication({
+  assistantRuntime,
   model: {
     async complete() {
       await delay(800);

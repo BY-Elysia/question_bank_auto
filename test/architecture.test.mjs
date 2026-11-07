@@ -43,7 +43,7 @@ test('Workbench capabilities have shipped Skill packages and documented endpoint
   const spec = JSON.parse(fs.readFileSync('dist/contracts/openapi.json', 'utf8'));
   assert.equal(
     Object.values(spec.paths).reduce((n, p) => n + Object.keys(p).length, 0),
-    45,
+    57,
   );
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });

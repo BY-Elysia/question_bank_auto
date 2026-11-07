@@ -297,3 +297,52 @@
     font-size: 9px;
   }
 }
+
+.run-controls {
+  max-height: 35vh;
+  overflow: auto;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.run-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+}
+.interaction-card {
+  border: 1px solid #9981c950;
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 10px;
+  background: #232129;
+}
+.interaction-card p {
+  margin: 10px 0;
+  white-space: pre-wrap;
+}
+.interaction-card form {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.interaction-card input {
+  min-width: 0;
+  flex: 1;
+}
+.queued-input {
+  color: var(--muted);
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.conversation-management {
+  margin-bottom: 16px;
+}
+.conversation-management input {
+  width: 100%;
+}
+.chat-composer-footer select {
+  font-size: 11px;
+  max-width: 180px;
+}

@@ -1,14 +1,19 @@
+import { InteractionTools } from '../../modules/assistant/application/tools/interaction-tools.js';
+import type { AssistantToolRegistry } from '../../modules/assistant/ports/tools.js';
 import { ModelConfiguration } from '../../modules/profile/application/model-configuration.js';
 import type { SettingsRepository } from '../../modules/profile/ports/settings.repository.js';
 import type { UsageRepository } from '../../modules/profile/ports/usage.repository.js';
-import type { ConversationRepository } from '../../modules/assistant/ports/conversation.repository.js';
+import type { HarnessStore } from '../../modules/assistant/ports/harness-store.js';
 import type { AssistantContextPort } from '../../modules/assistant/ports/context.js';
 import { QuestionInsertion } from '../../modules/questions/application/question-insertion.js';
 import { FileSettings } from '../../modules/profile/infrastructure/file-settings.js';
 import { FileUsage } from '../../modules/profile/infrastructure/file-usage.js';
 import { ProfileService } from '../../modules/profile/application/profile.service.js';
-import { AssistantService } from '../../modules/assistant/application/assistant.service.js';
-import { FileConversations } from '../../modules/assistant/infrastructure/file-conversations.js';
+import { HarnessService } from '../../modules/assistant/application/harness/service.js';
+import { SqliteHarness } from '../../modules/assistant/infrastructure/sqlite-harness.js';
+import { PiRuntime } from '../../modules/assistant/infrastructure/runtime/pi-runtime.js';
+import { CompleteRuntime } from '../../modules/assistant/infrastructure/runtime/complete-runtime.js';
+import type { AgentRuntime } from '../../modules/assistant/ports/runtime.js';
 import { EmptyAssistantContext } from '../../modules/assistant/ports/context.js';
 import type { AccessConfig } from '../../shared/auth/gate.js';
 import { WorkspaceStore } from '../../modules/workspaces/infrastructure/workspace-store.js';
@@ -48,9 +53,11 @@ import { ReviewWorkflow } from '../../modules/review/application/review-workflow
 export interface AppOptions {
   assistantSettings?: SettingsRepository;
   assistantModel?: ModelClient;
+  assistantRuntime?: AgentRuntime;
+  assistantTools?: AssistantToolRegistry;
   settings?: SettingsRepository;
   usage?: UsageRepository;
-  conversations?: ConversationRepository;
+  harnessStore?: HarnessStore;
   assistantContext?: AssistantContextPort;
   access?: AccessConfig;
   root?: string;
@@ -94,14 +101,19 @@ export async function createServices(options: AppOptions = {}) {
     assistantSettings,
     (value) => new HttpModelClient(undefined, { get: async () => value }),
   );
-  const assistantModel =
-    options.assistantModel ?? options.model ?? new HttpModelClient(undefined, assistantSettings);
-  const assistant = new AssistantService(
-    options.conversations ?? new FileConversations(root),
-    assistantModel,
-    options.assistantContext ?? new EmptyAssistantContext(),
+  const harnessStore = options.harnessStore ?? (await SqliteHarness.open(root));
+  const injectedModel = options.assistantModel ?? options.model;
+  const runtime =
+    options.assistantRuntime ??
+    (injectedModel
+      ? new CompleteRuntime(injectedModel)
+      : new PiRuntime(assistantSettings, options.assistantTools ?? new InteractionTools()));
+  const assistant = new HarnessService(
+    harnessStore,
+    runtime,
     catalog,
     records,
+    options.assistantContext ?? new EmptyAssistantContext(),
   );
   await assistant.recover();
   const skills = options.skills ?? new SkillRunner(store, model, assets.images, catalog, records);

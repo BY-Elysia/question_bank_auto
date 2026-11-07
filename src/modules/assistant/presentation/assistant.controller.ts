@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Body, Param, Inject, HttpCode } from '@nestjs/common';
-import { AssistantService } from '../application/assistant.service.js';
+import { HarnessService } from '../application/harness/service.js';
 import { ChatInput } from '../domain/conversation.js';
 import { parse } from '../../../shared/errors.js';
 export const ASSISTANT = Symbol('ASSISTANT');
 @Controller('api/assistant/conversations')
 export class AssistantController {
-  constructor(@Inject(ASSISTANT) private service: AssistantService) {}
+  constructor(@Inject(ASSISTANT) private service: HarnessService) {}
   @Get() list() {
     return this.service.list();
   }

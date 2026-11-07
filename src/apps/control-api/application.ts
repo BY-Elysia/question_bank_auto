@@ -1,3 +1,4 @@
+import { HarnessController } from '../../modules/assistant/presentation/harness.controller.js';
 import {
   AssistantModelController,
   ASSISTANT_MODEL,
@@ -105,6 +106,7 @@ export async function createApplication(options: AppOptions = {}) {
       WorkspacesModule.register(workspaces, workspaceView),
     ],
     controllers: [
+      HarnessController,
       AssistantModelController,
       HealthController,
       ProfileController,

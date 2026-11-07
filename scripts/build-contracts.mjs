@@ -9,6 +9,10 @@ import {
   Conversation,
   ChatInput,
   ConversationList,
+  StartRun,
+  InputCommand,
+  InteractionAnswer,
+  AssistantRunView,
   assistantRoutes,
 } from '../dist/app/modules/assistant/presentation/contracts.js';
 import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/domain/workspace.js';
@@ -35,6 +39,20 @@ const schemas = {
   Conversation,
   ChatInput,
   ConversationList,
+  StartRun,
+  InputCommand,
+  InteractionAnswer,
+  AssistantRunView,
+  AssistantState: z.object({
+    conversation: Conversation,
+    runs: z.array(AssistantRunView),
+    nextCursor: z.string().nullable(),
+  }),
+  RenameConversation: z.object({ title: z.string().trim().min(1).max(100) }),
+  MessagePage: z.object({
+    messages: Conversation.shape.messages,
+    nextCursor: z.string().nullable(),
+  }),
   MetadataUpdate: z.object({
     revision: z.number().int().nonnegative(),
     metadata: TextbookMetadata,
@@ -83,6 +101,7 @@ for (const [name, schema] of Object.entries(schemas)) {
 }
 const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
 function content(name) {
+  if (name === 'RunEvents') return { 'text/event-stream': { schema: { type: 'string' } } };
   if (name === 'PageImage')
     return { ...content('PNG'), 'image/webp': { schema: { type: 'string', format: 'binary' } } };
   if (name === 'ImageUpload')
@@ -153,6 +172,21 @@ for (const [method, path, operationId, input, output, status] of [
         schema: { type: 'string', enum: ['before', 'after'] },
       },
       { name: 'revision', in: 'query', required: true, schema: { type: 'integer', minimum: 0 } },
+    );
+  if (operationId === 'getConversationMessages')
+    parameters.push(
+      { name: 'cursor', in: 'query', required: false, schema: { type: 'string' } },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+      },
+    );
+  if (operationId === 'streamAssistantEvents')
+    parameters.push(
+      { name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 } },
+      { name: 'Last-Event-ID', in: 'header', required: false, schema: { type: 'string' } },
     );
   if (operationId === 'getPageImage')
     parameters.push({
