@@ -94,9 +94,9 @@ export class KnowledgeService implements KnowledgeLifecycle {
         item.prompt,
         ...item.options.map((o) => `${o.id}. ${o.text}`),
         item.answer
-          ? `答案来源：${item.answer.origin}；审核：${item.answer.review}\n${item.answer.text}\n${item.answer.explanation}`
+          ? `答案来源：${{ source: '教材原文', ai_generated: 'AI 生成', human: '人工修改' }[item.answer.origin]} · ${item.answer.review === 'pending' ? '待确认' : '已确认'}\n\n${item.answer.text}\n\n${item.answer.explanation}`
           : '无已保存答案',
-      ].join('\n');
+      ].join('\n\n');
     const full = [
       q.parentPrompt,
       render(q.question),
@@ -105,7 +105,7 @@ export class KnowledgeService implements KnowledgeLifecycle {
         : []),
     ]
       .filter(Boolean)
-      .join('\n');
+      .join('\n\n');
     const excerpt = full.length > 6000 ? full.slice(0, 6000) + '\n（原文节选）' : full;
     const e = {
       id: 'e_' + randomUUID(),
