@@ -159,6 +159,8 @@ npm run test:web    # Playwright 浏览器端测
 
 ## 深入了解
 
+- [当前后端接口清单](docs/backend-interface-inventory.md) · [架构基线与下一版 AI 助手规划](docs/planning/assistant-next.md)
+
 - [v2.0.0 发布说明](docs/releases/v2.0.0.md)
 - [更新日志](CHANGELOG.md)
 - [后端架构](docs/architecture.md) · [前端架构](docs/frontend-architecture.md)
