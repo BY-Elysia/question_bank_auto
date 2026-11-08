@@ -1,10 +1,14 @@
+import type { ChangeActor } from '../domain/change.js';
 import type { BookRepository } from '../../textbooks/ports/book.repository.js';
 import { Document, type Content } from '../../textbooks/domain/content.js';
 import type { Book } from '../../textbooks/domain/book.js';
 import { validateDocument } from '../../textbooks/domain/validation.js';
 import { fail } from '../../../shared/errors.js';
 export class ReviewService {
-  constructor(private store: BookRepository) {}
+  constructor(
+    private store: BookRepository,
+    private principal = 'local-account',
+  ) {}
   private check(book: Book, expected: number) {
     if (book.workflowLock) fail(409, 'Wait for workspace processing before editing');
     if (book.revision !== expected) fail(409, 'Revision conflict');
@@ -56,11 +60,19 @@ export class ReviewService {
     book.document.contents[index] = content;
     return this.replace(id, expected, book.document);
   }
-  async decide(id: string, proposalId: string, expected: number, decision: 'accept' | 'reject') {
+  async decide(
+    id: string,
+    proposalId: string,
+    expected: number,
+    decision: 'accept' | 'reject',
+    actor: ChangeActor = { actor: 'user', principalId: this.principal, runId: null },
+    guard?: () => void,
+  ) {
     return this.store.update(
       id,
       (book) => {
         this.check(book, expected);
+        guard?.();
         const proposal = book.proposals.find((p) => p.id === proposalId);
         if (!proposal) fail(404, 'Proposal not found');
         if (proposal.status !== 'pending') fail(409, 'Proposal already decided');
@@ -78,6 +90,16 @@ export class ReviewService {
         book.document.contents[index] = after;
         this.valid(book.document, book.pages.length);
         proposal.status = 'accepted';
+        book.changes.push({
+          id: proposal.id,
+          contentId: proposal.contentId,
+          before: structuredClone(proposal.before),
+          after: structuredClone(after),
+          ...actor,
+          revision: book.revision + 1,
+          at: new Date().toISOString(),
+          undoneAt: null,
+        });
       },
       decision === 'accept',
     );

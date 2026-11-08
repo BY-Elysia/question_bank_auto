@@ -23,12 +23,18 @@ export class KnowledgeService implements KnowledgeLifecycle {
     this.harness.get(id);
     return this.store.scope(id);
   }
-  async setScope(id: string, workspaceIds: string[], focus: QuestionAddress | null = null) {
+  async setScope(
+    id: string,
+    workspaceIds: string[],
+    focus: QuestionAddress | null = null,
+    allowEdits = false,
+  ) {
     const session = this.harness.get(id);
     if (session.runs.some((r) => ['queued', 'running', 'waiting_input'].includes(r.status)))
       fail(409, '请先停止当前任务，再修改资料范围');
     const unique = [...new Set(workspaceIds)].sort();
     await this.query.authorize(this.principalId, unique);
+    if (allowEdits && !focus) fail(400, '修改模式必须选择具体题目');
     if (focus) await this.query.question(this.principalId, unique, focus);
     // Recheck after asynchronous authorization so a newly started Run cannot race a scope change.
     const latest = this.harness.get(id);
@@ -37,14 +43,23 @@ export class KnowledgeService implements KnowledgeLifecycle {
     const previous = this.store.scope(id);
     if (
       JSON.stringify(previous.workspaceIds) === JSON.stringify(unique) &&
-      JSON.stringify(previous.focus ?? null) === JSON.stringify(focus)
+      JSON.stringify(previous.focus ?? null) === JSON.stringify(focus) &&
+      previous.allowEdits === allowEdits
     )
       return previous;
     const scope = {
+      allowEdits,
       workspaceIds: unique,
       focus,
       epoch: previous.epoch + 1,
-      historyStart: latest.conversation.messages.length,
+      historyStart:
+        JSON.stringify(previous.workspaceIds) === JSON.stringify(unique) &&
+        previous.focus?.workspaceId === focus?.workspaceId &&
+        previous.focus?.contentId === focus?.contentId &&
+        previous.focus?.childIndex === focus?.childIndex &&
+        previous.allowEdits === allowEdits
+          ? previous.historyStart
+          : latest.conversation.messages.length,
     };
     this.store.saveScope(id, scope);
     return scope;
@@ -62,11 +77,12 @@ export class KnowledgeService implements KnowledgeLifecycle {
       ? `\n用户选中的题目定位：${JSON.stringify({ questionRef: questionReference(selected) })}。用户所说的“这道题”指向这个定位。`
       : '';
     const skill = scope.workspaceIds.length ? await this.skills.get('textbook-research') : null;
+    const editor = scope.allowEdits ? await this.skills.get('review-assistant') : null;
     return {
       scope,
       principalId: this.principalId,
       instructions: skill
-        ? `${skill.instructions}\n本次允许读取的工作区 ID：${JSON.stringify(scope.workspaceIds)}${focusInstructions}`
+        ? `${skill.instructions}\n${editor?.instructions ?? ''}\n本次允许读取的工作区 ID：${JSON.stringify(scope.workspaceIds)}${focusInstructions}`
         : '',
     };
   }
@@ -168,6 +184,26 @@ export class KnowledgeService implements KnowledgeLifecycle {
     if (view.status === 'deleted' || !this.images) fail(404, '来源图片不存在');
     if (!view.citation.sources.some((s) => s.page === page)) fail(403, '页码不属于此来源');
     return this.images.read(view.citation.workspaceId, page, undefined, 'preview');
+  }
+  notify(c: ToolContext, type: string, data: unknown) {
+    this.harness.update(c.conversationId, (_s, emit) => emit(c.runId, type, data));
+  }
+  async page(c: ToolContext, page: number, signal?: AbortSignal) {
+    await this.validate(c);
+    const focus = c.scope.focus;
+    if (!focus || !this.images) fail(400, '请先选择具体题目');
+    const q = await this.query.question(c.principalId, c.scope.workspaceIds, {
+      ...focus,
+      revision: undefined,
+    });
+    if (!q.sources.some((s) => Math.abs(s.page - page) <= 1))
+      fail(403, '只能查看题目来源及相邻书页');
+    const asset = await this.images.read(focus.workspaceId, page, signal, 'preview');
+    const chunks: Buffer[] = [];
+    for await (const chunk of asset.body) chunks.push(Buffer.from(chunk));
+    signal?.throwIfAborted();
+    await this.validate(c);
+    return { data: Buffer.concat(chunks).toString('base64'), mimeType: asset.contentType };
   }
   calls(c: ToolContext) {
     return this.store.calls(c.runId);

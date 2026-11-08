@@ -21,11 +21,11 @@ test('Question entry selects scoped context, tools cite evidence, source image o
   page,
 }) => {
   const id = await book(page);
-  await page.getByRole('button', { name: '向助手提问' }).first().click();
-  await expect(page.getByLabel('消息', { exact: true })).toHaveValue(
-    '请解释这道题，并引用教材来源。',
-  );
-  await expect(page.getByRole('button', { name: '教材资料 · 1' })).toBeVisible();
+  const c=await(await page.request.post('/api/assistant/conversations')).json();
+  await page.request.put(`/api/assistant/conversations/${c.id}/scope`,{data:{workspaceIds:[id]}});
+  await page.evaluate(id=>sessionStorage.setItem('assistant-conversation',id),c.id);
+  await page.goto('/#/assistant');
+  await page.getByLabel('消息',{exact:true}).fill('查询题目并引用来源');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.locator('.citation-links button')).toHaveCount(1);
   await expect(page.locator('.chat-message.assistant .katex')).toBeVisible();

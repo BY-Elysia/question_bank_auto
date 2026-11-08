@@ -153,7 +153,7 @@ system = await createApplication({
   skills,
   access,
 });
-bindKnowledge(system.knowledge);
+bindKnowledge(system.knowledge,system.reviewActions);
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');
 for (const signal of ['SIGINT', 'SIGTERM'])

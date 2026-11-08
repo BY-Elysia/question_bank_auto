@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AssistantTool } from '../../ports/tools.js';
 import type { ToolContext } from '../../domain/knowledge.js';
 import { DomainError, fail } from '../../../../shared/errors.js';
-export interface ReadToolPolicy {
+export interface ToolPolicy {
   validate(c: ToolContext): Promise<void>;
   calls(c: ToolContext): number;
   record(
@@ -14,16 +14,21 @@ export interface ReadToolPolicy {
     result?: unknown,
   ): void;
 }
-export class ReadToolExecutor {
-  constructor(private policy: ReadToolPolicy) {}
-  define<T extends z.ZodType>(
+export class ToolExecutor {
+  constructor(private policy: ToolPolicy) {}
+  define<T extends z.ZodType, R>(
     context: ToolContext,
     d: {
       name: string;
       label: string;
       description: string;
       schema: T;
-      execute: (args: z.infer<T>, c: ToolContext, signal: AbortSignal) => Promise<unknown>;
+      execute: (args: z.infer<T>, c: ToolContext, signal: AbortSignal) => Promise<R>;
+      present?: (result: R) => {
+        data: unknown;
+        images?: { data: string; mimeType: string }[];
+        deferred?: import('../../ports/deferred-tasks.js').DeferredTask;
+      };
     },
   ): AssistantTool {
     return {
@@ -44,10 +49,11 @@ export class ReadToolExecutor {
           const result = await d.execute(input, context, combined);
           combined.throwIfAborted();
           await this.policy.validate(context);
-          const text = JSON.stringify({ ok: true, data: result });
+          const output = d.present?.(result) ?? { data: result };
+          const text = JSON.stringify({ ok: true, data: output.data });
           if (text.length > 60000) fail(413, '查询结果过大，请缩小范围或读取单个子题');
-          this.policy.record(context, id, d.name, 'completed', input, result);
-          return { text, pause: false };
+          this.policy.record(context, id, d.name, 'completed', input, output.data);
+          return { text, images: output.images, deferred: output.deferred, pause: false };
         } catch (error) {
           const message =
             error instanceof DomainError

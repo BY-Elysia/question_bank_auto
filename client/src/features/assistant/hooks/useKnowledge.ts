@@ -6,10 +6,15 @@ export function useKnowledge(
   id: string | null,
   select: (id: string) => void,
   setDraft: (id: string, text: string) => void,
+  embedded = false,
 ) {
   const [open, setOpen] = useState(false),
     [chosen, setChosen] = useState<string[]>([]);
-  const available = useResource(knowledgeApi.workspaces);
+  const loadAvailable = useCallback(
+    (signal: AbortSignal) => (embedded ? Promise.resolve([]) : knowledgeApi.workspaces(signal)),
+    [embedded],
+  );
+  const available = useResource(loadAvailable);
   const load = useCallback(
     (signal: AbortSignal) => (id ? knowledgeApi.scope(id, signal) : Promise.resolve(null)),
     [id],
@@ -23,7 +28,7 @@ export function useKnowledge(
     mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
-    if (!started.current) {
+    if (!started.current && !embedded) {
       started.current = true;
       const raw = sessionStorage.getItem('assistant-question');
       if (raw) {

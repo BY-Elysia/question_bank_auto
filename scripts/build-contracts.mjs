@@ -1,3 +1,4 @@
+import {Change} from '../dist/app/modules/review/domain/change.js';
 import {ScopeInput,KnowledgeScope,CitationView} from '../dist/app/modules/assistant/domain/knowledge.js';
 import {CatalogWorkspace} from '../dist/app/modules/catalog/domain/catalog.js';
 import {
@@ -34,6 +35,7 @@ import * as requests from '../dist/app/modules/textbooks/presentation/contracts.
 import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
 import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
 const schemas = {
+ Change,ChangeList:z.array(Change),UndoChange:z.object({revision:z.number().int().nonnegative()}),
  ScopeInput,KnowledgeScope,CitationView,CatalogWorkspaceList:z.array(CatalogWorkspace),
   ModelSettingsInput,
   ModelSettingsView,
@@ -135,6 +137,8 @@ for (const [method, path, operationId, input, output, status] of [
   ...jobRoutes,
   ...profileRoutes,
   ...assistantRoutes,
+ ['get','/api/workspaces/{id}/changes','listWorkspaceChanges',null,'ChangeList',200],
+ ['post','/api/workspaces/{id}/changes/{change}/undo','undoWorkspaceChange','UndoChange','Change',201],
   [
     'patch',
     '/api/workspaces/{id}/metadata',

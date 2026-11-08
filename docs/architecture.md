@@ -39,7 +39,7 @@ src/
 ├── ai/
 │   ├── ports/                    # ModelClient、Skills、SkillCatalog、RunRecords、PrefixCache
 │   ├── workflows/textbook-extraction/ # 页队列、预读、边界、提取、检查点
-│   ├── skills/                   # 九个 SKILL.md + definition.json 包
+│   ├── skills/                   # 十个 SKILL.md + definition.json 包
 │   ├── runtime/                  # 指令执行、schema 校验、重试、版本锁定
 │   ├── infrastructure/           # 本地 Skill 目录及调用记录
 │   └── providers/                # Responses / Chat Completions HTTP 适配器
@@ -124,3 +124,5 @@ WorkspacesService 负责导入、准备、状态和生命周期；ExtractionRunn
 ## 助手与题库查询扩展
 
 P0 的持久化 Harness 与 P1 的独立 catalog 查询模块已上线。运行控制见 [助手 Harness](assistant-harness.md)，只读工具、权限、数据库端口与来源证据见 [教材查询架构](assistant-knowledge.md)。
+
+可视化助手首期使用共享修复/答案任务、后台任务端口及逐题变更服务，见 [内嵌协作](embedded-review-assistant.md)。

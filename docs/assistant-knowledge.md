@@ -10,7 +10,7 @@ flowchart TD
   Hooks --> API[KnowledgeController]
   API --> Knowledge[KnowledgeService：范围与证据生命周期]
   Harness[HarnessDriver：运行、检查点、SSE] --> Registry[CatalogTools：工具定义]
-  Registry --> Executor[ReadToolExecutor：校验、权限、预算、日志]
+  Registry --> Executor[ToolExecutor：校验、权限、预算、日志]
   Executor --> Knowledge
   Knowledge --> Query[CatalogQuery：目录、查询、题目投影]
   Query --> Policy[AccessPolicy]
@@ -74,3 +74,7 @@ flowchart TD
 | GET | `/api/assistant/conversations/:id/citations/:citation/pages/:page/image` | 受保护的正常预览图 |
 
 保留 P0 的发送、停止、插话、询问确认、恢复与事件接口。新增数据库功能时，按领域增加 Query Port 和工具定义，复用执行器、权限与证据机制；写操作应另设命令与审批契约，不混入只读查询端口。
+
+## v2.3 校对模式
+
+只读模式保持上述约束；可视化页面可显式启用选中题目的修改能力，见 [内嵌协作架构](embedded-review-assistant.md)。

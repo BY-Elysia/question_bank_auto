@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { PiRuntime } from '../dist/app/modules/assistant/infrastructure/runtime/pi-runtime.js';
-async function provider(t, respond) {
+async function provider(t, respond, tools=new InteractionTools()) {
   const requests = [];
   const server = http.createServer(async (req, res) => {
     let body = '';
@@ -27,7 +27,7 @@ async function provider(t, respond) {
         protocol: 'chat',
       }),
     },
-    new InteractionTools(),
+    tools,
   );
   return { runtime, requests };
 }
@@ -168,4 +168,17 @@ test('Anthropic streaming uses the configured v1 path once, with isolated API ke
   assert.equal(seen.path.split('?')[0], '/v1/messages');
   assert.equal(seen.key, 'anthropic-test');
   assert.equal(seen.body.stream, true);
+});
+
+test('Pi tool image reaches the provider and deferred task is returned to the harness',async t=>{
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf5kAAAAASUVORK5CYII=';
+ const tools={tools:()=>[{name:'page',label:'page',description:'read page',parameters:{type:'object',properties:{}},execute:async()=>({text:'source',images:[{data:png,mimeType:'image/png'}],pause:false})}]};
+ const {runtime,requests}=await provider(t,(body,res)=>{
+  if(body.messages.some(m=>m.role==='tool')){chunk(res,{content:'已看原图'});chunk(res,{},'stop');done(res);return;}
+  chunk(res,{tool_calls:[{index:0,id:'read',type:'function',function:{name:'page',arguments:'{}'}}]});chunk(res,{},'tool_calls');done(res);
+ },tools);
+ const a=await runtime.step(input(runtime,'read'));assert.ok(JSON.stringify(a.checkpoint).includes(png));
+ const b=await runtime.step({...input(runtime,''),checkpoint:a.checkpoint});assert.equal(b.text,'已看原图');assert.ok(JSON.stringify(requests[1]).includes('data:image/png;base64,'+png));
+ tools.tools=()=>[{name:'page',label:'page',description:'start job',parameters:{type:'object',properties:{}},execute:async()=>({text:'queued',deferred:{workspaceId:'book',jobId:'job'},pause:false})}];
+ const c=await runtime.step(input(runtime,'start job'));assert.deepEqual(c.deferred,[{workspaceId:'book',jobId:'job'}]);assert.equal(c.stop,'continue');
 });

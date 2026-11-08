@@ -5,6 +5,7 @@ import type { Content, WorkspaceView } from '@/shared/contracts';
 import { useAction } from '@/shared/hooks/useAsync';
 import { reviewApi } from '../api/review';
 export function useReview(view: WorkspaceView, onChange: () => void, preview: boolean) {
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [page, setPage] = useState(1),
     [selected, setSelected] = useState<string | null>(null),
     [tab, setTab] = useState('questions'),
@@ -23,22 +24,27 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
     page,
   );
   useEffect(() => {
-    const raw = sessionStorage.getItem('review-source');
-    if (!raw) return;
-    try {
-      const target = JSON.parse(raw);
-      if (target.workspaceId !== view.workspace.id) return;
-      sessionStorage.removeItem('review-source');
-      if (target.revision !== view.revision) return;
-      const c = view.document.contents.find((c) => c.id === target.contentId);
-      if (c) {
-        setSelected(c.id);
-        setPage(target.page ?? c.sources[0].page);
-        setTab('questions');
+    const applySource = () => {
+      const raw = sessionStorage.getItem('review-source');
+      if (!raw) return;
+      try {
+        const target = JSON.parse(raw);
+        if (target.workspaceId !== view.workspace.id) return;
+        sessionStorage.removeItem('review-source');
+        if (target.revision !== view.revision) return;
+        const c = view.document.contents.find((c) => c.id === target.contentId);
+        if (c) {
+          setSelected(c.id);
+          setPage(target.page ?? c.sources[0].page);
+          setTab('questions');
+        }
+      } catch {
+        sessionStorage.removeItem('review-source');
       }
-    } catch {
-      sessionStorage.removeItem('review-source');
-    }
+    };
+    applySource();
+    window.addEventListener('review-source-selected', applySource);
+    return () => window.removeEventListener('review-source-selected', applySource);
   }, [view.workspace.id, view.revision]);
   function locate(c: Content) {
     setSelected(c.id);
@@ -85,17 +91,11 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
       onChange();
     });
   return {
+    assistantOpen,
+    setAssistantOpen,
     askAssistant: (c: Content) => {
-      sessionStorage.setItem(
-        'assistant-question',
-        JSON.stringify({
-          workspaceId: view.workspace.id,
-          contentId: c.id,
-          childIndex: null,
-          revision: view.revision,
-        }),
-      );
-      location.hash = '/assistant';
+      locate(c);
+      setAssistantOpen(true);
     },
     insertion,
     setInsertion,

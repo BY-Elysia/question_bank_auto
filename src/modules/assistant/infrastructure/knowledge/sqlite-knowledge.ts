@@ -21,8 +21,8 @@ export class SqliteKnowledge implements KnowledgeStore {
   scope(id: string): KnowledgeScope {
     const r = this.db.prepare('SELECT payload FROM scopes WHERE conversation=?').get(id);
     return r
-      ? JSON.parse(r.payload as string)
-      : { workspaceIds: [], epoch: 0, historyStart: 0, focus: null };
+      ? { allowEdits: false, ...JSON.parse(r.payload as string) }
+      : { workspaceIds: [], epoch: 0, historyStart: 0, focus: null, allowEdits: false };
   }
   saveScope(id: string, scope: KnowledgeScope) {
     this.db

@@ -6,7 +6,7 @@
 
 从 PDF 和书页图片出发，完成智能识题、跨页拼接、答案生成与逐题校对，输出标准题库 JSON。
 
-![Version](https://img.shields.io/badge/release-v2.2.0-8B75C9)
+![Version](https://img.shields.io/badge/release-v2.3.0-8B75C9)
 ![TypeScript](https://img.shields.io/badge/TypeScript-full_stack-3178C6)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.21-43853D)
 ![Docker](https://img.shields.io/badge/deploy-Docker-2496ED)
@@ -16,6 +16,12 @@
 </div>
 
 ---
+
+## v2.3：看着教材，与 AI 一起校对
+
+可视化页面新增内嵌助手：选中题目，直接要求核对原图、修复公式或补全答案。AI 复用教材处理流程，修改实时回到页面，支持查看差异与逐题撤销。刷新不中断后台工作，插话与停止沿用持久化 Harness。
+
+[协作架构与接口](docs/embedded-review-assistant.md) · [v2.3 发布说明](docs/releases/v2.3.0.md)
 
 ## v2.2：让对话连接你的教材
 
@@ -126,10 +132,10 @@ node --env-file=.env dist/app/apps/control-api/main.js
 | --- | --- |
 | 交互层 | React、Vite、Tailwind CSS、Radix UI、Motion；深色工作台、响应式布局和聊天界面 |
 | 前端状态与请求 | 按功能组织 components / hooks / model / api；资源轮询、取消、草稿和提交状态独立管理 |
-| HTTP 接口 | NestJS、Express；62 个业务与健康端点，统一错误映射 |
+| HTTP 接口 | NestJS、Express；64 个业务与健康端点，统一错误映射 |
 | 领域与应用 | 模块化单体、分层架构、端口与适配器；教材、工作区、任务、校对、个人配置及助手按职责组织 |
 | 运行时契约 | Zod 校验请求、领域对象及模型输出，并生成 OpenAPI 3.1 文档 |
-| 模型执行 | 9 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |
+| 模型执行 | 10 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |
 | 助手 Harness | pi-agent-core、pi-ai；持久运行、工具注册、用户交互、SQLite WAL 与 SSE 回放 |
 | 文档与公式 | Poppler、Sharp、KaTeX；PDF 转图、预览图处理与数学公式渲染 |
 | 持久化与部署 | 原子文件写入、按实体加锁、后台任务生命周期管理；Docker Compose 与持久化数据卷 |

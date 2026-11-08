@@ -28,3 +28,5 @@ export type {
 
 export type {Citation,CitationView,KnowledgeScope} from '../../../src/modules/assistant/domain/knowledge';
 export type {CatalogWorkspace} from '../../../src/modules/catalog/domain/catalog';
+
+export type {Change} from '../../../src/modules/review/domain/change';

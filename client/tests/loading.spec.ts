@@ -37,7 +37,7 @@ test('Login and configuration do not download review code, math styles or fonts'
   await page.getByLabel('学科').fill('数学');
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.locator('.katex').first()).toBeVisible();
-  expect(urls.some((url) => /\/assets\/(Review|RichText)-.*\.css/.test(url))).toBe(true);
+  expect(urls.some((url) => /\/assets\/(Review|RichText|ContentBody)-.*\.css/.test(url))).toBe(true);
   await expect(page.locator('.content-body > p')).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });

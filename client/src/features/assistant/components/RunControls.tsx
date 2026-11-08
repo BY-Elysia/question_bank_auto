@@ -63,6 +63,9 @@ export function RunControls({
   };
   return (
     <div className="run-controls">
+      {!!run.deferred?.length && active && (
+        <p role="status">教材任务正在后台处理，完成后会自动更新题目。</p>
+      )}
       <div className="run-status">
         <span>{labels[run.status]}</span>
         {active && (

@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { subscribeRun } from '../api/assistant';
-export function useRunFeed(id: string | undefined, onChange: () => void) {
+export function useRunFeed(id: string | undefined, onChange: () => void, onMutation?: () => void) {
   const [stream, setStream] = useState<Record<string, string>>({});
   const [tool, setTool] = useState<{ name: string; status: string } | null>(null);
   const update = useRef(onChange);
   update.current = onChange;
+  const mutation = useRef(onMutation);
+  mutation.current = onMutation;
   useEffect(() => {
     setStream({});
     setTool(null);
@@ -20,6 +22,7 @@ export function useRunFeed(id: string | undefined, onChange: () => void) {
       } else if (event.type === 'tool_status') {
         setTool(event.data as { name: string; status: string });
       } else {
+        if (event.type === 'workspace_changed') mutation.current?.();
         clearTimeout(timer);
         timer = setTimeout(() => update.current(), 100);
       }

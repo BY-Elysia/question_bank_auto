@@ -44,6 +44,7 @@ export const AssistantRun = z.object({
   parentRunId: z.string().nullable(),
   inputs: z.array(RunInput),
   interactions: z.array(Interaction),
+  deferred: z.array(z.object({ workspaceId: z.string(), jobId: z.string() })).default([]),
   checkpoint: z.array(z.unknown()),
   messageId: z.string().nullable(),
   usage: z.array(z.unknown()),

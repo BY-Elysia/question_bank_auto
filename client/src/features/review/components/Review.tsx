@@ -1,3 +1,8 @@
+import { lazy, Suspense } from 'react';
+import { Button } from '@/components/ui/button';
+const AssistantPanel = lazy(() =>
+  import('@/features/assistant').then((m) => ({ default: m.AssistantPanel })),
+);
 import { InsertQuestionDialog } from './InsertQuestionDialog';
 import { ReviewQuestions } from './ReviewQuestions';
 import { ReviewJobs } from './ReviewJobs';
@@ -52,6 +57,31 @@ export function Review({
           </p>
         </div>
       </div>
+      {!preview && (
+        <Button
+          variant="outline"
+          className="open-review-assistant"
+          onClick={() => model.setAssistantOpen(true)}
+        >
+          打开教材助手
+        </Button>
+      )}
+      {model.assistantOpen && !preview && (
+        <aside className="review-agent-drawer" aria-label="教材助手面板">
+          <Suspense fallback={<p>正在打开助手…</p>}>
+            <AssistantPanel
+              embedded={{
+                workspaceId: view.workspace.id,
+                contentId: selected,
+                revision: view.revision,
+                page,
+                onChange,
+                onClose: () => model.setAssistantOpen(false),
+              }}
+            />
+          </Suspense>
+        </aside>
+      )}
       <ErrorNote>{action.error}</ErrorNote>
       <ReviewJobs model={model} canReview={view.actions.review} />
       <div className="review-layout">

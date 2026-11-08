@@ -1,6 +1,6 @@
 # 后端接口清单（v2 基线）
 
-整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。62 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
+整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。64 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
 
 新增 P1 资料范围与来源接口见 [教材查询与引用](assistant-knowledge.md#新增-http-接口)。
 
@@ -133,3 +133,7 @@ Content-Type: application/json
 该旧发送接口保持兼容。新客户端通过 `POST conversations/{id}/runs` 提交 `{text,requestId}`，订阅 `GET runs/{id}/events` 获得流式文字与状态。插话提交 `{text,requestId,mode}`，mode 为 steer / interrupt / follow_up。结构化问题通过 interactionId 提交 `{answer}`。状态接口提供最新 Run、最近 50 条消息与 nextCursor，消息接口按 cursor 向更早历史分页。恢复原 Run 用 resume，重新生成用 retry。完整语义见 [助手 Harness](assistant-harness.md)。
 
 配置读取不返回 apiKey；保存留空会保留同一服务域名的已有密钥，切换域名需提供新密钥。P0 不含附件或数据库工具。
+
+## 可视化助手修改接口（v2.3）
+
+`GET /api/workspaces/{id}/changes` 返回最近变更，`POST /api/workspaces/{id}/changes/{change}/undo` 接收 `{revision}` 执行逐题撤销。scope 新增 allowEdits，默认 false。详细权限与执行链路见 [可视化助手架构](embedded-review-assistant.md)。

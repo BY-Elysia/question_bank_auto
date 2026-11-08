@@ -1,3 +1,4 @@
+import type { DeferredTasks } from '../../ports/deferred-tasks.js';
 import type { KnowledgeLifecycle } from '../../ports/knowledge.js';
 import { conversationContext } from '../../domain/conversation-context.js';
 import { randomUUID, createHash } from 'node:crypto';
@@ -19,8 +20,9 @@ export class HarnessService {
     records: RunRecords,
     private context: AssistantContextPort,
     private knowledge?: KnowledgeLifecycle,
+    tasks?: DeferredTasks,
   ) {
-    this.driver = new HarnessDriver(store, runtime, records, knowledge);
+    this.driver = new HarnessDriver(store, runtime, records, knowledge, tasks);
   }
   async recover() {
     for (const c of this.store.list())
@@ -120,6 +122,7 @@ export class HarnessService {
         parentRunId,
         inputs: [{ id: requestId, text, mode: 'steer', status: 'queued', at: now }],
         interactions: [],
+        deferred: [],
         checkpoint: this.runtime.history(
           conversationContext({
             ...s.conversation,

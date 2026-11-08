@@ -1,3 +1,4 @@
+import type { DeferredTasks } from '../../ports/deferred-tasks.js';
 import type { KnowledgeLifecycle } from '../../ports/knowledge.js';
 import { DomainError } from '../../../../shared/errors.js';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,7 @@ export class HarnessDriver {
     private runtime: AgentRuntime,
     private records: RunRecords,
     private knowledge?: KnowledgeLifecycle,
+    private tasks?: DeferredTasks,
   ) {}
   launch(id: string) {
     if (this.active.has(id)) return;
@@ -47,6 +49,23 @@ export class HarnessDriver {
     const sessionId = this.store.findRun(id);
     try {
       for (let turn = 0; turn < 64; turn++) {
+        const pendingRun = this.store.get(sessionId).runs.find((r) => r.id === id)!;
+        if (pendingRun.deferred?.length && pendingRun.execution && this.tasks) {
+          for (const task of pendingRun.deferred) {
+            const result = await this.tasks.settle(pendingRun.execution, task, handle.abort.signal);
+            handle.abort.signal.throwIfAborted();
+            this.store.update(sessionId, (s, emit) => {
+              const r = s.runs.find((x) => x.id === id)!;
+              r.checkpoint.push(
+                ...this.runtime.history([
+                  { role: 'user', content: '系统后台操作结果：' + JSON.stringify(result) },
+                ]),
+              );
+              r.deferred = r.deferred.filter((t) => t.jobId !== task.jobId);
+              emit(id, 'task_settled', { task, result });
+            });
+          }
+        }
         let messageId = '',
           streamed = '';
         const run = this.store.update(sessionId, (s, emit) => {
@@ -98,7 +117,13 @@ export class HarnessDriver {
         let result;
         try {
           result = await this.runtime.step({
-            execution: run.execution ? { ...run.execution, step: run.attempt } : undefined,
+            execution: run.execution
+              ? {
+                  ...run.execution,
+                  step: run.attempt,
+                  commandId: run.inputs.filter((i) => i.status === 'applied').at(-1)?.id,
+                }
+              : undefined,
             system: run.system,
             checkpoint: run.checkpoint,
             inputs: [],
@@ -114,6 +139,7 @@ export class HarnessDriver {
           flush();
         }
 
+        if (handle.abort.signal.aborted && run.execution) await this.tasks?.cancel(run.execution);
         const citationResult =
           run.execution && this.knowledge
             ? await this.knowledge.citations(run.execution, result.text || streamed)
@@ -122,6 +148,7 @@ export class HarnessDriver {
           const r = s.runs.find((x) => x.id === id)!,
             m = s.conversation.messages.find((x) => x.id === messageId)!;
           r.checkpoint = result.checkpoint;
+          r.deferred = result.deferred ?? [];
           r.usage.push(result.usage);
           m.content = [citationResult.text, ...result.interactions.map((q) => q.question)]
             .filter(Boolean)
@@ -144,6 +171,7 @@ export class HarnessDriver {
           else if (
             handle.reason === 'interrupt' ||
             r.inputs.some((x) => x.status === 'queued') ||
+            r.deferred.length ||
             result.stop === 'continue'
           )
             r.status = 'running';
@@ -174,11 +202,14 @@ export class HarnessDriver {
           })
           .catch(() => console.error('Assistant usage mirror failed; run retains usage'));
         if (next !== 'running') return;
+        handle.abort.signal.throwIfAborted();
         handle.abort = new AbortController();
         handle.reason = '';
       }
       throw Error('达到本次运行的轮次上限');
     } catch (error) {
+      const execution = this.store.get(sessionId).runs.find((r) => r.id === id)?.execution;
+      if (handle.abort.signal.aborted && execution) await this.tasks?.cancel(execution);
       this.store.update(sessionId, (s, emit) => {
         const r = s.runs.find((x) => x.id === id)!;
         r.status =
@@ -199,7 +230,19 @@ export class HarnessDriver {
       // user input remains queued and can be resumed without losing the request.
       if (handle.reason === 'interrupt') {
         this.store.update(sessionId, (s, e) => {
-          s.runs.find((x) => x.id === id)!.status = 'queued';
+          const r = s.runs.find((x) => x.id === id)!;
+          r.status = 'queued';
+          const hadTask = !!r.deferred?.length;
+          r.deferred = [];
+          if (hadTask)
+            r.checkpoint.push(
+              ...this.runtime.history([
+                {
+                  role: 'user',
+                  content: '系统：先前后台操作已打断，尚未提交的候选未应用。请按用户新要求继续。',
+                },
+              ]),
+            );
           e(id, 'run_state', { status: 'queued' });
         });
         handle.abort = new AbortController();

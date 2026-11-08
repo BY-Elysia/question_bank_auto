@@ -10,7 +10,7 @@ import { CatalogTools } from '../dist/app/modules/assistant/application/tools/ca
 import { InteractionTools } from '../dist/app/modules/assistant/application/tools/interaction-tools.js';
 import { QuestionSearch } from '../dist/app/modules/catalog/domain/catalog.js';
 import { fail } from '../dist/app/shared/errors.js';
-async function fixture(t) {
+async function fixture(t, options={}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'knowledge-test-')),
     denied = new Set();
   let handler = async () => ({ text: 'ok' });
@@ -31,6 +31,7 @@ async function fixture(t) {
   };
   app = await createApplication({
     root,
+    ...options,
     assistantRuntime: runtime,
     catalogAccess: {
       async assertWorkspace(_principal, id) {
@@ -325,4 +326,90 @@ test('Canonical question references preserve root/child identity and revision ac
     assert.deepEqual(questionAddress(parsed.questionRef), address);
   }
   assert.throws(() => questionAddress('../../etc:0:x:root'));
+});
+
+async function editorFixture(t, slow=false){
+ const handlers=new Map(); const f=await fixture(t,{handlers});const id=await seed(f);
+ handlers.set('repair',{execute:async ctx=>{
+  if(slow)await delay(1200,undefined,{signal:ctx.signal});
+  await f.store.update(id,b=>{
+   const before=structuredClone(b.document.contents[0]),after=structuredClone(before);
+   after.question.prompt='修复后 $f(x)=x^3$';
+   b.proposals.push({id:'proposal-'+ctx.jobId,jobId:ctx.jobId,contentId:before.id,baseRevision:b.revision,before,after,reason:'repair',status:'pending'});
+  });
+ }});
+ const c=await f.assistant.create();await f.knowledge.setScope(c.id,[id],{workspaceId:id,contentId:'choice',childIndex:null,revision:1},true);
+ return {...f,id,c,handlers};
+}
+test('Embedded action waits outside the model, commits once and targeted undo preserves unrelated edits',async t=>{
+ const f=await editorFixture(t);let first=true, calls=0;
+ f.setHandler(async i=>{
+  calls++;
+  if(first){first=false;
+   const a=await f.reviewActions.start(i.execution,'repair','修复公式');
+   const b=await f.reviewActions.start(i.execution,'repair','修复公式');assert.equal(a.jobId,b.jobId);
+   return {text:'开始修复',stop:'continue',deferred:[a]};
+  }
+  assert.match(JSON.stringify(i.checkpoint),/applied/);return {text:'修改已完成'};
+ });
+ const r=await run(f,f.c,'修复当前题');assert.equal(r.status,'completed');assert.equal(calls,2);
+ let book=await f.store.read(f.id);assert.equal(book.changes.length,1);assert.equal(book.changes[0].actor,'assistant');assert.equal(book.changes[0].after.question.answer.origin,'ai_generated');
+ const other=structuredClone(book.document.contents[1]);other.question.prompt='其他题目后来修改';await f.review.edit(f.id,book.revision,other.id,other);
+ book=await f.store.read(f.id);await f.changes.undo(f.id,book.changes[0].id,book.revision);
+ book=await f.store.read(f.id);assert.match(book.document.contents[0].question.prompt,/x\^2/);assert.equal(book.document.contents[1].question.prompt,'其他题目后来修改');
+ const revision=book.revision;await f.changes.undo(f.id,book.changes[0].id,revision);assert.equal((await f.store.read(f.id)).revision,revision);
+ assert.ok(f.assistant.events(r.id,0).some(e=>e.type==='workspace_changed'));
+});
+test('Undo rejects subsequent edits to the same question, and scope cannot move while a task is active',async t=>{
+ const f=await editorFixture(t);let first=true;
+ f.setHandler(async i=>{if(!first)return {text:'完成'};first=false;
+  const task=await f.reviewActions.start(i.execution,'repair','修复');
+  await assert.rejects(f.knowledge.setScope(f.c.id,[]),e=>e.status===409);
+  return {text:'处理',deferred:[task],stop:'continue'};
+ });
+ await run(f,f.c);let b=await f.store.read(f.id),q=structuredClone(b.document.contents[0]);q.question.prompt='用户后来的修改';await f.review.edit(f.id,b.revision,q.id,q);b=await f.store.read(f.id);
+ await assert.rejects(f.changes.undo(f.id,b.changes[0].id,b.revision),e=>e.status===409);
+ assert.equal((await f.store.read(f.id)).document.contents[0].question.prompt,'用户后来的修改');
+});
+test('Stopping a deferred textbook operation cancels its job and never commits its proposal',async t=>{
+ const f=await editorFixture(t,true);f.setHandler(async i=>({text:'开始',stop:'continue',deferred:[await f.reviewActions.start(i.execution,'repair','修复')]}));
+ const r=await f.assistant.start(f.c.id,'修复',crypto.randomUUID());
+ for(let n=0;n<100 && !(await f.store.read(f.id)).jobs.length;n++)await delay(10);
+ await f.assistant.cancel(r.id);await f.assistant.wait(f.c.id);
+ const b=await f.store.read(f.id);assert.equal(f.assistant.run(r.id).status,'cancelled',JSON.stringify(f.assistant.run(r.id))); assert.equal(b.changes.length,0);assert.equal(b.jobs[0].status,'cancelled');assert.equal(b.revision,1);
+});
+test('Read-only conversations cannot invoke mutation actions; source images are scoped and bounded',async t=>{
+ const f=await editorFixture(t);await f.knowledge.setScope(f.c.id,[f.id],{workspaceId:f.id,contentId:'choice',childIndex:null,revision:1},false);
+ f.setHandler(async i=>{
+  await assert.rejects(f.reviewActions.start(i.execution,'repair','x'),e=>e.status===403);
+  const image=await f.knowledge.page(i.execution,1,i.signal);assert.ok(image.data.length>0);assert.match(image.mimeType,/image/);
+  await assert.rejects(f.knowledge.page(i.execution,9,i.signal),e=>e.status===403);
+  return {text:'只读核对完成'};
+ });assert.equal((await run(f,f.c)).status,'completed');
+});
+
+test('Deferred modification resumes from a durable checkpoint after restart without duplicate commits',async t=>{
+ const f=await editorFixture({after:()=>{}},true);let closed=false;let app;
+ t.after(async()=>{if(app)await app.app.close();if(!closed)await f.app.close();await fs.rm(f.root,{recursive:true,force:true});});
+ f.setHandler(async i=>({text:'开始修复',stop:'continue',deferred:[await f.reviewActions.start(i.execution,'repair','修复')]}));
+ const r=await f.assistant.start(f.c.id,'修复',crypto.randomUUID());
+ for(let n=0;n<200 && !f.assistant.run(r.id).deferred.length;n++)await delay(5);
+ assert.equal(f.assistant.run(r.id).deferred.length,1);
+ await f.app.close();closed=true;
+ app=await createApplication({root:f.root,handlers:f.handlers,assistantRuntime:{history:m=>structuredClone(m),step:async i=>({checkpoint:i.checkpoint,text:'恢复完成',interactions:[],usage:{},model:'test',stop:'complete'})}});
+ assert.equal(app.assistant.run(r.id).status,'interrupted');await app.assistant.resume(r.id);await app.assistant.wait(f.c.id);
+ assert.equal(app.assistant.run(r.id).status,'completed');const b=await app.store.read(f.id);assert.equal(b.changes.length,1);assert.equal(b.revision,2);
+});
+
+test('Interrupting a pending edit uses the new command identity instead of resuming the cancelled edit',async t=>{
+ const f=await editorFixture(t,true);
+ f.setHandler(async i=>{
+  const last=i.checkpoint.filter(m=>m.role==='user').at(-1)?.content??'';
+  if(last.startsWith('系统后台操作结果'))return {text:'新要求完成'};
+  return {text:'处理',stop:'continue',deferred:[await f.reviewActions.start(i.execution,'repair',last)]};
+ });
+ const r=await f.assistant.start(f.c.id,'旧要求',crypto.randomUUID());
+ for(let n=0;n<100 && !f.assistant.run(r.id).deferred.length;n++)await delay(5);
+ await f.assistant.input(r.id,'新要求',crypto.randomUUID(),'interrupt');await f.assistant.wait(f.c.id);
+ const b=await f.store.read(f.id);assert.equal(f.assistant.run(r.id).status,'completed');assert.equal(b.jobs.length,2);assert.equal(b.jobs[0].status,'cancelled');assert.equal(b.jobs[1].request.instruction,'新要求');assert.notEqual(b.jobs[0].action.key,b.jobs[1].action.key);assert.equal(b.changes.length,1);
 });

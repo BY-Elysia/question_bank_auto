@@ -92,6 +92,8 @@ export function CitationDialog({
                       revision: e.revision,
                     }),
                   );
+                  window.dispatchEvent(new Event('review-source-selected'));
+                  onClose();
                   location.hash = `/workspace/${e.workspaceId}`;
                 }}
               >

@@ -78,3 +78,7 @@ P0 的“确认”用于对话方案选择；数据库写入授权、附件、�
 ## P1 扩展
 
 工具、资料范围、权限、题库查询与来源证据已接入，完整分层和新接口见 [教材查询与来源引用](assistant-knowledge.md)。
+
+## 可视化协作后台任务
+
+Run 新增 deferred 任务引用。模型步骤结束后，Harness 通过 DeferredTasks 端口等待教材任务并保存结果，等待期间不占用模型连接。取消、打断和重启恢复语义见 [首期闭环](embedded-review-assistant.md)。

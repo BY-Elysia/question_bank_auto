@@ -11,6 +11,8 @@ export interface AssistantTool {
     args: unknown,
     signal?: AbortSignal,
   ): Promise<{
+    images?: { data: string; mimeType: string }[];
+    deferred?: import('./deferred-tasks.js').DeferredTask;
     text: string;
     interaction?: Interaction;
     pause: boolean;

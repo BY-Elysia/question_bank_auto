@@ -4,13 +4,20 @@ import { useAction, useResource } from '@/shared/hooks/useAsync';
 import { assistantApi, type Conversation } from '../api/assistant';
 const statePoll = (data: Awaited<ReturnType<typeof assistantApi.state>> | null | undefined) =>
   data?.runs.some((r) => ['queued', 'running'].includes(r.status)) ? 10000 : 0;
-export function useAssistant() {
+export function useAssistant(
+  options: {
+    storageKey?: string;
+    prepare?: (id: string) => Promise<unknown>;
+    onMutation?: () => void;
+  } = {},
+) {
+  const storageKey = options.storageKey ?? 'assistant-conversation';
   const list = useResource(assistantApi.list, 5000),
     action = useAction();
   const [id, setId] = useState<string | null>(() =>
-      sessionStorage.getItem('assistant-question')
+      !options.storageKey && sessionStorage.getItem('assistant-question')
         ? null
-        : sessionStorage.getItem('assistant-conversation'),
+        : sessionStorage.getItem(storageKey),
     ),
     [drafts, setDrafts] = useState<Record<string, string>>({});
   const draftKey = id ?? 'new';
@@ -31,7 +38,7 @@ export function useAssistant() {
     state.refresh();
     list.refresh();
   };
-  const { stream, tool } = useRunFeed(activeRun?.id, refreshAll);
+  const { stream, tool } = useRunFeed(activeRun?.id, refreshAll, options.onMutation);
   const [older, setOlder] = useState<{
     id: string;
     messages: Conversation['messages'];
@@ -94,12 +101,12 @@ export function useAssistant() {
     action.run(async () => {
       if (id) await assistantApi.remove(id);
       setId(null);
-      sessionStorage.removeItem('assistant-conversation');
+      sessionStorage.removeItem(storageKey);
       refreshAll();
     });
   const select = (value: string) => {
     setId(value);
-    sessionStorage.setItem('assistant-conversation', value);
+    sessionStorage.setItem(storageKey, value);
   };
   const create = () =>
     action.run(async () => {
@@ -120,7 +127,10 @@ export function useAssistant() {
       if (activeRun?.status === 'waiting_input' && mode === 'steer' && pendingQuestion)
         await assistantApi.answer(activeRun.id, pendingQuestion.id, text);
       else if (activeRun) await assistantApi.input(activeRun.id, text, mode, crypto.randomUUID());
-      else await assistantApi.start(current, text, crypto.randomUUID());
+      else {
+        await options.prepare?.(current);
+        await assistantApi.start(current, text, crypto.randomUUID());
+      }
       state.refresh();
       setDrafts((d) => (d[draftKey] === text ? { ...d, [draftKey]: '' } : d));
 
@@ -143,7 +153,10 @@ export function useAssistant() {
     action,
     id,
     select,
-    adopt:(value:string)=>{if(!id)setDrafts(d=>({...d,[value]:d[value]??d.new??''}));select(value);},
+    adopt: (value: string) => {
+      if (!id) setDrafts((d) => ({ ...d, [value]: d[value] ?? d.new ?? '' }));
+      select(value);
+    },
     text,
     setText,
     setDraft: (key: string, value: string) => setDrafts((d) => ({ ...d, [key]: value })),

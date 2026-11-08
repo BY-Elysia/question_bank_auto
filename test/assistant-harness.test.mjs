@@ -265,3 +265,9 @@ test('State is bounded; older messages page backwards and text increments leave 
   assert.equal(older.messages.at(-1).id, 'm59');
   assert.equal(f.service.messages(c.id, older.nextCursor, 50).nextCursor, null);
 });
+
+test('Text history excludes empty tool-only steps while preserving the following answer',async()=>{
+ const {conversationContext}=await import('../dist/app/modules/assistant/domain/conversation-context.js');
+ const messages=[['user','修复'],['assistant',''],['assistant','  '],['assistant','已修改'],['user','撤销']].map(([role,content],i)=>({id:String(i),role,content,status:'complete',error:null}));
+ assert.deepEqual(conversationContext({id:'x',title:'x',updatedAt:'now',messages}),[{role:'user',content:'修复'},{role:'assistant',content:'已修改'},{role:'user',content:'撤销'}]);
+});

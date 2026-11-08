@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Id, Source } from '../../textbooks/domain/content.js';
 export const ScopeInput = z.object({
   workspaceIds: z.array(Id).max(10),
+  allowEdits: z.boolean().default(false),
   focus: QuestionAddress.nullable().default(null),
 });
 export const KnowledgeScope = ScopeInput.extend({
@@ -12,6 +13,7 @@ export const KnowledgeScope = ScopeInput.extend({
 export type KnowledgeScope = z.infer<typeof KnowledgeScope>;
 export interface ToolContext {
   step?: number;
+  commandId?: string;
   conversationId: string;
   runId: string;
   principalId: string;

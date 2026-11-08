@@ -1,3 +1,5 @@
+import { useReviewBinding, type ReviewBinding } from '../hooks/useReviewBinding';
+import { ChangeCards } from './ChangeCards';
 import { useKnowledge } from '../hooks/useKnowledge';
 import { KnowledgePicker } from './KnowledgePicker';
 import { AssistantMessage } from './AssistantMessage';
@@ -15,9 +17,18 @@ import {
 import { useAssistant } from '../hooks/useAssistant';
 import { Button } from '@/components/ui/button';
 import { ErrorNote } from '@/components/common';
-export default function AssistantPage() {
-  const m = useAssistant();
-  const knowledge = useKnowledge(m.id, m.adopt, m.setDraft);
+export default function AssistantPage({ embedded }: { embedded?: ReviewBinding }) {
+  const binding = useReviewBinding(embedded);
+  const m = useAssistant(
+    embedded
+      ? {
+          storageKey: `review-conversation:${embedded.workspaceId}`,
+          prepare: binding.prepare,
+          onMutation: binding.mutation,
+        }
+      : {},
+  );
+  const knowledge = useKnowledge(m.id, m.adopt, m.setDraft, !!embedded);
   const [history, setHistory] = useState(false);
   const [rename, setRename] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
@@ -31,7 +42,9 @@ export default function AssistantPage() {
   }, [m.conversation.data, m.messages.at(-1)?.content]);
   const empty = !m.messages.length;
   return (
-    <div className={`assistant-page chat-workbench ${history ? 'history-open' : ''}`}>
+    <div
+      className={`assistant-page chat-workbench ${history ? 'history-open' : ''} ${embedded ? 'embedded-assistant' : ''}`}
+    >
       <aside className="chat-history" aria-label="对话历史">
         <Button variant="outline" onClick={m.create} disabled={m.action.busy}>
           <Plus size={16} />
@@ -108,15 +121,39 @@ export default function AssistantPage() {
             >
               {history ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
-            <h1>AI 助手</h1>
+            <h1>{embedded ? '教材 AI 助手' : 'AI 助手'}</h1>
             <span className="chat-model-label">独立模型配置</span>
           </div>
-          <KnowledgePicker model={knowledge} disabled={!!m.activeRun} />
+          {!embedded && <KnowledgePicker model={knowledge} disabled={!!m.activeRun} />}
+          {embedded && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!!m.activeRun || m.action.busy}
+              onClick={m.create}
+            >
+              新建对话
+            </Button>
+          )}
+          {embedded && (
+            <Button size="sm" variant="ghost" onClick={embedded.onClose}>
+              收起助手
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => (location.hash = '/assistant/settings')}>
             <Settings2 size={15} />
             模型设置
           </Button>
         </header>
+        {embedded && (
+          <p className="review-agent-context">
+            {m.activeRun
+              ? '本轮目标已固定，切页不会改变正在处理的题目。'
+              : embedded.contentId
+                ? '已关联选中题目，可读取原图并按你的要求修改。'
+                : '请点击一道题目，再向助手提出要求。'}
+          </p>
+        )}
         <div
           ref={scroll}
           className={`chat-messages ${empty ? 'chat-empty' : ''}`}
@@ -131,10 +168,13 @@ export default function AssistantPage() {
               <div className="chat-orb">
                 <Sparkles size={28} />
               </div>
-              <h2>今天，想聊些什么？</h2>
+              <h2>{embedded ? '这道题，需要怎样处理？' : '今天，想聊些什么？'}</h2>
               <p>从一个问题、一点灵感，或一道难题开始。</p>
               <div className="chat-suggestions">
-                {['帮我讲解一个数学概念', '一起梳理解题思路', '帮我制定学习计划'].map((s) => (
+                {(embedded
+                  ? ['核对这道题的公式，先说明问题', '根据原图修复这道题', '补全这道题缺失的答案']
+                  : ['帮我讲解一个数学概念', '一起梳理解题思路', '帮我制定学习计划']
+                ).map((s) => (
                   <button key={s} onClick={() => m.setText(s)}>
                     {s}
                   </button>
@@ -173,12 +213,25 @@ export default function AssistantPage() {
                 </article>
               ))}
           </div>
+          {embedded && (
+            <ChangeCards
+              changes={(binding.changes.data ?? []).filter(
+                (c) => c.contentId === embedded.contentId,
+              )}
+              busy={binding.action.busy || !!m.activeRun}
+              onUndo={binding.undo}
+            />
+          )}
         </div>
         <div className="chat-composer-area">
           {m.activeRun && m.tool && (
             <p className="chat-tool-status" role="status">
               {(
                 {
+                  run_question_action: '处理当前题目',
+                  read_question_page: '查看题目原图',
+                  undo_question_change: '撤销修改',
+                  list_question_changes: '读取修改记录',
                   list_workspaces: '查看可用教材',
                   get_workspace_outline: '读取教材目录',
                   search_questions: '查询题目',
@@ -196,7 +249,11 @@ export default function AssistantPage() {
           )}
           <RunControls run={m.run} busy={m.action.busy} onCommand={m.command} onAnswer={m.answer} />
           <ErrorNote>
-            {m.action.error || knowledge.action.error || m.conversation.error || m.list.error}
+            {m.action.error ||
+              binding.action.error ||
+              knowledge.action.error ||
+              m.conversation.error ||
+              m.list.error}
           </ErrorNote>
           <form
             className="chat-composer"
@@ -238,7 +295,12 @@ export default function AssistantPage() {
               <Button
                 type="submit"
                 aria-label="发送"
-                disabled={m.action.busy || knowledge.action.busy || !m.text.trim()}
+                disabled={
+                  m.action.busy ||
+                  knowledge.action.busy ||
+                  !m.text.trim() ||
+                  (!!embedded && !embedded.contentId && !m.activeRun)
+                }
               >
                 <ArrowUp size={19} />
               </Button>

@@ -1,3 +1,6 @@
+import { ReviewActions } from '../../modules/assistant/application/actions/review-actions.js';
+import { ReviewTools } from '../../modules/assistant/application/tools/review-tools.js';
+import { ChangeService } from '../../modules/review/application/change-service.js';
 import { SqliteQuestionIndex } from '../../modules/catalog/infrastructure/sqlite-index.js';
 import {
   WorkspaceCatalogReader,
@@ -129,26 +132,9 @@ export async function createServices(options: AppOptions = {}) {
     catalog,
     assets.images,
   );
-  const assistantTools =
-    options.assistantTools ?? new CatalogTools(knowledge, new InteractionTools());
-  const injectedModel = options.assistantModel ?? options.model;
-  const runtime =
-    options.assistantRuntime ??
-    (injectedModel
-      ? new CompleteRuntime(injectedModel)
-      : new PiRuntime(assistantSettings, assistantTools));
-  const assistant = new HarnessService(
-    harnessStore,
-    runtime,
-    catalog,
-    records,
-    options.assistantContext ?? new EmptyAssistantContext(),
-    knowledge,
-  );
-  await assistant.recover();
   const skills = options.skills ?? new SkillRunner(store, model, assets.images, catalog, records);
   const books = new TextbooksService(store, assets.files, assets.images);
-  const review = new ReviewService(store),
+  const review = new ReviewService(store, principal),
     exports = new ExportService(store, assets.images, assets.archives);
   const parser = new TextbookWorkflow(store, skills),
     reviewWorkflow = new ReviewWorkflow(store, skills);
@@ -170,6 +156,27 @@ export async function createServices(options: AppOptions = {}) {
   ]);
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
+  const changes = new ChangeService(store);
+  const reviewActions = new ReviewActions(knowledge, jobs, store, review, changes);
+  const assistantTools =
+    options.assistantTools ??
+    new ReviewTools(new CatalogTools(knowledge, new InteractionTools()), reviewActions, knowledge);
+  const injectedModel = options.assistantModel ?? options.model;
+  const runtime =
+    options.assistantRuntime ??
+    (injectedModel
+      ? new CompleteRuntime(injectedModel)
+      : new PiRuntime(assistantSettings, assistantTools));
+  const assistant = new HarnessService(
+    harnessStore,
+    runtime,
+    catalog,
+    records,
+    options.assistantContext ?? new EmptyAssistantContext(),
+    knowledge,
+    reviewActions,
+  );
+  await assistant.recover();
   const workspaceRunner = new ExtractionRunner(workspaceStore, store, books, jobs);
   const workspaces = new WorkspacesService(
     workspaceStore,
@@ -194,5 +201,7 @@ export async function createServices(options: AppOptions = {}) {
     assistantConfiguration,
     knowledge,
     insertion,
+    changes,
+    reviewActions,
   };
 }

@@ -1,4 +1,8 @@
 import {
+  ChangesController,
+  CHANGES,
+} from '../../modules/review/presentation/changes.controller.js';
+import {
   KnowledgeController,
   KNOWLEDGE,
 } from '../../modules/assistant/presentation/knowledge.controller.js';
@@ -110,6 +114,7 @@ export async function createApplication(options: AppOptions = {}) {
       WorkspacesModule.register(workspaces, workspaceView),
     ],
     controllers: [
+      ChangesController,
       KnowledgeController,
       HarnessController,
       AssistantModelController,
@@ -119,6 +124,7 @@ export async function createApplication(options: AppOptions = {}) {
       QuestionsController,
     ],
     providers: [
+      { provide: CHANGES, useValue: services.changes },
       { provide: KNOWLEDGE, useValue: services.knowledge },
       { provide: ASSISTANT_MODEL, useValue: services.assistantConfiguration },
       { provide: PROFILE, useValue: services.profile },
@@ -130,8 +136,8 @@ export async function createApplication(options: AppOptions = {}) {
         useValue: {
           async onModuleDestroy() {
             await workspaces.shutdown();
-            await jobs.shutdown();
             await services.assistant.shutdown();
+            await jobs.shutdown();
             services.knowledge.close();
           },
         },

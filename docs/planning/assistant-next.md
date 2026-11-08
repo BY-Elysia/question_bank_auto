@@ -1,6 +1,6 @@
 # v2 架构基线与下一版 AI 助手规划
 
-更新：P1 教材查询、资料范围与来源引用已实现，见 [P1 架构](../assistant-knowledge.md)。P0 已实现，当前架构与交互语义见 [助手 Harness](../assistant-harness.md)。下文保留 v2.0 基线分析，P2 继续作为后续路线。
+更新：P2 可视化协作首期已实现，见 [内嵌协作](../embedded-review-assistant.md)。P1 教材查询、资料范围与来源引用已实现，见 [P1 架构](../assistant-knowledge.md)。P0 已实现，当前架构与交互语义见 [助手 Harness](../assistant-harness.md)。下文保留 v2.0 基线分析，P2 继续作为后续路线。
 
 整理日期：2026-11-07。当前基线为 main 上的 v2.0 产品实现。本文件区分已实现能力与下一版设计建议；接口全表见 [后端接口清单](../backend-interface-inventory.md)。
 

@@ -1,6 +1,7 @@
 import type { ToolContext } from '../domain/knowledge.js';
 import type { Interaction } from '../domain/run.js';
 export interface RuntimeStep {
+  deferred?: import('./deferred-tasks.js').DeferredTask[];
   checkpoint: unknown[];
   text: string;
   interactions: Interaction[];

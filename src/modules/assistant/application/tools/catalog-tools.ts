@@ -8,7 +8,7 @@ import type { AssistantTool, AssistantToolRegistry } from '../../ports/tools.js'
 import type { ToolContext } from '../../domain/knowledge.js';
 import type { KnowledgeService } from '../knowledge/knowledge-service.js';
 import { QuestionAddress, QuestionSearch } from '../../../catalog/domain/catalog.js';
-import { ReadToolExecutor } from './tool-executor.js';
+import { ToolExecutor } from './tool-executor.js';
 export class CatalogTools implements AssistantToolRegistry {
   constructor(
     private knowledge: KnowledgeService,
@@ -27,9 +27,24 @@ export class CatalogTools implements AssistantToolRegistry {
       );
       return { question: q, evidence: k.register(c, q) };
     };
-    const executor = new ReadToolExecutor(k);
+    const executor = new ToolExecutor(k);
     return [
       ...tools,
+      ...(context.scope.focus
+        ? [
+            executor.define(context, {
+              name: 'read_question_page',
+              label: '查看题目原图',
+              description: '查看选中题目的来源原图或相邻页，page 为实际页码。',
+              schema: z.object({ page: z.number().int().positive() }),
+              execute: async (a, c, signal) => ({
+                page: a.page,
+                image: await k.page(c, a.page, signal),
+              }),
+              present: (r) => ({ data: { page: r.page, kind: 'source_image' }, images: [r.image] }),
+            }),
+          ]
+        : []),
       executor.define(context, {
         name: 'list_workspaces',
         label: '查看可用教材',

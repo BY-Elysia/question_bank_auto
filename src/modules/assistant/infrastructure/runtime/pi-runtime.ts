@@ -53,7 +53,7 @@ export class PiRuntime implements AgentRuntime {
       baseUrl:
         api === 'anthropic-messages' ? config.baseUrl.replace(/\/v1\/?$/, '') : config.baseUrl,
       reasoning: false,
-      input: ['text'],
+      input: ['text', 'image'],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 128000,
       maxTokens: 8192,
@@ -74,6 +74,7 @@ export class PiRuntime implements AgentRuntime {
     if (tail?.role === 'assistant' && ['aborted', 'error', 'length'].includes(tail.stopReason))
       checkpoint.pop();
     const questions: Interaction[] = [];
+    const deferred: import('../../ports/deferred-tasks.js').DeferredTask[] = [];
     const stream: StreamFn = (m, c, o) => {
       const opts = { ...o, apiKey: config.apiKey, maxTokens: 8192 };
       if (api === 'openai-completions') return chat(m as Model<'openai-completions'>, c, opts);
@@ -92,11 +93,15 @@ export class PiRuntime implements AgentRuntime {
           parameters: tool.parameters,
           execute: async (callId, args, signal) => {
             const result = await tool.execute(callId, args, signal);
+            if (result.deferred) deferred.push(result.deferred);
             if (result.interaction) questions.push(result.interaction);
             return {
-              content: [{ type: 'text' as const, text: result.text }],
+              content: [
+                { type: 'text' as const, text: result.text },
+                ...(result.images ?? []).map((i) => ({ type: 'image' as const, ...i })),
+              ],
               details: {},
-              terminate: result.pause,
+              terminate: result.pause || !!result.deferred,
             };
           },
         })),
@@ -131,6 +136,7 @@ export class PiRuntime implements AgentRuntime {
         input_tokens_details: { cached_tokens: last.usage.cacheRead },
       };
       return {
+        deferred,
         checkpoint: agent.state.messages,
         text: last.content
           .filter((c) => c.type === 'text')

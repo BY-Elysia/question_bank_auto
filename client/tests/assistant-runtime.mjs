@@ -1,8 +1,9 @@
+import {ReviewTools} from '../../dist/app/modules/assistant/application/tools/review-tools.js';
 import { questionReference } from '../../dist/app/modules/catalog/domain/question-reference.js';
 import { CatalogTools } from '../../dist/app/modules/assistant/application/tools/catalog-tools.js';
 import { InteractionTools } from '../../dist/app/modules/assistant/application/tools/interaction-tools.js';
-let knowledge;
-export const bindKnowledge = (value) => (knowledge = value);
+let knowledge, actions;
+export const bindKnowledge = (value,reviewActions) => {knowledge = value;actions=reviewActions;};
 import { setTimeout as delay } from 'node:timers/promises';
 export const assistantRuntime = {
   history: (messages) => structuredClone(messages),
@@ -17,6 +18,15 @@ export const assistantRuntime = {
       stop: 'complete',
       ...extra,
     });
+    if(text.startsWith('系统后台操作结果：'))return result('已完成修改，可查看差异或撤销。');
+    if(i.execution?.scope.allowEdits && /修复|补全/.test(text)) {
+      const tools=new ReviewTools(new CatalogTools(knowledge,new InteractionTools()),actions,knowledge).tools(i.execution);
+      const img=await tools.find(t=>t.name==='read_question_page').execute('read-page',{page:1},i.signal);
+      if(!img.images?.length)throw Error('Missing source image');
+      const output=await tools.find(t=>t.name==='run_question_action').execute('edit',{kind:text.includes('补全')?'answers':'repair',instruction:text},i.signal);
+      if(!output.deferred)return result(output.text);
+      return result('正在处理选中题目',{stop:'continue',deferred:[output.deferred]});
+    }
     if (i.execution?.scope.workspaceIds.length) {
       const tools = new CatalogTools(knowledge, new InteractionTools()).tools(i.execution);
       const call = async (name, args) =>

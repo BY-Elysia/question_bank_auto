@@ -16,7 +16,7 @@ export class KnowledgeController {
   }
   @Put('conversations/:id/scope') update(@Param('id') id: string, @Body() body: unknown) {
     const input = parse(ScopeInput, body);
-    return this.knowledge.setScope(id, input.workspaceIds, input.focus);
+    return this.knowledge.setScope(id, input.workspaceIds, input.focus, input.allowEdits);
   }
   @Get('conversations/:id/citations/:citation') citation(
     @Param('id') id: string,
