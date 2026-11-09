@@ -1,8 +1,9 @@
+import type { CatalogQueries } from '../ports/catalog-query.js';
 import type { CatalogReader, QuestionIndex, AccessPolicy } from '../ports/catalog.js';
 import type { CatalogQuestion, QuestionAddress, QuestionSearch } from '../domain/catalog.js';
 import type { Book } from '../../textbooks/domain/book.js';
 import { fail, DomainError } from '../../../shared/errors.js';
-export class CatalogQuery {
+export class CatalogQuery implements CatalogQueries {
   constructor(
     private reader: CatalogReader,
     private index: QuestionIndex,

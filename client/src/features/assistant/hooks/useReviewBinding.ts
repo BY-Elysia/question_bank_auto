@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback } from 'react';
 import { knowledgeApi } from '../api/knowledge';
 import { changesApi } from '../api/changes';
 import { useResource, useAction } from '@/shared/hooks/useAsync';
@@ -11,21 +11,15 @@ export interface ReviewBinding {
   onClose: () => void;
 }
 export function useReviewBinding(binding?: ReviewBinding) {
-  const [epoch, setEpoch] = useState(0);
   const load = useCallback(
     (signal: AbortSignal) =>
       binding ? changesApi.list(binding.workspaceId, signal) : Promise.resolve([]),
-    [binding?.workspaceId],
+    [binding?.workspaceId, binding?.revision],
   );
   const changes = useResource(load),
     action = useAction();
-  useEffect(() => {
-    changes.refresh();
-  }, [epoch, binding?.revision]);
-  const mutation = () => {
-    setEpoch((x) => x + 1);
-    binding?.onChange();
-  };
+  // The workspace revision is the single invalidation key, including undo and SSE mutations.
+  const mutation = () => binding?.onChange();
   return {
     changes,
     action,

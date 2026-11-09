@@ -1,18 +1,18 @@
 import { Controller, Get, Post, Inject, Param, Body } from '@nestjs/common';
 import { z } from 'zod';
 import { ChangeService } from '../application/change-service.js';
-import { KnowledgeService } from '../../assistant/application/knowledge/knowledge-service.js';
-import { KNOWLEDGE } from '../../assistant/presentation/knowledge.controller.js';
+import type { WorkspaceAccess } from '../../catalog/ports/workspace-access.js';
+import { WORKSPACE_ACCESS } from '../../catalog/ports/workspace-access.js';
 import { parse } from '../../../shared/errors.js';
 export const CHANGES = Symbol('CHANGES');
 @Controller('api/workspaces/:id/changes')
 export class ChangesController {
   constructor(
     @Inject(CHANGES) private changes: ChangeService,
-    @Inject(KNOWLEDGE) private knowledge: KnowledgeService,
+    @Inject(WORKSPACE_ACCESS) private access: WorkspaceAccess,
   ) {}
   private authorize(id: string) {
-    return this.knowledge.query.authorize(this.knowledge.principalId, [id]);
+    return this.access.authorize(id);
   }
   @Get() async list(@Param('id') id: string) {
     await this.authorize(id);

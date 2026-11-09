@@ -1,3 +1,5 @@
+import { PageSourceImageReader } from '../../modules/assistant/infrastructure/knowledge/source-image-reader.js';
+import { QuestionOperationService } from '../../modules/review/application/question-operation-service.js';
 import { ReviewActions } from '../../modules/assistant/application/actions/review-actions.js';
 import { ReviewTools } from '../../modules/assistant/application/tools/review-tools.js';
 import { ChangeService } from '../../modules/review/application/change-service.js';
@@ -119,10 +121,15 @@ export async function createServices(options: AppOptions = {}) {
   await workspaceStore.init();
   const harnessStore = options.harnessStore ?? (await SqliteHarness.open(root));
   const principal = options.access?.username ?? process.env.ACCESS_USERNAME ?? 'local-account';
+  const catalogAccess =
+    options.catalogAccess ?? new SingleAccountCatalogAccess(principal, workspaceStore);
+  const workspaceAccess = {
+    authorize: (id: string) => catalogAccess.assertWorkspace(principal, id),
+  };
   const catalogQuery = new CatalogQuery(
     new WorkspaceCatalogReader(workspaceStore, store),
     await SqliteQuestionIndex.open(root),
-    options.catalogAccess ?? new SingleAccountCatalogAccess(principal, workspaceStore),
+    catalogAccess,
   );
   const knowledge = new KnowledgeService(
     principal,
@@ -131,6 +138,7 @@ export async function createServices(options: AppOptions = {}) {
     catalogQuery,
     catalog,
     assets.images,
+    new PageSourceImageReader(assets.images),
   );
   const skills = options.skills ?? new SkillRunner(store, model, assets.images, catalog, records);
   const books = new TextbooksService(store, assets.files, assets.images);
@@ -157,7 +165,10 @@ export async function createServices(options: AppOptions = {}) {
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
   const changes = new ChangeService(store);
-  const reviewActions = new ReviewActions(knowledge, jobs, store, review, changes);
+  const reviewActions = new ReviewActions(
+    knowledge,
+    new QuestionOperationService(jobs, store, review, changes),
+  );
   const assistantTools =
     options.assistantTools ??
     new ReviewTools(new CatalogTools(knowledge, new InteractionTools()), reviewActions, knowledge);
@@ -203,5 +214,6 @@ export async function createServices(options: AppOptions = {}) {
     insertion,
     changes,
     reviewActions,
+    workspaceAccess,
   };
 }

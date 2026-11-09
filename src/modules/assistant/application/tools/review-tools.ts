@@ -41,10 +41,7 @@ export class ReviewTools implements AssistantToolRegistry {
         label: '读取修改记录',
         description: '读取当前题目的修改记录，包括修改前后内容及是否撤销。',
         schema: z.object({}),
-        execute: async () =>
-          (await this.actions.changes.list(c.scope.focus!.workspaceId))
-            .filter((x) => x.contentId === c.scope.focus!.contentId)
-            .slice(-5),
+        execute: async () => this.actions.list(c),
       }),
     ];
   }

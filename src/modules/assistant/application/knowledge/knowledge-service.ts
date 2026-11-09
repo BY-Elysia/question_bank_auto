@@ -1,11 +1,12 @@
 import { questionReference } from '../../../catalog/domain/question-reference.js';
 import type { QuestionAddress } from '../../../catalog/domain/catalog.js';
-import type { Leaf } from '../../../textbooks/domain/content.js';
+import { evidenceExcerpt } from './evidence-excerpt.js';
+import type { SourceImageReader } from '../../ports/source-image-reader.js';
 import type { PageImagePort } from '../../../textbooks/ports/assets.port.js';
 import { randomUUID } from 'node:crypto';
 import type { KnowledgeStore, KnowledgeLifecycle } from '../../ports/knowledge.js';
 import type { HarnessStore } from '../../ports/harness-store.js';
-import type { CatalogQuery } from '../../../catalog/application/catalog-query.js';
+import type { CatalogQueries } from '../../../catalog/ports/catalog-query.js';
 import type { CatalogQuestion } from '../../../catalog/domain/catalog.js';
 import type { SkillCatalog } from '../../../../ai/ports/skill-catalog.js';
 import { Citation, type ToolContext, type CitationView } from '../../domain/knowledge.js';
@@ -15,10 +16,14 @@ export class KnowledgeService implements KnowledgeLifecycle {
     readonly principalId: string,
     private store: KnowledgeStore,
     private harness: HarnessStore,
-    readonly query: CatalogQuery,
+    readonly query: CatalogQueries,
     private skills: SkillCatalog,
     private images?: PageImagePort,
+    private sourceImages?: SourceImageReader,
   ) {}
+  workspaces() {
+    return this.query.list(this.principalId);
+  }
   scope(id: string) {
     this.harness.get(id);
     return this.store.scope(id);
@@ -105,24 +110,7 @@ export class KnowledgeService implements KnowledgeLifecycle {
   }
   register(c: ToolContext, q: CatalogQuestion) {
     const a = q.question.answer;
-    const render = (item: Leaf) =>
-      [
-        item.prompt,
-        ...item.options.map((o) => `${o.id}. ${o.text}`),
-        item.answer
-          ? `答案来源：${{ source: '教材原文', ai_generated: 'AI 生成', human: '人工修改' }[item.answer.origin]} · ${item.answer.review === 'pending' ? '待确认' : '已确认'}\n\n${item.answer.text}\n\n${item.answer.explanation}`
-          : '无已保存答案',
-      ].join('\n\n');
-    const full = [
-      q.parentPrompt,
-      render(q.question),
-      ...('children' in q.question
-        ? q.question.children.map((c) => `${c.label}\n${render(c)}`)
-        : []),
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const excerpt = full.length > 6000 ? full.slice(0, 6000) + '\n（原文节选）' : full;
+    const excerpt = evidenceExcerpt(q);
     const e = {
       id: 'e_' + randomUUID(),
       workspaceId: q.workspaceId,
@@ -191,19 +179,17 @@ export class KnowledgeService implements KnowledgeLifecycle {
   async page(c: ToolContext, page: number, signal?: AbortSignal) {
     await this.validate(c);
     const focus = c.scope.focus;
-    if (!focus || !this.images) fail(400, '请先选择具体题目');
+    if (!focus || !this.sourceImages) fail(400, '请先选择具体题目');
     const q = await this.query.question(c.principalId, c.scope.workspaceIds, {
       ...focus,
       revision: undefined,
     });
     if (!q.sources.some((s) => Math.abs(s.page - page) <= 1))
       fail(403, '只能查看题目来源及相邻书页');
-    const asset = await this.images.read(focus.workspaceId, page, signal, 'preview');
-    const chunks: Buffer[] = [];
-    for await (const chunk of asset.body) chunks.push(Buffer.from(chunk));
+    const image = await this.sourceImages.read(focus.workspaceId, page, signal);
     signal?.throwIfAborted();
     await this.validate(c);
-    return { data: Buffer.concat(chunks).toString('base64'), mimeType: asset.contentType };
+    return image;
   }
   calls(c: ToolContext) {
     return this.store.calls(c.runId);

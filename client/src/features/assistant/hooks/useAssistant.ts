@@ -6,13 +6,19 @@ const statePoll = (data: Awaited<ReturnType<typeof assistantApi.state>> | null |
   data?.runs.some((r) => ['queued', 'running'].includes(r.status)) ? 10000 : 0;
 export function useAssistant(
   options: {
+    history?: boolean;
     storageKey?: string;
     prepare?: (id: string) => Promise<unknown>;
     onMutation?: () => void;
   } = {},
 ) {
   const storageKey = options.storageKey ?? 'assistant-conversation';
-  const list = useResource(assistantApi.list, 5000),
+  const historyEnabled = options.history !== false;
+  const loadHistory = useCallback(
+    (signal: AbortSignal) => (historyEnabled ? assistantApi.list(signal) : Promise.resolve([])),
+    [historyEnabled],
+  );
+  const list = useResource(loadHistory, historyEnabled ? 5000 : 0),
     action = useAction();
   const [id, setId] = useState<string | null>(() =>
       !options.storageKey && sessionStorage.getItem('assistant-question')
@@ -166,3 +172,5 @@ export function useAssistant(
     pending: conversation.data?.messages.some((m) => m.status === 'pending') ?? false,
   };
 }
+
+export type AssistantModel = ReturnType<typeof useAssistant>;

@@ -1,6 +1,6 @@
 {
   "name": "@question-bank/backend",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "type": "module",
   "description": "Workspace-based textbook PDF/image extraction, review, repair and JSON export backend",

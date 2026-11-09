@@ -6,7 +6,7 @@
 
 从 PDF 和书页图片出发，完成智能识题、跨页拼接、答案生成与逐题校对，输出标准题库 JSON。
 
-![Version](https://img.shields.io/badge/release-v2.3.0-8B75C9)
+![Version](https://img.shields.io/badge/release-v2.3.1-8B75C9)
 ![TypeScript](https://img.shields.io/badge/TypeScript-full_stack-3178C6)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A522.21-43853D)
 ![Docker](https://img.shields.io/badge/deploy-Docker-2496ED)
@@ -21,7 +21,7 @@
 
 可视化页面新增内嵌助手：选中题目，直接要求核对原图、修复公式或补全答案。AI 复用教材处理流程，修改实时回到页面，支持查看差异与逐题撤销。刷新不中断后台工作，插话与停止沿用持久化 Harness。
 
-[协作架构与接口](docs/embedded-review-assistant.md) · [v2.3 发布说明](docs/releases/v2.3.0.md)
+[架构复审与分层接口](docs/architecture-audit-2026-11-09.md) · [协作架构与接口](docs/embedded-review-assistant.md) · [v2.3 发布说明](docs/releases/v2.3.0.md)
 
 ## v2.2：让对话连接你的教材
 

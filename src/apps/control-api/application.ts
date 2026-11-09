@@ -1,3 +1,4 @@
+import { WORKSPACE_ACCESS } from '../../modules/catalog/ports/workspace-access.js';
 import {
   ChangesController,
   CHANGES,
@@ -124,6 +125,7 @@ export async function createApplication(options: AppOptions = {}) {
       QuestionsController,
     ],
     providers: [
+      { provide: WORKSPACE_ACCESS, useValue: services.workspaceAccess },
       { provide: CHANGES, useValue: services.changes },
       { provide: KNOWLEDGE, useValue: services.knowledge },
       { provide: ASSISTANT_MODEL, useValue: services.assistantConfiguration },

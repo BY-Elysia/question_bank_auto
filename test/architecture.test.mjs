@@ -68,3 +68,17 @@ test('Frontend stays split into typed API, UI components and bounded feature fil
     }
   }
 });
+
+test('Review ownership and assistant adapters maintain explicit module boundaries', () => {
+ for (const file of files('src/modules/review').filter(f=>f.endsWith('.ts'))) {
+  assert.doesNotMatch(fs.readFileSync(file,'utf8'), /from ['"][^'"]*assistant\//, file);
+ }
+ const adapter = fs.readFileSync('src/modules/assistant/application/actions/review-actions.ts','utf8');
+ assert.doesNotMatch(adapter, /(?:JobsService|BookRepository|ReviewService|ChangeService)/);
+ assert.match(adapter, /QuestionOperations/);
+ const knowledge=fs.readFileSync('src/modules/assistant/application/knowledge/knowledge-service.ts','utf8');
+ assert.doesNotMatch(knowledge, /Buffer\.|for await/);
+ const panel=fs.readFileSync('client/src/features/assistant/components/ReviewAssistantPanel.tsx','utf8');
+ assert.doesNotMatch(panel, /useKnowledge|ConversationHistory/);
+ assert.match(panel, /history: false/);
+});

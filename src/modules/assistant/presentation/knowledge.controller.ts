@@ -9,7 +9,7 @@ export const KNOWLEDGE = Symbol('KNOWLEDGE');
 export class KnowledgeController {
   constructor(@Inject(KNOWLEDGE) private knowledge: KnowledgeService) {}
   @Get('knowledge/workspaces') workspaces() {
-    return this.knowledge.query.list(this.knowledge.principalId);
+    return this.knowledge.workspaces();
   }
   @Get('conversations/:id/scope') scope(@Param('id') id: string) {
     return this.knowledge.scope(id);

@@ -34,3 +34,15 @@ test('Embedded answer generation reuses candidates, commits AI provenance and re
  expect(answer.origin).toBe('ai_generated');expect(answer.review).toBe('accepted');expect(answer.text).toBe('11');
  await page.request.delete('/api/workspaces/'+id);
 });
+
+test('Embedded host loads changes once and does not fetch standalone history or scope picker resources', async({page}) => {
+ const id=await seed(page); const requests:string[]=[];
+ page.on('request',r=>{if(r.method()==='GET') requests.push(new URL(r.url()).pathname);});
+ await page.getByRole('button',{name:'向助手提问'}).first().click();
+ const panel=page.getByLabel('教材助手面板');await expect(panel.getByLabel('消息',{exact:true})).toBeVisible();
+ await expect.poll(()=>requests.filter(p=>p===`/api/workspaces/${id}/changes`).length).toBe(1);
+ await page.waitForTimeout(5500);
+ expect(requests.filter(p=>p===`/api/workspaces/${id}/changes`)).toHaveLength(1);
+ expect(requests.filter(p=>p==='/api/assistant/conversations'||p==='/api/assistant/knowledge/workspaces'||p.endsWith('/scope'))).toEqual([]);
+ await page.request.delete('/api/workspaces/'+id);
+});

@@ -413,3 +413,39 @@ test('Interrupting a pending edit uses the new command identity instead of resum
  await f.assistant.input(r.id,'新要求',crypto.randomUUID(),'interrupt');await f.assistant.wait(f.c.id);
  const b=await f.store.read(f.id);assert.equal(f.assistant.run(r.id).status,'completed');assert.equal(b.jobs.length,2);assert.equal(b.jobs[0].status,'cancelled');assert.equal(b.jobs[1].request.instruction,'新要求');assert.notEqual(b.jobs[0].action.key,b.jobs[1].action.key);assert.equal(b.changes.length,1);
 });
+
+test('A later unchanged job reports only its own outcome, never changes from earlier jobs in the run', async t => {
+ const f = await editorFixture(t); let step = 0;
+ f.setHandler(async i => {
+  if (step++ === 0) return {text:'修复',stop:'continue',deferred:[await f.reviewActions.start(i.execution,'repair','修复')]};
+  if (step === 2) {
+   assert.match(JSON.stringify(i.checkpoint), /applied/);
+   f.handlers.set('answers', {execute: async () => {}});
+   return {text:'补全',stop:'continue',deferred:[await f.reviewActions.start(i.execution,'answers','补全')]};
+  }
+  const last = i.checkpoint.at(-1).content;
+  assert.match(last, /unchanged/); assert.doesNotMatch(last, /proposal-/);
+  return {text:'完成'};
+ });
+ assert.equal((await run(f,f.c)).status,'completed');
+ const b=await f.store.read(f.id);assert.equal(b.changes.length,1);
+});
+
+test('Cancelling an editor run after workspace removal is idempotent', async t => {
+ const f = await editorFixture(t); let entered;
+ const ready = new Promise(resolve => entered=resolve);
+ f.setHandler(async i => {entered();await delay(10000,null,{signal:i.signal});return {text:'完成'};});
+ const r=await f.assistant.start(f.c.id,'查看这道题',crypto.randomUUID());await ready;
+ await f.workspaces.remove(f.id);
+ await f.assistant.cancel(r.id);await f.assistant.wait(f.c.id);
+ assert.equal(f.assistant.run(r.id).status,'cancelled');
+});
+
+test('Change endpoints authorize the workspace without relying on an assistant conversation', async t => {
+ const f=await fixture(t), id=await seed(f);
+ assert.equal((await fetch(`${f.base}/api/workspaces/${id}/changes`)).status,200);
+ f.denied.add(id);
+ assert.equal((await fetch(`${f.base}/api/workspaces/${id}/changes`)).status,403);
+ assert.equal((await fetch(`${f.base}/api/workspaces/${id}/changes/unknown/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:1})})).status,403);
+ assert.equal((await f.store.read(id)).revision,1);
+});

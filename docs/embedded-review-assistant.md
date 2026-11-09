@@ -1,6 +1,6 @@
 # 可视化页面 AI 协作 · 首期闭环
 
-版本 2.3.0，2026-11-08。可视化页面中的“向助手提问”打开内嵌面板，保留当前教材位置。首期支持原图核对、题目修复、缺失答案生成、修改差异、逐题撤销，以及现有的插话、停止、询问和恢复。
+版本 2.3.1，2026-11-09。可视化页面中的“向助手提问”打开内嵌面板，保留当前教材位置。首期支持原图核对、题目修复、缺失答案生成、修改差异、逐题撤销，以及现有的插话、停止、询问和恢复。
 
 ## 运行链路
 
@@ -12,7 +12,8 @@ flowchart TD
   Harness --> Tools[CatalogTools / ReviewTools]
   Tools --> Executor[ToolExecutor：参数、权限、预算、日志]
   Executor --> Actions[ReviewActions]
-  Actions --> Jobs[现有 JobsService / ReviewWorkflow]
+  Actions --> Operations[QuestionOperations / QuestionOperationService]
+  Operations --> Jobs[现有 JobsService / ReviewWorkflow]
   Jobs --> Skills[content-repair / answer workflow]
   Jobs --> Proposal[持久化候选]
   Proposal --> Commit[ReviewService：校验、提交、变更记录]
@@ -26,12 +27,13 @@ Agent-Native 的共享业务操作、上下文感知和结果同步思想用于�
 ## 分层与复用
 
 - `assistant/ports/deferred-tasks.ts`：后台任务等待与取消端口，运行器不依赖具体教材工作流。
-- `assistant/application/actions/ReviewActions`：将已授权的选中题目操作映射到现有修复/答案任务，完成后经 ReviewService 提交。
+- `assistant/application/actions/ReviewActions`：仅负责目标授权与变更通知，通过 QuestionOperations 调用审核业务能力。
+- `review/application/QuestionOperationService`：编排修复、答案任务及候选提交；按当前任务返回变更，统一取消与撤销。
 - `assistant/application/tools`：工具描述与输入输出适配；统一 ToolExecutor 负责参数、权限、调用预算、超时和日志。文本、原图和后台任务使用同一执行协议。
 - `review/application/ReviewService`：页面接受候选和 AI 自动应用共用版本检查、内容校验和原子提交，保留 AI 答案来源。
 - `review/application/ChangeService`：按内容快照撤销，不回滚整本教材。修改记录与教材提交保存在同一 Book 原子写入中。
 - `assistant/infrastructure/runtime/PiRuntime`：仅转换模型协议、图片和工具结果；不访问教材仓储。
-- 前端通过 assistant 模块公开的 `AssistantPanel` 嵌入；页面不复制聊天请求或状态管理。`useReviewBinding` 管理目标、修改记录和事件后的刷新。
+- 前端通过 assistant 模块公开的 `AssistantPanel` 嵌入；页面不复制聊天请求或状态管理。`ReviewAssistantPanel` 管理教材宿主，`AssistantPage` 管理独立聊天宿主，共用 `ConversationView`。`useReviewBinding` 管理目标和修改记录，以教材修订号刷新；侧栏不加载独立聊天历史或资料选择器。
 
 ## 上下文与授权
 

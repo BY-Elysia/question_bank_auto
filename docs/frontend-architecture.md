@@ -79,3 +79,7 @@ Playwright 使用真实 HTTP、后端仓储、文件上传、PDF 渲染及导出
 ## v2.1 助手
 
 `features/assistant` 按 components / hooks / api 分层。`useAssistant` 管理命令、会话草稿与消息分页；`useRunFeed` 管理 SSE 订阅、事件去重和合并刷新。`RunControls` 展示状态、排队输入与结构化问题。状态接口只返回最近 50 条消息，更早历史按需请求，流式渲染不重复拉取全量会话。
+
+## v2.3.1 聊天宿主分离
+
+`AssistantPage` 与 `ReviewAssistantPanel` 分别组合独立聊天和教材侧栏，`ConversationView` 复用消息与输入展示，`ConversationHistory` 管理历史展示。宿主选择自己的资源和上下文，不通过隐藏 UI 保留多余请求。详见 [架构复审](architecture-audit-2026-11-09.md)。
