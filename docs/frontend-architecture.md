@@ -1,6 +1,6 @@
 # 前端分层架构
 
-本次重构保留现有 React 界面、CSS、动画、Hash 路由和后端接口。前端按工作区、提取、核对三个业务模块组织，每个模块将请求、状态编排和展示分开。
+版本 2.3.1。前端采用 React、Hash 路由与按需加载，按工作区、提取、核对、助手和个人配置组织业务模块，请求、状态编排、纯计算与展示分别维护。
 
 ```text
 client/src/
@@ -9,6 +9,8 @@ client/src/
 ├── features/
 │   ├── workspace/           列表、上传、工作区生命周期、历史和导出
 │   ├── extraction/          教材信息、章节分组和提取配置
+│   ├── assistant/           独立聊天、教材侧栏、运行控制与来源引用
+│   ├── profile/             教材与助手分别配置模型、连通性与用量
 │   └── review/              原图对照、核对、修复、编辑和候选审核
 │       ├── components/      JSX、交互绑定、视觉反馈
 │       ├── hooks/           状态、异步操作、成功后的刷新与弹窗关闭
@@ -38,7 +40,7 @@ Workspace 作为流程装配组件，根据服务端状态组合 Configure、Pro
 
 公式渲染器与 Review 共用一个懒加载边界；ContentBody 同步引用 RichText，不再用原始 LaTeX 作为异步占位。登录页不加载 App，配置页不加载 Review，KaTeX 样式随 Review 加载。RichText 按文本值 memo，选中内容、调整画布或收到相同文本时不重复解析公式。remark-math 解析公式后，remarkDisplayMath 只将段落中已识别的同一行 `$$…$$` 节点转换为独立公式，代码和转义符不参与替换，保存与导出仍使用原始内容。
 
-PageCanvas 管理缩放和平移，PageImage 展示当前页及来源框，usePageImage 管理预览/高清加载、失败回退和重试。默认预览，放大后加载无损细节图，加载期间保留预览；页图尺寸提前占位，来源框等图片就绪后显示。当前预览加载完成后仅低优先级预读下一页，节流模式下跳过；切页以页图 URL 为 key 重建局部状态，避免上一页的错误状态残留。
+PageCanvas 管理缩放和平移，PageImage 展示当前页及来源框，usePageImage 管理正常预览图加载、失败重试和缓存。放大仅调整展示比例，不额外请求高清图；页图尺寸提前占位，来源框等图片就绪后显示。当前预览加载完成后仅低优先级预读下一页，节流模式下跳过；切页以页图 URL 为 key 重建局部状态，避免上一页的错误状态残留。
 
 服务端通过 PageImagePort 选择显示变体，适配器持久化并合并同一变体的并发生成。模型 dataUrl 与 ZIP 继续读取标准 PNG。页图使用 `private, no-cache` 和 ETag：浏览器可复用字节，但请求仍须经过登录校验，匹配时返回 304；正文修订不使未变的页图失效。
 
@@ -75,3 +77,11 @@ Playwright 使用真实 HTTP、后端仓储、文件上传、PDF 渲染及导出
 - `node --test test/frontend-architecture.test.mjs`：2 项依赖边界检查通过。
 - `PW_BROWSER_CHANNEL=chrome npm run test:web`：6 项浏览器端测全部通过（约 1.4 分钟）。
 - 已检查端测生成的桌面核对页与移动首页截图；本次没有修改样式文件。
+
+## v2.1 助手
+
+`features/assistant` 按 components / hooks / api 分层。`useAssistant` 管理命令、会话草稿与消息分页；`useRunFeed` 管理 SSE 订阅、事件去重和合并刷新。`RunControls` 展示状态、排队输入与结构化问题。状态接口只返回最近 50 条消息，更早历史按需请求，流式渲染不重复拉取全量会话。
+
+## v2.3.1 聊天宿主分离
+
+`AssistantPage` 与 `ReviewAssistantPanel` 分别组合独立聊天和教材侧栏，`ConversationView` 复用消息与输入展示，`ConversationHistory` 管理历史展示。宿主选择自己的资源和上下文，不通过隐藏 UI 保留多余请求。详见 [架构复审](architecture-audit-2026-11-09.md)。

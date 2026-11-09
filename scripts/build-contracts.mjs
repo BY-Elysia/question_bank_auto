@@ -1,3 +1,6 @@
+import {Change} from '../dist/app/modules/review/domain/change.js';
+import {ScopeInput,KnowledgeScope,CitationView} from '../dist/app/modules/assistant/domain/knowledge.js';
+import {CatalogWorkspace} from '../dist/app/modules/catalog/domain/catalog.js';
 import {
   ModelSettingsInput,
   ModelSettingsView,
@@ -9,6 +12,10 @@ import {
   Conversation,
   ChatInput,
   ConversationList,
+  StartRun,
+  InputCommand,
+  InteractionAnswer,
+  AssistantRunView,
   assistantRoutes,
 } from '../dist/app/modules/assistant/presentation/contracts.js';
 import { Workspace, ExtractionSettings } from '../dist/app/modules/workspaces/domain/workspace.js';
@@ -28,6 +35,8 @@ import * as requests from '../dist/app/modules/textbooks/presentation/contracts.
 import { textbookRoutes } from '../dist/app/modules/textbooks/presentation/routes.js';
 import { jobRoutes } from '../dist/app/modules/jobs/presentation/routes.js';
 const schemas = {
+ Change,ChangeList:z.array(Change),UndoChange:z.object({revision:z.number().int().nonnegative()}),
+ ScopeInput,KnowledgeScope,CitationView,CatalogWorkspaceList:z.array(CatalogWorkspace),
   ModelSettingsInput,
   ModelSettingsView,
   ModelTestResult,
@@ -35,6 +44,20 @@ const schemas = {
   Conversation,
   ChatInput,
   ConversationList,
+  StartRun,
+  InputCommand,
+  InteractionAnswer,
+  AssistantRunView,
+  AssistantState: z.object({
+    conversation: Conversation,
+    runs: z.array(AssistantRunView),
+    nextCursor: z.string().nullable(),
+  }),
+  RenameConversation: z.object({ title: z.string().trim().min(1).max(100) }),
+  MessagePage: z.object({
+    messages: Conversation.shape.messages,
+    nextCursor: z.string().nullable(),
+  }),
   MetadataUpdate: z.object({
     revision: z.number().int().nonnegative(),
     metadata: TextbookMetadata,
@@ -83,6 +106,7 @@ for (const [name, schema] of Object.entries(schemas)) {
 }
 const binaries = { PDF: 'application/pdf', PNG: 'image/png', ZIP: 'application/zip' };
 function content(name) {
+  if (name === 'RunEvents') return { 'text/event-stream': { schema: { type: 'string' } } };
   if (name === 'PageImage')
     return { ...content('PNG'), 'image/webp': { schema: { type: 'string', format: 'binary' } } };
   if (name === 'ImageUpload')
@@ -113,6 +137,8 @@ for (const [method, path, operationId, input, output, status] of [
   ...jobRoutes,
   ...profileRoutes,
   ...assistantRoutes,
+ ['get','/api/workspaces/{id}/changes','listWorkspaceChanges',null,'ChangeList',200],
+ ['post','/api/workspaces/{id}/changes/{change}/undo','undoWorkspaceChange','UndoChange','Change',201],
   [
     'patch',
     '/api/workspaces/{id}/metadata',
@@ -153,6 +179,21 @@ for (const [method, path, operationId, input, output, status] of [
         schema: { type: 'string', enum: ['before', 'after'] },
       },
       { name: 'revision', in: 'query', required: true, schema: { type: 'integer', minimum: 0 } },
+    );
+  if (operationId === 'getConversationMessages')
+    parameters.push(
+      { name: 'cursor', in: 'query', required: false, schema: { type: 'string' } },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+      },
+    );
+  if (operationId === 'streamAssistantEvents')
+    parameters.push(
+      { name: 'after', in: 'query', required: false, schema: { type: 'integer', minimum: 0 } },
+      { name: 'Last-Event-ID', in: 'header', required: false, schema: { type: 'string' } },
     );
   if (operationId === 'getPageImage')
     parameters.push({

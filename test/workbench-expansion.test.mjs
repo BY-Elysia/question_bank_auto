@@ -162,9 +162,8 @@ test('Assistant survives leaving the HTTP request, persists messages and records
   const usage = await app.profile.usageSummary();
   assert.equal(usage.assistant.total, 12);
   assert.equal(usage.assistant.calls, 1);
-  const persisted = JSON.parse(
-    await fs.readFile(path.join(app.root, 'conversations', c.id + '.json')),
-  );
+  const persisted = await app.assistant.get(c.id);
+  await fs.access(path.join(app.root, 'assistant', 'harness.sqlite'));
   assert.equal(persisted.messages[1].status, 'complete');
 });
 test('Settings never expose keys and never reuse a secret for a different provider', async (t) => {
@@ -331,9 +330,25 @@ test('Insertion normalizes a pure choice heading without another model call and 
 test('Assistant configuration is isolated from textbook credentials, persists and drives assistant requests', async (t) => {
   const requests = [];
   const server = http.createServer(async (req, res) => {
-    for await (const chunk of req) {
-    }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    const streaming = JSON.parse(body).stream;
     requests.push({ url: req.url, authorization: req.headers.authorization });
+    if (streaming) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.end(
+        'data: ' +
+          JSON.stringify({
+            choices: [
+              { index: 0, delta: { content: 'independent assistant' }, finish_reason: null },
+            ],
+          }) +
+          '\n\ndata: ' +
+          JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }) +
+          '\n\ndata: [DONE]\n\n',
+      );
+      return;
+    }
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({

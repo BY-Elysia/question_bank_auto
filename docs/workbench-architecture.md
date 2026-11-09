@@ -50,3 +50,7 @@ API 路径、导出格式、工作区文件格式均保持兼容。本次没有�
 模型配置按用途隔离：题库沿用 `profile/model.json` 和 `/api/profile/model`；助手使用 `profile/assistant-model.json` 和 `/api/assistant/model`（GET、PUT、POST test）。两套配置通过同一 `ModelConfiguration` 用例执行密钥脱敏、保留密钥规则与连接测试，各自注入独立的模型客户端。助手不会自动回退到题库配置；新安装可使用 `ASSISTANT_BASE_URL/API_KEY/MODEL/PROTOCOL` 环境变量。
 
 前端的配置表单、配置状态 hook、配置 API 适配器共享实现，由 scope 明确选择用途。用量统计单独挂载在个人中心，打开助手设置不加载全题库用量。聊天界面与发送/持久化逻辑分离，保留后台生成、对话草稿隔离及公式显示。
+
+## v2.1 助手运行层
+
+助手已由 `HarnessService`、`HarnessDriver`、`AgentRuntime` 和 `HarnessStore` 接管。`AssistantService` / `AssistantReply` 已删除，原文件会话仓储只用于迁移。pi 适配器及询问工具通过组合入口注入；SQLite 保存运行、问题、输入与事件，SSE 推送增量。教材后台任务继续沿用原有实现。完整状态机、扩展边界与目录见 [助手 Harness](assistant-harness.md)。

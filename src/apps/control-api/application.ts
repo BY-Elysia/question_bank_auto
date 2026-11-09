@@ -1,3 +1,13 @@
+import { WORKSPACE_ACCESS } from '../../modules/catalog/ports/workspace-access.js';
+import {
+  ChangesController,
+  CHANGES,
+} from '../../modules/review/presentation/changes.controller.js';
+import {
+  KnowledgeController,
+  KNOWLEDGE,
+} from '../../modules/assistant/presentation/knowledge.controller.js';
+import { HarnessController } from '../../modules/assistant/presentation/harness.controller.js';
 import {
   AssistantModelController,
   ASSISTANT_MODEL,
@@ -105,6 +115,9 @@ export async function createApplication(options: AppOptions = {}) {
       WorkspacesModule.register(workspaces, workspaceView),
     ],
     controllers: [
+      ChangesController,
+      KnowledgeController,
+      HarnessController,
       AssistantModelController,
       HealthController,
       ProfileController,
@@ -112,6 +125,9 @@ export async function createApplication(options: AppOptions = {}) {
       QuestionsController,
     ],
     providers: [
+      { provide: WORKSPACE_ACCESS, useValue: services.workspaceAccess },
+      { provide: CHANGES, useValue: services.changes },
+      { provide: KNOWLEDGE, useValue: services.knowledge },
       { provide: ASSISTANT_MODEL, useValue: services.assistantConfiguration },
       { provide: PROFILE, useValue: services.profile },
       { provide: INSERTION, useValue: services.insertion },
@@ -122,8 +138,9 @@ export async function createApplication(options: AppOptions = {}) {
         useValue: {
           async onModuleDestroy() {
             await workspaces.shutdown();
-            await jobs.shutdown();
             await services.assistant.shutdown();
+            await jobs.shutdown();
+            services.knowledge.close();
           },
         },
       },

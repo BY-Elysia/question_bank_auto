@@ -27,14 +27,29 @@ export class JobsService {
         });
       }
   }
-  async start(id: string, request: JobRequest, owner?: string) {
+  async start(
+    id: string,
+    request: JobRequest,
+    owner?: string,
+    action?: NonNullable<Job['action']> & { expectedRevision: number },
+  ) {
     if (!this.handlers.has(request.kind)) fail(400, 'Unsupported job kind');
     if (request.kind === 'insert' && owner !== `insert:${id}`)
       fail(400, 'Use the question image upload endpoint');
     if (request.kind !== 'insert' && request.insertion)
       fail(400, 'Insertion is only valid on insert jobs');
-    const jobId = randomUUID();
+    let jobId: string = randomUUID();
+    let reused = false;
     const book = await this.store.update(id, (book) => {
+      if (action) {
+        const existing = book.jobs.find((j) => j.action?.key === action.key);
+        if (existing) {
+          jobId = existing.id;
+          reused = true;
+          return;
+        }
+        if (book.revision !== action.expectedRevision) fail(409, '教材已更新，请重新读取后操作');
+      }
       if (book.workflowLock && book.workflowLock !== owner)
         fail(409, 'Workspace is managing this textbook');
       if (book.jobs.some((j) => ['queued', 'running'].includes(j.status)))
@@ -93,6 +108,14 @@ export class JobsService {
       }
       const now = new Date().toISOString();
       book.jobs.push({
+        action: action
+          ? {
+              key: action.key,
+              principalId: action.principalId,
+              runId: action.runId,
+              contentId: action.contentId,
+            }
+          : null,
         id: jobId,
         kind: request.kind,
         answerWorkflowVersion: 2,
@@ -116,7 +139,7 @@ export class JobsService {
         events: [],
       });
     });
-    this.launch(id, jobId);
+    if (!reused) this.launch(id, jobId);
     return book.jobs.find((j) => j.id === jobId)!;
   }
   private launch(bookId: string, jobId: string) {

@@ -89,9 +89,12 @@ test('Conversation switches clear old messages and preserve independent unsent d
       ],
     }),
   );
-  await page.route('**/api/assistant/conversations/*', async (r) => {
-    if (r.request().url().endsWith('/b')) await new Promise((resolve) => setTimeout(resolve, 500));
-    await r.fulfill({ json: make(r.request().url().split('/').pop()!) });
+  await page.route('**/api/assistant/conversations/*/state', async (r) => {
+    if (r.request().url().endsWith('/b/state'))
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    await r.fulfill({
+      json: { conversation: make(r.request().url().split('/').at(-2)!), runs: [] },
+    });
   });
   await page.goto('/#/assistant');
   await page.getByRole('button', { name: '对话a', exact: true }).click();

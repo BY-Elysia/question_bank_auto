@@ -19,3 +19,14 @@ export type Workspaces = z.infer<typeof WorkspaceList>;
 export type WorkspaceView = z.infer<typeof WorkspaceViewResponse>;
 
 export type { Conversation } from '../../../src/modules/assistant/domain/conversation';
+
+export type {
+  AssistantRunView,
+  Interaction,
+  RunEvent,
+} from '../../../src/modules/assistant/domain/run';
+
+export type {Citation,CitationView,KnowledgeScope} from '../../../src/modules/assistant/domain/knowledge';
+export type {CatalogWorkspace} from '../../../src/modules/catalog/domain/catalog';
+
+export type {Change} from '../../../src/modules/review/domain/change';

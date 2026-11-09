@@ -1,3 +1,4 @@
+import { Change } from '../../review/domain/change.js';
 import { z } from 'zod';
 import { Content, Document, Id, Page } from './content.js';
 import { ExtractionContext } from './metadata.js';
@@ -28,6 +29,7 @@ export const Book = z.strictObject({
   document: Document,
   jobs: z.array(Job),
   proposals: z.array(Proposal),
+  changes: z.array(Change).default([]),
 });
 export type Book = z.infer<typeof Book>;
 export type Proposal = z.infer<typeof Proposal>;

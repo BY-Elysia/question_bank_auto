@@ -1,5 +1,6 @@
 // Isolated test server: real HTTP, repositories and PDF rendering; deterministic model outputs.
 import fs from 'node:fs/promises';
+import { assistantRuntime, bindKnowledge } from './assistant-runtime.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -137,6 +138,7 @@ const access =
       }
     : undefined;
 system = await createApplication({
+  assistantRuntime,
   model: {
     async complete() {
       await delay(800);
@@ -151,6 +153,7 @@ system = await createApplication({
   skills,
   access,
 });
+bindKnowledge(system.knowledge,system.reviewActions);
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');
 for (const signal of ['SIGINT', 'SIGTERM'])

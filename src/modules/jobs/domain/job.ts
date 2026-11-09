@@ -24,6 +24,10 @@ export const ParsePagePlan = z.strictObject({
   activeSectionId: Id.nullable(),
 });
 export const Job = z.strictObject({
+  action: z
+    .object({ key: z.string(), principalId: z.string(), runId: z.string(), contentId: Id })
+    .nullable()
+    .default(null),
   id: Id,
   kind: JobRequest.shape.kind,
   status: z.enum([
