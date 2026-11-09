@@ -1,3 +1,4 @@
+import type { ExportPreparation } from '../application/export-preparation.js';
 import { transcriptionIssues } from '../domain/transcription-quality.js';
 import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
 import {
@@ -26,12 +27,14 @@ import { ReplaceDocument, EditContent, Decision, Restore } from './contracts.js'
 import { fail, parse } from '../../../shared/errors.js';
 export const TEXTBOOKS = Symbol('TEXTBOOKS'),
   EXPORTS = Symbol('EXPORTS'),
+  EXPORT_PREPARATION = Symbol('EXPORT_PREPARATION'),
   REVIEW = Symbol('REVIEW');
 @Controller('api/textbooks')
 export class TextbooksController {
   constructor(
     @Inject(TEXTBOOKS) private books: TextbooksService,
     @Inject(EXPORTS) private exports: ExportService,
+    @Inject(EXPORT_PREPARATION) private preparation: ExportPreparation,
     @Inject(REVIEW) private review: ReviewService,
   ) {}
   @Get() async list() {
@@ -125,6 +128,9 @@ export class TextbooksController {
   }
   @Get(':id/content.json') contentJson(@Param('id') id: string) {
     return this.exports.json(id);
+  }
+  @Post(':id/export/prepare') @HttpCode(202) prepareExport(@Param('id') id: string) {
+    return this.preparation.prepare(id);
   }
   @Get(':id/export.json') json(@Param('id') id: string) {
     return this.exports.questionBank(id);

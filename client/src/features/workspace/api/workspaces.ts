@@ -2,6 +2,10 @@ import { request, write } from '@/shared/api/http';
 import type { Workspace, Workspaces, WorkspaceView } from '@/shared/contracts';
 const url = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const workspaceApi = {
+  prepareExport: (id: string) =>
+    write<{ ready: boolean; jobId: string | null; total: number; missing: number }>(
+      `/textbooks/${encodeURIComponent(id)}/export/prepare`,
+    ),
   list: (signal: AbortSignal) => request<Workspaces>('/workspaces', { signal }),
   get: (id: string, signal: AbortSignal, includePreview = true) =>
     request<WorkspaceView>(url(id) + (includePreview ? '' : '?preview=omit'), { signal }),

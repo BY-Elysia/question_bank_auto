@@ -1,3 +1,5 @@
+import { RubricWorkflow } from '../../modules/review/application/rubric-workflow.js';
+import { ExportPreparation } from '../../modules/textbooks/application/export-preparation.js';
 import { PageSourceImageReader } from '../../modules/assistant/infrastructure/knowledge/source-image-reader.js';
 import { QuestionOperationService } from '../../modules/review/application/question-operation-service.js';
 import { ReviewActions } from '../../modules/assistant/application/actions/review-actions.js';
@@ -161,6 +163,7 @@ export async function createServices(options: AppOptions = {}) {
     ['repair', reviewWorkflow],
     ['answers', reviewWorkflow],
     ['insert', insertion],
+    ['rubrics', new RubricWorkflow(store, skills)],
   ]);
   const jobs = new JobsService(store, options.handlers ?? defaults);
   await jobs.recover();
@@ -203,6 +206,7 @@ export async function createServices(options: AppOptions = {}) {
     books,
     review,
     exports,
+    exportPreparation: new ExportPreparation(store, jobs),
     jobs,
     skills,
     workspaces,

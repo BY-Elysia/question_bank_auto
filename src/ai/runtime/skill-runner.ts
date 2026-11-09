@@ -111,7 +111,7 @@ export class SkillRunner implements Skills {
             requestInput,
             pages,
             null,
-            ['answer-generate', 'question-insert'].includes(id),
+            ['answer-generate', 'question-insert', 'rubric-generate'].includes(id),
           ),
         });
         throw error;
@@ -174,7 +174,7 @@ export class SkillRunner implements Skills {
           requestInput,
           pages,
           result.text,
-          ['answer-generate', 'question-insert'].includes(id),
+          ['answer-generate', 'question-insert', 'rubric-generate'].includes(id),
         ),
       });
       if (validationError === null) return parsed!;

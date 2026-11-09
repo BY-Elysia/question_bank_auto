@@ -33,6 +33,16 @@ export class JobsService {
     owner?: string,
     action?: NonNullable<Job['action']> & { expectedRevision: number },
   ) {
+    if (
+      request.kind === 'rubrics' &&
+      (request.sectionId ||
+        request.startPage ||
+        request.endPage ||
+        request.instruction ||
+        request.generateAnswers !== undefined ||
+        request.answerMode)
+    )
+      fail(400, 'Rubrics accepts contentIds and cache only');
     if (!this.handlers.has(request.kind)) fail(400, 'Unsupported job kind');
     if (request.kind === 'insert' && owner !== `insert:${id}`)
       fail(400, 'Use the question image upload endpoint');

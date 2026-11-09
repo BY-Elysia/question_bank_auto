@@ -1,4 +1,12 @@
 export const textbookRoutes = [
+  [
+    'post',
+    '/api/textbooks/{id}/export/prepare',
+    'prepareExport',
+    null,
+    'ExportPreparationResponse',
+    202,
+  ],
   ['get', '/api/textbooks', 'listTextbooks', null, 'BookList', 200],
   ['post', '/api/textbooks', 'uploadTextbook', 'PDF', 'Book', 201],
   ['get', '/api/textbooks/{id}', 'getTextbook', null, 'Book', 200],

@@ -1,3 +1,4 @@
+import { withGrading } from './grading-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -100,7 +101,7 @@ test('Image insertion is detached, ordered, resumable, isolated and metadata upd
   });
   assert.equal(calls, 1);
   await app.workspaces.updateMetadata(a.id, 2, metadata);
-  const exported = questionBankExport(await app.store.read(a.id));
+  const exported = questionBankExport(withGrading(await app.store.read(a.id)));
   assert.equal(exported.textbook.title, metadata.title);
   assert.equal(exported.questions.length, 3);
   const view = await app.workspaceView.get(a.id);

@@ -110,7 +110,7 @@ export async function createApplication(options: AppOptions = {}) {
   const { books, review, exports, jobs, workspaces, workspaceView } = services;
   @Module({
     imports: [
-      TextbooksModule.register(books, exports, review),
+      TextbooksModule.register(books, exports, review, services.exportPreparation),
       JobsModule.register(jobs),
       WorkspacesModule.register(workspaces, workspaceView),
     ],

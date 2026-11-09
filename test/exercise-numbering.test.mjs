@@ -1,3 +1,4 @@
+import { withGrading } from './grading-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -88,7 +89,7 @@ test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and 
     children: [leaf('(1)'), leaf('(2)')],
   };
   const book = { id: 'b', title: '教材', document: d, extractionContext: null };
-  const out = questionBankExport(book);
+  const out = questionBankExport(withGrading(book));
   QuestionBankExport.parse(out);
   assert.equal(out.questions.length, 10);
   assert.equal(out.questions[0].nodeType, 'LEAF');
@@ -101,7 +102,7 @@ test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and 
   assert.equal(out.questions[9].children.length, 2);
   assert.equal(d.contents[8].question.label, '2');
   d.contents[0].question.answer = null;
-  assert.deepEqual(questionBankExport(book).questions[0].correctOptionIds, []);
+  assert.deepEqual(questionBankExport(withGrading(book)).questions[0].correctOptionIds, []);
 });
 
 test('Ordinary exercise categories share their parent sequence and inserted questions use document order', () => {

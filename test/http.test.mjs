@@ -24,7 +24,9 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
       }
       return {
         text:
-          id === 'answer-generate'
+          id === 'rubric-generate'
+            ? '<<<RUBRIC>>>\n4 | 正确代入本题的已知数值与计算条件\n6 | 完成算术推导并给出本题最后的计算结果\n<<<END>>>'
+            : id === 'answer-generate'
             ? '<<<ANSWER>>>\n42\n<<<EXPLANATION>>>\nSteps\n<<<END>>>'
             : JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: { total_tokens: 10 },
@@ -88,6 +90,10 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
     'ai_generated',
   );
   assert.equal(exported.pendingProposalCount, 0);
+  assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status,422);
+  const prepared = await (await fetch(`${base}/api/textbooks/${book.id}/export/prepare`,{method:'POST'})).json();
+  await system.jobs.wait(prepared.jobId);
+  assert.equal((await system.jobs.get(book.id,prepared.jobId)).status,'completed');
   const zipped = await fetch(`${base}/api/textbooks/${book.id}/export.zip`);
   assert.equal(zipped.status, 200);
   const zipPath = path.join(root, 'test.zip');

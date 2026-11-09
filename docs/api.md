@@ -84,6 +84,7 @@ metadata.title / subject 必填；version 默认 v1.1，courseId / textbookId / 
 | POST /textbooks/:id/validate | 结构、覆盖和已记录的语义问题 |
 | GET /textbooks/:id/revisions | 修订号列表 |
 | POST /textbooks/:id/restore | 恢复旧版为新修订 |
+| POST /textbooks/:id/export/prepare | 导出准备：补全或恢复缺失评分细则，返回 ready、jobId、total、missing |
 | GET /textbooks/:id/export.json | 导出正式 JSON，保留来源、审核状态和问题 |
 | GET /textbooks/:id/export.zip | JSON、所有页图及可用时的 source.pdf |
 

@@ -152,3 +152,7 @@ P0 的持久化 Harness 与 P1 的独立 catalog 查询模块已上线。运行�
 具体实现集中在 `apps/control-api/services.ts` 装配。控制器负责输入与 HTTP 映射，工具负责模型参数与结果适配，应用用例负责业务编排，仓储负责原子更新与持久化。增加数据源或 AI 工具时，沿用能力端口及权限检查，新增适配器或用例。
 
 依赖方向与行为由架构测试及回归测试共同验证。详见 [架构复审](architecture-audit-2026-11-09.md) 与 [v2.3.1 发布说明](releases/v2.3.1.md)。
+
+## 导出评分数据
+
+评分领域约束集中在 `textbooks/domain/grading.ts`；`ExportPreparation` 管理导出准备与任务复用；`review/application/RubricWorkflow` 负责逐题生成、阶段检查点和原子发布；`rubric-generate/SKILL.md` 定义具体评分标准。模型输出解析与业务校验分离，下载接口只读取有效评分数据。详见 [v1.1 题库导出](question-bank-export.md)。

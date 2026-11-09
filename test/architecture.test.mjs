@@ -33,7 +33,7 @@ test('Source stays modular and application/domain code does not import infrastru
 });
 test('Workbench capabilities have shipped Skill packages and documented endpoints', () => {
   const catalog = JSON.parse(fs.readFileSync('dist/contracts/skills.json', 'utf8'));
-  assert.equal(catalog.length, 10);
+  assert.equal(catalog.length, 11);
   for (const skill of catalog) {
     const source = fs.readFileSync(`src/ai/skills/${skill.id}/SKILL.md`, 'utf8');
     assert.equal(fs.readFileSync(`dist/app/ai/skills/${skill.id}/SKILL.md`, 'utf8'), source);
@@ -43,7 +43,7 @@ test('Workbench capabilities have shipped Skill packages and documented endpoint
   const spec = JSON.parse(fs.readFileSync('dist/contracts/openapi.json', 'utf8'));
   assert.equal(
     Object.values(spec.paths).reduce((n, p) => n + Object.keys(p).length, 0),
-    64,
+    65,
   );
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });

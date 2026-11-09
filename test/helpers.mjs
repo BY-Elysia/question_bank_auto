@@ -139,6 +139,13 @@ export class ScriptedSkills {
         issues: [],
       };
     }
+    if (id === 'rubric-generate')
+      return {
+        defaultScore: 10,
+        rubric: [
+          { rubricItemKey: 'key_1', maxScore: 10, criteria: '代入题设条件，计算并得到本题结果' },
+        ],
+      };
     if (id === 'answer-generate')
       return {
         answers: input.targets.map((childIndex) => ({

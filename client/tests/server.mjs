@@ -14,6 +14,14 @@ const skills = {
   async run(id, input, schema, pages, context) {
     const book = await system.store.read(context.bookId);
     await delay(book.title.includes('恢复') ? 1200 : 120, undefined, { signal: context.signal });
+    if (id === 'rubric-generate')
+      return schema.parse({
+        defaultScore: 10,
+        rubric: [
+          { rubricItemKey: 'key_1', maxScore: 4, criteria: '将题目给定的自变量代入函数表达式' },
+          { rubricItemKey: 'key_2', maxScore: 6, criteria: '完成乘法与加法运算并写出函数值' },
+        ],
+      });
     if (id === 'question-insert')
       return schema.parse({
         questions: [
@@ -153,7 +161,7 @@ system = await createApplication({
   skills,
   access,
 });
-bindKnowledge(system.knowledge,system.reviewActions);
+bindKnowledge(system.knowledge, system.reviewActions);
 await system.app.listen(Number(process.env.TEST_PORT ?? 5191), '127.0.0.1');
 console.log('Isolated frontend test server ready');
 for (const signal of ['SIGINT', 'SIGTERM'])

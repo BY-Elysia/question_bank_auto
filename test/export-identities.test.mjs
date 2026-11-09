@@ -1,3 +1,4 @@
+import { withGrading } from './grading-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { questionBankExport } from '../dist/app/modules/textbooks/application/question-bank-export.js';
@@ -22,7 +23,7 @@ const question = (id, sectionId, children = []) => ({
     children,
   },
 });
-const book = (sections, contents) => ({
+const book = (sections, contents) => withGrading({
   id: 'internal-book',
   title: '教材',
   document: { sections, contents },

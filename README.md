@@ -140,7 +140,7 @@ node --env-file=.env dist/app/apps/control-api/main.js
 | --- | --- |
 | 交互层 | React、Vite、Tailwind CSS、Radix UI、Motion；深色工作台、响应式布局和聊天界面 |
 | 前端状态与请求 | 按功能组织 components / hooks / model / api；资源轮询、取消、草稿和提交状态独立管理 |
-| HTTP 接口 | NestJS、Express；64 个业务与健康端点，统一错误映射 |
+| HTTP 接口 | NestJS、Express；65 个业务与健康端点，统一错误映射 |
 | 领域与应用 | 模块化单体、分层架构、端口与适配器；教材、工作区、任务、校对、个人配置及助手按职责组织 |
 | 运行时契约 | Zod 校验请求、领域对象及模型输出，并生成 OpenAPI 3.1 文档 |
 | 模型执行 | 10 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |

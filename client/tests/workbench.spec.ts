@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
+import { readFile } from 'node:fs/promises';
 const png = () =>
   sharp({ create: { width: 300, height: 400, channels: 3, background: 'white' } })
     .png()
@@ -42,7 +43,17 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   await expect(page.getByRole('heading', { name: '重新命名的教材' })).toBeVisible();
   await page.getByRole('button', { name: '放大', exact: true }).click();
   expect(images.some((u) => u.includes('variant=detail'))).toBe(false);
-  const result = await (await page.request.get(`/api/textbooks/${id}/export.json`)).json();
+  expect((await page.request.get(`/api/textbooks/${id}/export.json`)).status()).toBe(422);
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'JSON', exact: true }).click();
+  const downloaded = await downloading;
+  const result = JSON.parse(await readFile((await downloaded.path())!, 'utf8'));
+  for (const question of result.questions) {
+    expect(question.rubric.length).toBeGreaterThan(0);
+    expect(question.rubric.reduce((n: number, r: { maxScore: number }) => n + r.maxScore, 0)).toBe(
+      question.defaultScore,
+    );
+  }
   expect(result.textbook.title).toBe('重新命名的教材');
   expect(result.questions).toHaveLength(2);
   await page.request.delete(`/api/workspaces/${id}`);

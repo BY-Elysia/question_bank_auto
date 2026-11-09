@@ -1,11 +1,16 @@
+import { scoringReadiness } from '../domain/grading.js';
+import { fail } from '../../../shared/errors.js';
 import { exportIdentities } from './export-identities.js';
 import type { Book } from '../domain/book.js';
 import type { Leaf, Question } from '../domain/content.js';
 import { numberComprehensiveExercises } from '../domain/exercise-numbering.js';
 const media = (text: string) => ({ text, media: [] });
 const types: Record<string, string> = { fill_blank: 'SHORT_ANSWER', group: 'SHORT_ANSWER' };
-/** Reference-format projection: template score 10, no fabricated rubrics or absent answers. */
+/** Reference projection accepts only complete, current scoring data. */
 export function questionBankExport(book: Book) {
+  const readiness = scoringReadiness(book.document);
+  if (readiness.missing)
+    fail(422, `还有 ${readiness.missing} 道题的得分点缺失或已失效，请先补全评分细则再导出`);
   const document = structuredClone(book.document);
   numberComprehensiveExercises(document);
   const identities = exportIdentities(document);
@@ -32,8 +37,8 @@ export function questionBankExport(book: Book) {
       questionType: types[q.type] ?? q.type.toUpperCase(),
       title,
       prompt: media(q.prompt),
-      defaultScore: 10,
-      rubric: [],
+      defaultScore: q.grading!.defaultScore,
+      rubric: q.grading!.rubric,
       standardAnswer: q.answer
         ? {
             ...media(q.answer.text),

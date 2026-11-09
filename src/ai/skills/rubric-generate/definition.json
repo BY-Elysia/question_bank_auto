@@ -1,0 +1,1 @@
+{"id":"rubric-generate","version":"1.0.0","description":"为单个可评分题目生成具体得分点并校验总分","modelRole":"reasoning","allowedTools":[],"status":"implemented","maxStructuredAttempts":1}

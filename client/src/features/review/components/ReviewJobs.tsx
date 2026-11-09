@@ -31,6 +31,7 @@ export function ReviewJobs({ model, canReview }: { model: ReviewController; canR
                   answers: '答案补全',
                   parse: '题目提取',
                   insert: '补充题目',
+                  rubrics: '评分细则补全',
                 }[j.kind]
               }
               {j.kind === 'answers' && j.error

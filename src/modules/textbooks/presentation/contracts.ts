@@ -1,3 +1,4 @@
+import { Scoring } from '../domain/grading.js';
 import { z } from 'zod';
 import { Document, Content } from '../domain/content.js';
 export const ReplaceDocument = z.strictObject({
@@ -19,15 +20,13 @@ export const Restore = z.strictObject({
 
 const BankText = z.object({ text: z.string(), media: z.array(z.never()) });
 const BankAnswer = BankText.extend({ explanation: z.string().optional() }).nullable();
-const BankLeaf = z.object({
+const BankLeaf = Scoring.safeExtend({
   questionId: z.string(),
   chapterId: z.string().nullable(),
   nodeType: z.literal('LEAF'),
   questionType: z.string(),
   title: z.string(),
   prompt: BankText,
-  defaultScore: z.number(),
-  rubric: z.array(z.never()),
   standardAnswer: BankAnswer,
   options: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
   correctOptionIds: z.array(z.string()).optional(),
@@ -64,8 +63,15 @@ export const QuestionBankExport = z.object({
         title: z.string(),
         stem: BankText,
         standardAnswer: BankAnswer.optional(),
-        children: z.array(BankLeaf.extend({ orderNo: z.number().int() })),
+        children: z.array(BankLeaf.safeExtend({ orderNo: z.number().int() })),
       }),
     ]),
   ),
+});
+
+export const ExportPreparationResponse = z.object({
+  ready: z.boolean(),
+  jobId: z.string().nullable(),
+  total: z.number().int().nonnegative(),
+  missing: z.number().int().nonnegative(),
 });

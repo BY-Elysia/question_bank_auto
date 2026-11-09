@@ -1,3 +1,4 @@
+import { Grading } from './grading.js';
 import { z } from 'zod';
 export const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const Box = z
@@ -29,6 +30,7 @@ export const QuestionType = z.enum([
   'group',
 ]);
 export const Leaf = z.strictObject({
+  grading: Grading.optional(),
   label: z.string(),
   type: QuestionType,
   prompt: z.string(),
