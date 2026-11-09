@@ -406,7 +406,8 @@ test('Real PDF upload → automatic Poppler rendering → configure → extract 
   const final = WorkspaceViewResponse.parse(
     await (await fetch(`${s.base}/api/workspaces/${w.id}`)).json(),
   );
-  assert.equal(final.workspace.status, 'completed', final.workspace.error);
+  assert.equal(final.workspace.status, 'needs_review', final.workspace.error);
+  assert.equal(final.proposals[0].after.question.grading.rubric.length,3);
   assert.equal(final.document.contents.length, 3);
   assert.ok(final.sourceUrl);
 });
@@ -460,7 +461,7 @@ test('Legacy form metadata reaches model requests as data, with default prefix c
       requests.push(request);
       const id = request.system.match(/^name: (.+)$/m)[1];
       return {
-        text: JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
+        text: id === 'answer-generate' ? '<<<EXPLANATION>>>\nSteps\n<<<ANSWER>>>\n42\n<<<RUBRIC>>>\n3 | 根据已知条件建立计算表达式\n4 | 完成关键的数值计算步骤\n3 | 得到结果并验证题设条件\n<<<END>>>' : JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: null,
         model: 'test',
       };
@@ -470,7 +471,7 @@ test('Legacy form metadata reaches model requests as data, with default prefix c
     w = await upload(s, 2);
   await s.workspaces.extract(w.id, settings({ instructions: 'User-specific extraction note' }));
   await s.workspaces.wait(w.id);
-  assert.equal((await s.workspaces.get(w.id)).status, 'completed');
+  assert.equal((await s.workspaces.get(w.id)).status, 'needs_review');
   assert.ok(requests.length > 0);
   assert.ok(requests.every((r) => r.cache === 'prefix' && r.cacheScope === w.id));
   assert.ok(
@@ -525,7 +526,7 @@ test('Restart clears a stale root lock after terminal status was already persist
     });
   });
   const reviewed = WorkspaceViewResponse.parse(await s.workspaceView.get(w.id));
-  assert.equal(reviewed.jobs[0].issues[0].message, 'Check source');
+  assert.equal(reviewed.jobs.find(j=>j.id==='verification').issues[0].message, 'Check source');
   assert.equal('stage' in reviewed.jobs[0], false);
 });
 
