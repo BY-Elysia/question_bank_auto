@@ -113,7 +113,7 @@ workspace/
 
 ## 模型与部署边界
 
-支持 MODEL_PROTOCOL=responses 或 chat，兼容旧版 ARK_* 配置。MODEL_NAME 为默认模型，VISION_MODEL / REASONING_MODEL 可覆盖。默认 HTTP 超时 180 秒；429、5xx、网络错误和超时最多尝试 3 次，同时受 Skill 共享总时限限制；取消信号中断请求及退避等待。单次输出默认上限 8192 tokens，截断状态不能通过 schema 验收。具体阶段与恢复边界见 [extraction-workflow.md](extraction-workflow.md)。
+支持 MODEL_PROTOCOL=responses、chat 或 anthropic，兼容旧版 ARK_* 配置。教材工作流与助手使用独立模型配置，可分别测试连通性。MODEL_NAME 为默认模型，VISION_MODEL / REASONING_MODEL 可覆盖。默认 HTTP 超时 180 秒；429、5xx、网络错误和超时最多尝试 3 次，同时受 Skill 共享总时限限制；取消信号中断请求及退避等待。单次输出默认上限 8192 tokens，截断状态不能通过 schema 验收。具体阶段与恢复边界见 [extraction-workflow.md](extraction-workflow.md)。
 
 SKILL.md 是受控任务指令，页图和用户材料作为数据发送。执行器强制 schema 和范围校验；恢复时检查 Skill 版本及指令哈希。
 
