@@ -17,7 +17,7 @@ test('rubric text protocol preserves formulas and separates semantic issues from
   );
   assert.equal(scoring.rubric.length, 2);
   assert.equal(scoring.rubric[1].rubricItemKey, 'key_2');
-  assert.throws(() => contract.parseText('<<<RUBRIC>>>\n4 | 写出导数并求出正确驻点\n<<<END>>>'));
+  assert.equal(contract.parseText('<<<RUBRIC>>>\n4 | 写出导数并求出正确驻点\n<<<END>>>').rubric[0].maxScore, 10);
   assert.deepEqual(
     contract.decode(contract.parseText('<<<ISSUE>>>\n题设条件与给定答案矛盾\n<<<END>>>')),
     { issue: '题设条件与给定答案矛盾' },
@@ -105,4 +105,25 @@ test('shared stems invalidate child scoring without scoring the group twice', as
   assert.equal(currentGrading(group.children[0], group.prompt), true);
   group.prompt += '，且 x < 2';
   assert.equal(currentGrading(group.children[0], group.prompt), false);
+});
+
+test('score allocation reconciles model arithmetic without losing criteria or changing valid scores', async () => {
+  const { allocateScores } =
+    await import('../dist/app/modules/textbooks/domain/score-allocation.js');
+  assert.deepEqual(allocateScores([1, 2, 3, 2, 2, 1], 10), [1, 2, 2, 2, 2, 1]);
+  assert.deepEqual(allocateScores([4, 4, 2], 10), [4, 4, 2]);
+  assert.deepEqual(allocateScores([1, 1, 1], 10), [4, 3, 3]);
+  assert.throws(() => allocateScores([0, 10], 10));
+  assert.throws(() => allocateScores(Array(11).fill(1), 10));
+  for (let n = 1; n <= 10; n++) {
+    const r = allocateScores(
+      Array.from({ length: n }, (_, i) => i + 1),
+      10,
+    );
+    assert.equal(
+      r.reduce((a, b) => a + b, 0),
+      10,
+    );
+    assert.ok(r.every((x) => x >= 1 && Number.isInteger(x)));
+  }
 });

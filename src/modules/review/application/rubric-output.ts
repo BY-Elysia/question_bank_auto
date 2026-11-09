@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { allocateScores } from '../../textbooks/domain/score-allocation.js';
 import type { OutputContract } from '../../../ai/ports/skills.js';
 import { Scoring } from '../../textbooks/domain/grading.js';
 export const RubricResult = z.union([Scoring, z.strictObject({ issue: z.string().min(1) })]);
@@ -24,7 +25,14 @@ export function rubricOutput(defaultScore: number): OutputContract {
             criteria: row[2]!.trim(),
           };
         });
-      return Scoring.parse({ defaultScore, rubric });
+      const scores = allocateScores(
+        rubric.map((r) => r.maxScore),
+        defaultScore,
+      );
+      return Scoring.parse({
+        defaultScore,
+        rubric: rubric.map((r, i) => ({ ...r, maxScore: scores[i] })),
+      });
     },
     decode(value) {
       return RubricResult.parse(value);
