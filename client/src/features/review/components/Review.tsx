@@ -90,7 +90,13 @@ export function Review({
             <Layers3 size={15} />
             教材目录
           </div>
-          <button className="tree-summary" onClick={() => setPage(1)}>
+          <button
+            className="tree-summary"
+            aria-label="显示全部题目"
+            title="显示全部题目"
+            aria-pressed={!model.activeSection}
+            onClick={() => model.selectSection(null)}
+          >
             <FileText size={15} />
             {view.pages.length} 页 · {document.contents.filter((c) => c.question).length} 道题
           </button>
@@ -98,8 +104,9 @@ export function Review({
             <button
               key={s.id}
               style={{ paddingLeft: 12 + Math.min(s.level - 1, 3) * 10 }}
-              className={s.source.page === page ? 'selected' : ''}
-              onClick={() => setPage(s.source.page)}
+              className={model.activeSection?.id === s.id ? 'selected' : ''}
+              aria-pressed={model.activeSection?.id === s.id}
+              onClick={() => model.selectSection(s.id)}
             >
               <span>{s.title}</span>
               <small>{s.source.page}</small>
@@ -148,7 +155,7 @@ export function Review({
           <section className="results-panel">
             <div className="result-tabs">
               {[
-                ['questions', '完整题目', document.contents.filter((c) => c.question).length],
+                ['questions', '完整题目', model.questions.length],
                 ['proposals', '待审候选', pending.length],
                 ['issues', '问题记录', issues.length],
               ].map(([key, label, count]) => (
@@ -163,7 +170,9 @@ export function Review({
               ))}
             </div>
             <div className="result-scroll">
-              {tab === 'questions' && <ReviewQuestions model={model} />}
+              {tab === 'questions' && (
+                <ReviewQuestions key={model.activeSection?.id ?? 'all'} model={model} />
+              )}
               {tab === 'proposals' && (
                 <ReviewCandidates
                   pending={pending}
@@ -176,8 +185,10 @@ export function Review({
                 <ReviewIssues
                   issues={issues}
                   onLocate={(page, contentId) => {
+                    const content = document.contents.find((c) => c.id === contentId);
+                    if (content) locate(content);
+                    else setSelected(null);
                     setPage(page);
-                    setSelected(contentId);
                     setTab('questions');
                   }}
                 />

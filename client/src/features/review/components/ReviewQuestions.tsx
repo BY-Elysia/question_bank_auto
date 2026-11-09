@@ -3,11 +3,11 @@ import { ContentBody } from '@/components/ContentBody';
 import { Empty } from '@/components/common';
 import type { ReviewController } from '../hooks/useReview';
 
-/** Whole questions use the assembled document, independent of the selected source page. */
+/** Whole questions use the assembled document, scoped to the selected section, independent of the source page. */
 export function ReviewQuestions({ model }: { model: ReviewController }) {
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(10);
-  const questions = model.document.contents.filter((c) => c.question);
+  const questions = model.questions;
   const matches = questions.filter((c) =>
     JSON.stringify(c.question).toLowerCase().includes(query.toLowerCase()),
   );
@@ -32,13 +32,21 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
         container.scrollTo({ top: container.scrollTop + item.top - bounds.top - 12 });
     }
   }, [model.selected, limit, query]);
+  useEffect(() => {
+    if (!model.selected) model.panel.current?.querySelector('.result-scroll')?.scrollTo({ top: 0 });
+  }, []);
   return (
     <>
-      <p>按提取顺序展示完整题目，包含跨页题干、子题、选项及已有答案与解析。</p>
+      <p>
+        {model.activeSection ? `当前小节：${model.activeSection.title}。` : '全部题目。'}
+        按提取顺序展示，保留完整跨页内容、选项与解答。
+      </p>
       <label className="search">
         <input
           aria-label="搜索完整题目"
-          placeholder="搜索全部题目、答案或解析…"
+          placeholder={
+            model.activeSection ? '搜索本节题目、答案或解析…' : '搜索全部题目、答案或解析…'
+          }
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

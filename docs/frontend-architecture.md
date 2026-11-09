@@ -85,3 +85,7 @@ Playwright 使用真实 HTTP、后端仓储、文件上传、PDF 渲染及导出
 ## v2.3.1 聊天宿主分离
 
 `AssistantPage` 与 `ReviewAssistantPanel` 分别组合独立聊天和教材侧栏，`ConversationView` 复用消息与输入展示，`ConversationHistory` 管理历史展示。宿主选择自己的资源和上下文，不通过隐藏 UI 保留多余请求。详见 [架构复审](architecture-audit-2026-11-09.md)。
+
+## 小节题目筛选
+
+目录选择由 `useReview` 独立保存小节 ID，`model/sections.ts` 根据 sectionId 与 parentId 计算内容范围；选章包含下级小节，选小节仅展示该节及下级题目，目录顶部恢复全部。题目跨页内容不拆分，原图翻页保留筛选。来源定位到范围外题目时自动切到其所属小节；切换范围重置搜索和展示批次。筛选只作用于视图，不修改题号、教材数据或导出。

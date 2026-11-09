@@ -1,3 +1,4 @@
+import { sectionContentIds } from '../model/sections';
 import { insertQuestion } from '../api/insertion';
 import { reviewState } from '../model/selectors';
 import { useState, useRef, useEffect } from 'react';
@@ -5,6 +6,7 @@ import type { Content, WorkspaceView } from '@/shared/contracts';
 import { useAction } from '@/shared/hooks/useAsync';
 import { reviewApi } from '../api/review';
 export function useReview(view: WorkspaceView, onChange: () => void, preview: boolean) {
+  const [sectionId, setSectionId] = useState<string | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [page, setPage] = useState(1),
     [selected, setSelected] = useState<string | null>(null),
@@ -23,6 +25,25 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
     preview,
     page,
   );
+  const activeSection = document.sections.find((s) => s.id === sectionId) ?? null;
+  const scopeIds = sectionContentIds(
+    document.sections,
+    document.contents,
+    activeSection?.id ?? null,
+  );
+  const questions = document.contents.filter((c) => c.question && scopeIds.has(c.id));
+  function reveal(c: Content) {
+    if (!scopeIds.has(c.id)) setSectionId(c.sectionId);
+    setSelected(c.id);
+    setTab('questions');
+  }
+  function selectSection(id: string | null) {
+    const section = document.sections.find((s) => s.id === id);
+    setSectionId(section?.id ?? null);
+    setPage(section?.source.page ?? 1);
+    setSelected(null);
+    setTab('questions');
+  }
   useEffect(() => {
     const applySource = () => {
       const raw = sessionStorage.getItem('review-source');
@@ -34,6 +55,7 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
         if (target.revision !== view.revision) return;
         const c = view.document.contents.find((c) => c.id === target.contentId);
         if (c) {
+          setSectionId(c.sectionId);
           setSelected(c.id);
           setPage(target.page ?? c.sources[0].page);
           setTab('questions');
@@ -47,7 +69,7 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
     return () => window.removeEventListener('review-source-selected', applySource);
   }, [view.workspace.id, view.revision]);
   function locate(c: Content) {
-    setSelected(c.id);
+    reveal(c);
     if (!c.sources.some((s) => s.page === page)) setPage(c.sources[0].page);
     setTab('questions');
   }
@@ -91,6 +113,9 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
       onChange();
     });
   return {
+    activeSection,
+    questions,
+    selectSection,
     assistantOpen,
     setAssistantOpen,
     askAssistant: (c: Content) => {
