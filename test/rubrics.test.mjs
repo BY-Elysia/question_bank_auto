@@ -89,9 +89,10 @@ test('shared stems invalidate child scoring without scoring the group twice', as
   await run(s);
   await s.store.update('book', (book) => {
     const q = book.document.contents.find((c) => c.question).question;
+    const { children, ...leaf } = q;
     q.children = [
-      { ...structuredClone(q), label: '(1)' },
-      { ...structuredClone(q), label: '(2)' },
+      { ...structuredClone(leaf), label: '(1)' },
+      { ...structuredClone(leaf), label: '(2)' },
     ];
     q.prompt = '共享条件 x > 0';
   });
