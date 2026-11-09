@@ -1,6 +1,8 @@
 # 后端架构
 
-## 结论与范围
+## 架构与范围
+
+版本 2.3.1。
 
 采用模块化单体、分层架构和端口/适配器模式。当前实现独占数据卷内多个逻辑工作区的课本 PDF/图片处理，避免在业务未稳定时拆成微服务。领域和应用层不依赖 HTTP 框架、文件路径或数据库驱动，具体实现集中在装配入口绑定。
 
@@ -35,7 +37,11 @@ src/
 │   │   ├── ports/                # JobHandler 接口及处理器映射
 │   │   ├── application/          # 排队、执行、取消、恢复
 │   │   └── presentation/         # 任务 HTTP 接口
-│   └── review/application/       # 核对、修复、补答案、候选审批及版本
+│   ├── review/                   # 题目操作端口、任务编排、候选提交与逐题撤销
+│   ├── catalog/                  # 结构化查询、访问策略与派生检索索引
+│   ├── assistant/                # Harness、工具、作用域、证据、模型运行适配
+│   ├── questions/                # 上传图片补题与插入流程
+│   └── profile/                  # 教材/助手独立模型配置、测试连接与用量
 ├── ai/
 │   ├── ports/                    # ModelClient、Skills、SkillCatalog、RunRecords、PrefixCache
 │   ├── workflows/textbook-extraction/ # 页队列、预读、边界、提取、检查点
@@ -85,6 +91,10 @@ Document 修订与任务检查点分开：页计划先固定到 pagePlan，每�
 ```text
 workspace/
 ├── workspaces/<workspace-id>.json # 步骤、章节分组、运行标识与状态
+├── assistant/                   # Harness SQLite、会话范围与引用证据
+├── catalog/                     # 可重建题库索引
+├── profile/                     # 教材与助手独立模型配置
+├── access/                      # 持久登录会话
 ├── model-cache/<hash>.json        # 缓存种子 ID 与到期时间
 └── books/<book-id>/               # 根课本及内部章节课本，由清单关联
     ├── source.pdf                # 仅 PDF 根课本存在
@@ -107,7 +117,7 @@ workspace/
 
 SKILL.md 是受控任务指令，页图和用户材料作为数据发送。执行器强制 schema 和范围校验；恢复时检查 Skill 版本及指令哈希。
 
-每本课本同时运行一个任务；每个卷由单进程独占。Dockerfile 打包 Node 和 Poppler，一个容器加一个卷构成工作区。数据库接入本身不会解决多实例调度：水平扩展还需要持久任务队列、租约/分布式锁、独立 worker 和数据库迁移。用户管理、鉴权、多租户调度仍不在本轮范围。
+每本课本同时运行一个任务；每个卷由单进程独占。Dockerfile 打包 Node 和 Poppler，一个容器加一个卷构成工作区。数据库接入本身不会解决多实例调度：水平扩展还需要持久任务队列、租约/分布式锁、独立 worker 和数据库迁移。当前通过单账号登录与持久 Cookie 保护入口，工作区访问通过 AccessPolicy 授权；多用户账号体系和多租户调度尚未实现。
 
 ## 工作区编排与扩展
 
@@ -126,3 +136,19 @@ WorkspacesService 负责导入、准备、状态和生命周期；ExtractionRunn
 P0 的持久化 Harness 与 P1 的独立 catalog 查询模块已上线。运行控制见 [助手 Harness](assistant-harness.md)，只读工具、权限、数据库端口与来源证据见 [教材查询架构](assistant-knowledge.md)。
 
 可视化助手首期使用共享修复/答案任务、后台任务端口及逐题变更服务，见 [内嵌协作](embedded-review-assistant.md)。
+
+## v2.3.1：助手与审核能力边界
+
+`ReviewActions` 只处理助手目标授权与变更通知，通过 `QuestionOperations` 调用审核应用层。`QuestionOperationService` 统一编排修复、答案生成、等待、取消、候选提交与撤销；它不依赖助手模块。任务完成后重新校验调用权限，提交仍复用 ReviewService 的版本与内容校验。
+
+| 接口 | 所属模块 | 职责 |
+| --- | --- | --- |
+| QuestionOperations | review/ports | start、settle、cancel、list、undo；输入固定目标与执行身份，返回明确操作结果 |
+| ActionContext | assistant/ports | 运行权限校验与工作区变更通知 |
+| WorkspaceAccess | catalog/ports | 绑定当前账号的工作区访问校验，不依赖聊天会话 |
+| CatalogQueries | catalog/ports | 教材列表、目录、题目检索及完整题目读取 |
+| SourceImageReader | assistant/ports | 模型可使用的正常预览图，流读取与编码由适配器负责 |
+
+具体实现集中在 `apps/control-api/services.ts` 装配。控制器负责输入与 HTTP 映射，工具负责模型参数与结果适配，应用用例负责业务编排，仓储负责原子更新与持久化。增加数据源或 AI 工具时，沿用能力端口及权限检查，新增适配器或用例。
+
+依赖方向与行为由架构测试及回归测试共同验证。详见 [架构复审](architecture-audit-2026-11-09.md) 与 [v2.3.1 发布说明](releases/v2.3.1.md)。
