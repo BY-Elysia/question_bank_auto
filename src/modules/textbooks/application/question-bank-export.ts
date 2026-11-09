@@ -1,3 +1,4 @@
+import { exportIdentities } from './export-identities.js';
 import type { Book } from '../domain/book.js';
 import type { Leaf, Question } from '../domain/content.js';
 import { numberComprehensiveExercises } from '../domain/exercise-numbering.js';
@@ -7,6 +8,7 @@ const types: Record<string, string> = { fill_blank: 'SHORT_ANSWER', group: 'SHOR
 export function questionBankExport(book: Book) {
   const document = structuredClone(book.document);
   numberComprehensiveExercises(document);
+  const identities = exportIdentities(document);
   const metadata = book.extractionContext?.metadata;
   function leaf(q: Leaf, id: string, chapterId: string | null, title: string) {
     const choice = ['single_choice', 'multiple_choice'].includes(q.type);
@@ -81,21 +83,17 @@ export function questionBankExport(book: Book) {
       hasAnswer: metadata?.hasAnswer ?? false,
       ...(metadata?.answerHandlingMode ? { answerHandlingMode: metadata.answerHandlingMode } : {}),
     },
-    chapters: document.sections.map((s, i) => ({
-      chapterId: s.id,
-      parentId: s.parentId,
-      title: s.title,
-      orderNo: i + 1,
-    })),
+    chapters: identities.chapters,
     questions: document.contents
       .filter((c) => c.question)
       .map((c) => {
         const section = document.sections.find((s) => s.id === c.sectionId);
+        const identity = identities.questions.get(c.id)!;
         return question(
           c.question!,
-          c.id,
-          c.sectionId,
-          `${section?.title ?? book.title} 第${c.question!.label}题`,
+          identity.id,
+          identity.chapterId,
+          `${section?.title ?? book.title} 第${identity.number}题`,
         );
       }),
   };
