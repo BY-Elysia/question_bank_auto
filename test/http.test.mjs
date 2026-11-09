@@ -27,7 +27,7 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
           id === 'rubric-generate'
             ? '<<<RUBRIC>>>\n3 | 正确代入本题的已知数值与计算条件\n4 | 完成算术推导并给出本题最后的计算结果\n3 | 写出本题计算结果并验证成立\n<<<END>>>'
             : id === 'answer-generate'
-              ? '<<<ANSWER>>>\n42\n<<<EXPLANATION>>>\nSteps\n<<<END>>>'
+              ? '<<<ANSWER>>>\n42\n<<<EXPLANATION>>>\nSteps\n<<<RUBRIC>>>\n3 | 根据题设条件确定计算表达式\n4 | 根据数值完成本题关键计算\n3 | 得到最后结果并验证符合条件\n<<<END>>>'
               : JSON.stringify(scripted.wireOutput(id, request.input.task, request.system)),
         usage: { total_tokens: 10 },
         model: 'test-vision',
@@ -65,7 +65,7 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
   assert.equal(state.jobs[0].status, 'needs_review', state.jobs[0].error);
   assert.equal(state.document.contents.length, 3);
   assert.equal(state.pages[1].status, 'processed');
-  assert.equal(state.proposals.length, 1);
+  assert.equal(state.proposals.length, 2);
   assert.ok(requests.some((r) => r.input.validationFeedback.includes('未通过')));
   assert.ok(
     requests.every((r) => r.system.includes('JSON Schema') || r.system.includes('<<<ANSWER>>>')),
@@ -75,27 +75,31 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
       (r) => r.images.length === 2 && r.images[0].url.startsWith('data:image/png;base64,'),
     ),
   );
-  const decision = await fetch(
-    `${base}/api/textbooks/${book.id}/proposals/${state.proposals[0].id}/decision`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ expectedRevision: state.revision, decision: 'accept' }),
-    },
-  );
-  assert.equal(decision.status, 200);
+  let revision = state.revision;
+  for (const proposal of state.proposals) {
+    const decision = await fetch(
+      `${base}/api/textbooks/${book.id}/proposals/${proposal.id}/decision`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expectedRevision: revision, decision: 'accept' }),
+      },
+    );
+    assert.equal(decision.status, 200);
+    revision = (await decision.json()).revision;
+  }
   const exported = await (await fetch(`${base}/api/textbooks/${book.id}/content.json`)).json();
   assert.equal(
     exported.contents.find((c) => c.key === 'q1').question.answer.origin,
     'ai_generated',
   );
   assert.equal(exported.pendingProposalCount, 0);
-  assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status, 422);
+  assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status, 200);
   const prepared = await (
     await fetch(`${base}/api/textbooks/${book.id}/export/prepare`, { method: 'POST' })
   ).json();
-  await system.jobs.wait(prepared.jobId);
-  assert.equal((await system.jobs.get(book.id, prepared.jobId)).status, 'completed');
+  assert.equal(prepared.ready, true);
+  assert.equal(prepared.jobId, null);
   const zipped = await fetch(`${base}/api/textbooks/${book.id}/export.zip`);
   assert.equal(zipped.status, 200);
   const zipPath = path.join(root, 'test.zip');

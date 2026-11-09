@@ -1,3 +1,4 @@
+import { Scoring } from '../../../modules/textbooks/domain/grading.js';
 import { z } from 'zod';
 import { Id, Section, Payload, Issue } from '../../../modules/textbooks/domain/content.js';
 import { Range } from '../../../modules/textbooks/domain/content.js';
@@ -30,6 +31,7 @@ export const AnswerResult = z.strictObject({
       childIndex: z.number().int().nonnegative().nullable(),
       text: z.string().min(1),
       explanation: z.string(),
+      scoring: Scoring.optional(),
     }),
   ),
   issues: z.array(Issue),

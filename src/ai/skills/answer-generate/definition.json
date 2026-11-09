@@ -1,7 +1,7 @@
 {
   "id": "answer-generate",
-  "version": "2.1.0",
-  "description": "补全缺失答案及必要解析",
+  "version": "3.0.0",
+  "description": "一次生成或整理答案、解析与评分细则",
   "modelRole": "reasoning",
   "allowedTools": [],
   "status": "implemented",

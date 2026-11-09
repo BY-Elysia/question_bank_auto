@@ -6,7 +6,7 @@ test('Missing answers create reviewable proposals and never overwrite visible an
   const system = await fixture(t);
   let { book, job } = await run(system, { kind: 'parse', generateAnswers: true });
   assert.equal(job.status, 'needs_review');
-  assert.equal(book.proposals.length, 1);
+  assert.equal(book.proposals.length, 2);
   const p = book.proposals[0];
   assert.equal(p.contentId, 'c_q1');
   assert.equal(p.after.question.answer.origin, 'ai_generated');
@@ -18,7 +18,7 @@ test('Missing answers create reviewable proposals and never overwrite visible an
   );
   assert.equal(book.document.contents.find((c) => c.key === 'q2').question.answer.origin, 'source');
   const second = await run(system, { kind: 'answers' });
-  assert.equal(second.book.proposals.length, 1);
+  assert.equal(second.book.proposals.length, 2);
 });
 test('Answer lookup uses a book-end source before considering generation', async (t) => {
   const skills = new ScriptedSkills();
@@ -57,7 +57,7 @@ test('Answer lookup uses a book-end source before considering generation', async
   const { book } = await run(system, { kind: 'answers' });
   assert.equal(book.proposals[0].after.question.answer.origin, 'source');
   assert.equal(book.proposals[0].after.question.answer.sources[0].page, 3);
-  assert.equal(skills.calls.filter((c) => c.id === 'answer-generate').length, 0);
+  assert.equal(skills.calls.filter((c) => c.id === 'answer-generate').length, 2);
 });
 test('Repair changes remain proposals; stale edit and stale proposal are rejected', async (t) => {
   const system = await fixture(t);

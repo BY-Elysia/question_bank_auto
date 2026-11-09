@@ -19,8 +19,12 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   const { id } = await upload.json();
   await page.goto(`/#/workspace/${id}`);
   await page.getByLabel('学科').fill('数学');
+  await page.getByRole('button', {name:'不包含答案',exact:true}).click();
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.getByRole('button', { name: '下方添加题目' })).toBeVisible();
+  await page.getByRole('button', {name:/待审候选/}).click();
+  await page.getByRole('button', {name:'接受',exact:true}).click();
+  await page.getByRole('button', {name:/^完整题目/}).click();
   await expect(page.getByRole('button', { name: /^内容块/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '核对全书', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '补全缺失答案', exact: true })).toHaveCount(0);
@@ -43,7 +47,7 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   await expect(page.getByRole('heading', { name: '重新命名的教材' })).toBeVisible();
   await page.getByRole('button', { name: '放大', exact: true }).click();
   expect(images.some((u) => u.includes('variant=detail'))).toBe(false);
-  expect((await page.request.get(`/api/textbooks/${id}/export.json`)).status()).toBe(422);
+  expect((await page.request.get(`/api/textbooks/${id}/export.json`)).status()).toBe(200);
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'JSON', exact: true }).click();
   const downloaded = await downloading;

@@ -1,3 +1,4 @@
+import { ScoringPreview } from '@/components/ScoringPreview';
 import { Check, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
@@ -25,7 +26,7 @@ export function ReviewCandidates({
         待确认修改
       </div>
       <p>
-        {p.reason === 'answers' ? '补全缺失答案' : p.reason === 'repair' ? '修复内容' : p.reason}
+        {p.reason === 'answers' ? '答案与评分细则' : p.reason === 'repair' ? '修复内容' : p.reason}
       </p>
       <details>
         <summary>查看修改前内容</summary>
@@ -34,6 +35,7 @@ export function ReviewCandidates({
       <div className="proposal-after">
         <span>修改后</span>
         <ContentBody content={p.after} />
+        <ScoringPreview question={p.after.question} />
       </div>
       <footer>
         <Button size="sm" disabled={disabled} onClick={() => onDecision(p.id, 'accept')}>

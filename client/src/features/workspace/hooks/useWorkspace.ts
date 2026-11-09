@@ -5,11 +5,6 @@ import { workspaceApi } from '../api/workspaces';
 import { navigate } from '@/shared/navigation';
 import { downloadFile } from '@/shared/api/download';
 export function useWorkspace(id: string) {
-  const [pendingExport, setPendingExport] = useState<{
-    jobId: string;
-    url: string;
-    filename: string;
-  } | null>(null);
   const [preview, setPreview] = useState(false);
   const loadWorkspace = useCallback(
     (signal: AbortSignal) => workspaceApi.get(id, signal, preview),
@@ -44,23 +39,10 @@ export function useWorkspace(id: string) {
   async function download(url: string, extension: string) {
     await action.run(async () => {
       const filename = `${(w?.title ?? '教材').replace(/[\\/:*?"<>|]/g, '_')}.${extension}`;
-      const prepared = await workspaceApi.prepareExport(id);
-      if (prepared.ready) await downloadFile(url, filename);
-      else if (prepared.jobId) {
-        setPendingExport({ jobId: prepared.jobId, url, filename });
-        refresh();
-      }
+      await workspaceApi.prepareExport(id);
+      await downloadFile(url, filename);
     });
   }
-  useEffect(() => {
-    if (!pendingExport) return;
-    const job = view?.jobs.find((j) => j.id === pendingExport.jobId);
-    if (!job || ['queued', 'running'].includes(job.status)) return;
-    setPendingExport(null);
-    if (job.status === 'completed')
-      void action.run(() => downloadFile(pendingExport.url, pendingExport.filename));
-    else action.setError('评分细则尚未补全，已保留进度。请查看任务提示并恢复后重新导出。');
-  }, [view?.jobs, pendingExport]);
   const openHistory = () =>
     action.run(async () => {
       const list = await workspaceApi.revisions(id);

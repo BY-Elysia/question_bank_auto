@@ -206,7 +206,7 @@ export async function createServices(options: AppOptions = {}) {
     books,
     review,
     exports,
-    exportPreparation: new ExportPreparation(store, jobs),
+    exportPreparation: new ExportPreparation(store),
     jobs,
     skills,
     workspaces,

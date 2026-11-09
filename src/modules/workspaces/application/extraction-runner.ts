@@ -71,7 +71,8 @@ export class ExtractionRunner {
     const answerMode =
       settings.metadata.answerHandlingMode ??
       (settings.metadata.hasAnswer ? 'extract_visible' : 'generate_brief');
-    if (answerMode !== 'leave_empty') {
+    {
+      // Even leave_empty materials may contain source answers that need scoring.
       let job = current.answersJobId
         ? await this.jobs.get(id, current.answersJobId)
         : book.jobs.find((j) => j.kind === 'answers' && j.baseRevision === book.revision);

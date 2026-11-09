@@ -1,3 +1,10 @@
+import {
+  currentGrading,
+  gradingBasis,
+  requiresRubric,
+  Scoring,
+  SubjectiveScoring,
+} from '../../textbooks/domain/grading.js';
 import { answerOutput } from './answer-output.js';
 import { transcriptionProblems } from '../../textbooks/domain/transcription-quality.js';
 import { StructuredOutputError } from '../../../ai/ports/skills.js';
@@ -28,7 +35,12 @@ export async function fillAnswers(
 ) {
   const after = structuredClone(content),
     issues: z.infer<typeof Issue>[] = [];
-  const remaining = new Set(targets),
+  const remaining = new Set(
+      targets.filter((i) => {
+        const q = i === null ? after.question! : after.question!.children[i]!;
+        return !(q.answer?.text.trim() || q.answer?.explanation.trim());
+      }),
+    ),
     pages = [...new Set(content.sources.map((s) => s.page))];
   // Search all extracted answer blocks before treating an answer as missing.
   for (let offset = 0; offset < answerBlocks.length && remaining.size; offset += 30) {
@@ -78,11 +90,18 @@ export async function fillAnswers(
   }
   // The backend owns target identity. One call per leaf avoids large nested JSON,
   // and every accepted leaf is durably checkpointed before moving forward.
-  if (checkpoint && remaining.size !== targets.length) await checkpoint(after);
-  if (generate && remaining.size && !issues.length) {
-    for (const childIndex of [...remaining]) {
+  if (!issues.length) {
+    for (const childIndex of targets) {
       context.signal.throwIfAborted();
       const leaf = childIndex === null ? after.question! : after.question!.children[childIndex]!;
+      const existingAnswer = leaf.answer;
+      const sharedPrompt = childIndex === null ? '' : after.question!.prompt;
+      if (existingAnswer && currentGrading(leaf, sharedPrompt)) {
+        if (checkpoint && JSON.stringify(after) !== JSON.stringify(content))
+          await checkpoint(after);
+        continue;
+      }
+      if (!existingAnswer && !generate) continue;
       let result;
       try {
         result = await skills.run(
@@ -93,15 +112,21 @@ export async function fillAnswers(
               question: { ...after.question!, answer: null, children: [] },
             },
             targets: [childIndex],
-            target: { ...leaf, answer: null },
+            target: leaf,
+            existingAnswer,
+            defaultScore: leaf.grading?.defaultScore ?? 10,
             sharedPrompt: childIndex === null ? '' : after.question!.prompt,
-            instruction:
-              'Compare this target against its source image before solving. A derivative/sign/condition mismatch must return ISSUE; never silently solve a corrected question.',
+            instruction: existingAnswer
+              ? 'Preserve the supplied answer exactly and derive three concise scoring criteria from it. Do not solve a different question.'
+              : 'Compare this target against its source image before solving. A derivative/sign/condition mismatch must return ISSUE; never silently solve a corrected question.',
           },
           AnswerResult,
-          pages,
+          existingAnswer ? [] : pages,
           context,
-          answerOutput(childIndex),
+          answerOutput(childIndex, {
+            required: requiresRubric(leaf),
+            defaultScore: leaf.grading?.defaultScore ?? 10,
+          }),
         );
       } catch (error) {
         if (context.signal.aborted) throw error;
@@ -138,13 +163,17 @@ export async function fillAnswers(
       const candidate = structuredClone(after);
       const target =
         childIndex === null ? candidate.question! : candidate.question!.children[childIndex]!;
-      target.answer = {
+      target.answer = existingAnswer ?? {
         text: answer.text,
         explanation: answer.explanation,
         origin: 'ai_generated',
         review: 'pending',
         sources: [],
       };
+      const scoring = (requiresRubric(target) ? SubjectiveScoring : Scoring).parse(answer.scoring);
+      if (!requiresRubric(target) && scoring.rubric.length)
+        throw new Error('Unexpected objective scoring');
+      target.grading = { ...scoring, basis: gradingBasis(target, sharedPrompt) };
       if (
         ['single_choice', 'multiple_choice'].includes(target.type) &&
         !target.options.some((o) => o.id === answer.text.trim()) &&

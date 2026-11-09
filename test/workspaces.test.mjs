@@ -1,3 +1,4 @@
+import { scoringFor } from './helpers.mjs';
 import { withGrading } from './grading-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -104,6 +105,7 @@ function fakeSkills() {
             childIndex,
             text: '42',
             explanation: 'Steps',
+            scoring: scoringFor(input.target?.type),
           })),
           issues: [],
         });

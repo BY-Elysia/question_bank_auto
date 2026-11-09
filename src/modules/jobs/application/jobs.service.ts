@@ -128,7 +128,7 @@ export class JobsService {
           : null,
         id: jobId,
         kind: request.kind,
-        answerWorkflowVersion: 2,
+        answerWorkflowVersion: 3,
         supersededBy: null,
         request,
         status: 'queued',
@@ -222,7 +222,7 @@ export class JobsService {
     const previous = this.find(snapshot, jobId);
     const upgrade =
       previous.kind === 'answers' &&
-      (previous.answerWorkflowVersion < 2 || previous.baseRevision !== snapshot.revision);
+      (previous.answerWorkflowVersion < 3 || previous.baseRevision !== snapshot.revision);
     const oldDocument = upgrade ? await this.store.readRevision(id, previous.baseRevision) : null;
     let actualId = jobId;
     await this.store.update(id, (book) => {
@@ -240,7 +240,7 @@ export class JobsService {
         const replacement: Job = {
           ...structuredClone(job),
           id: actualId,
-          answerWorkflowVersion: 2,
+          answerWorkflowVersion: 3,
           supersededBy: null,
           baseRevision: book.revision,
           status: 'queued',
@@ -249,6 +249,7 @@ export class JobsService {
           events: [],
           createdAt: new Date().toISOString(),
           processedIds: job.processedIds.filter((contentId) => {
+            if (previous.answerWorkflowVersion < 3) return false;
             const old = oldDocument!.contents.find((c) => c.id === contentId);
             return (
               old &&

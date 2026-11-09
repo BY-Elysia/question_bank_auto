@@ -155,4 +155,4 @@ P0 的持久化 Harness 与 P1 的独立 catalog 查询模块已上线。运行�
 
 ## 导出评分数据
 
-评分领域约束集中在 `textbooks/domain/grading.ts`；`ExportPreparation` 管理导出准备与任务复用；`review/application/RubricWorkflow` 负责逐题生成、阶段检查点和原子发布；`rubric-generate/SKILL.md` 定义具体评分标准。模型输出解析与业务校验分离，下载接口只读取有效评分数据。详见 [v1.1 题库导出](question-bank-export.md)。
+评分领域约束集中在 `textbooks/domain/grading.ts`。`review/application/fillAnswers` 通过 `Skills` 端口一次处理答案与评分，`answerOutput` 负责组合文本协议，检查点和候选管理保持独立。`ExportPreparation` 仅作只读校验，不启动生成任务。详见 [v1.1 题库导出](question-bank-export.md)。

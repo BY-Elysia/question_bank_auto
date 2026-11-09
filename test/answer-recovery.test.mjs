@@ -1,3 +1,4 @@
+import { scoringFor } from './helpers.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { answerOutput } from '../dist/app/modules/review/application/answer-output.js';
@@ -102,7 +103,10 @@ test('One leaf format failure does not discard completed leaves or prevent later
         assert.equal(input.content.question.children.length, 0);
         assert.equal(input.sharedPrompt, q.prompt);
         if (i === 1) throw new StructuredOutputError('broken');
-        return { answers: [{ childIndex: i, text: '42', explanation: 'Steps' }], issues: [] };
+        return {
+          answers: [{ childIndex: i, text: '42', explanation: 'Steps', scoring: scoringFor() }],
+          issues: [],
+        };
       },
     },
     c,
@@ -143,7 +147,7 @@ test('Old answer task upgrades to a new pinned run while retaining unchanged pro
   assert.notEqual(resumed.id, job.id);
   assert.equal(b.jobs.find((j) => j.id === job.id).supersededBy, resumed.id);
   assert.deepEqual(b.proposals, before.proposals);
-  assert.equal(resumed.answerWorkflowVersion, 2);
+  assert.equal(resumed.answerWorkflowVersion, 3);
 });
 test('Editing a failed task input invalidates only that checkpoint on resume', async (t) => {
   const s = await fixture(t);
@@ -211,4 +215,18 @@ $\frac{1}{3}$
   assert.equal(c.decode(c.parseText(output)).answers[0].text, String.raw`$\frac{1}{3}$`);
   const draft = output.replace('洛必达法则', '不对，等下，我之前错记了，重新来。洛必达法则');
   assert.throws(() => c.parseText(draft), /self-correction/);
+});
+test('combined answer envelope requires three scoring points, while objective answers require NONE', () => {
+  const raw =
+    '<<<EXPLANATION>>>\n推导结果为2。\n<<<ANSWER>>>\n2\n<<<RUBRIC>>>\n3 | 根据已知条件建立计算式\n4 | 代入数值完成关键计算\n3 | 得到结果并验证条件成立\n<<<END>>>';
+  const c = answerOutput(null, { required: true, defaultScore: 10 });
+  const decoded = c.decode(c.parseText(raw));
+  assert.equal(decoded.answers[0].scoring.rubric.length, 3);
+  assert.throws(() => c.parseText(envelope));
+  const objective = answerOutput(null, { required: false, defaultScore: 10 });
+  assert.deepEqual(
+    objective.decode(objective.parseText(raw.replace(/3 \|[\s\S]*?<<<END>>>/, 'NONE\n<<<END>>>')))
+      .answers[0].scoring.rubric,
+    [],
+  );
 });

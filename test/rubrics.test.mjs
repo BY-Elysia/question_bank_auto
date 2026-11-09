@@ -30,16 +30,15 @@ test('rubric text protocol preserves formulas and separates semantic issues from
     false,
   );
 });
-test('export preflight coalesces jobs, persists scoring, and invalidates only changed evidence', async (t) => {
+test('export validation never starts models; persisted scoring invalidates only with changed evidence', async (t) => {
   const s = await fixture(t);
   await run(s);
   assert.throws(() => questionBankExport({}), /./);
-  const [a, b] = await Promise.all([
-    s.exportPreparation.prepare('book'),
-    s.exportPreparation.prepare('book'),
-  ]);
-  assert.equal(a.jobId, b.jobId);
-  await s.jobs.wait(a.jobId);
+  const calls = s.skills.calls.length;
+  await assert.rejects(s.exportPreparation.prepare('book'), /答案评分信息/);
+  assert.equal(s.skills.calls.length, calls);
+  const a = await s.jobs.start('book', { kind: 'rubrics' });
+  await s.jobs.wait(a.id);
   const book = await s.store.read('book');
   assert.equal(book.jobs.at(-1).status, 'completed');
   assert.deepEqual(scoringReadiness(book.document), { total: 2, missing: 0 });
@@ -69,13 +68,15 @@ test('failed rubric work keeps checkpoints, resumes without regenerating complet
   const s = await fixture(t, skills);
   await run(s);
   const initial = await s.store.read('book');
-  const prep = await s.exportPreparation.prepare('book');
+  const started = await s.jobs.start('book', { kind: 'rubrics' });
+  const prep = { jobId: started.id };
   await s.jobs.wait(prep.jobId);
   const failed = await s.store.read('book');
   assert.equal(failed.jobs.at(-1).status, 'failed');
   assert.deepEqual(failed.document, initial.document);
   assert.equal(scoringReadiness(failed.jobs.at(-1).stage).missing, 1);
-  const resumed = await s.exportPreparation.prepare('book');
+  const restarted = await s.jobs.resume('book', prep.jobId);
+  const resumed = { jobId: restarted.id };
   assert.equal(resumed.jobId, prep.jobId);
   await s.jobs.wait(resumed.jobId);
   const finished = await s.store.read('book');
@@ -96,7 +97,8 @@ test('shared stems invalidate child scoring without scoring the group twice', as
     ];
     q.prompt = '共享条件 x > 0';
   });
-  const prep = await s.exportPreparation.prepare('book');
+  const started = await s.jobs.start('book', { kind: 'rubrics' });
+  const prep = { jobId: started.id };
   await s.jobs.wait(prep.jobId);
   const book = await s.store.read('book');
   assert.equal(scoringReadiness(book.document).total, 3);

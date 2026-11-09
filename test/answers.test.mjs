@@ -93,3 +93,23 @@ test('A clearly unrelated source answer is a normal miss and still allows AI com
     ['source-verify', 'answer-generate'],
   );
 });
+test('existing source answers and newly generated answers acquire scoring in the same candidate', async () => {
+  const skills = new ScriptedSkills();
+  const before = group();
+  const checkpoints = [];
+  const result = await fillAnswers(skills, before, [0, 1], [], context, true, async (c) =>
+    checkpoints.push(structuredClone(c)),
+  );
+  assert.deepEqual(result.after.question.children[0].answer, before.question.children[0].answer);
+  assert.equal(result.after.question.children[0].grading.rubric.length, 3);
+  assert.equal(result.after.question.children[1].grading.rubric.length, 3);
+  assert.equal(checkpoints[0].question.children[0].grading.rubric.length, 3);
+  assert.ok(skills.calls.every((c) => c.id === 'answer-generate'));
+});
+test('extract-visible mode completes grading for source answers but never invents a missing answer', async () => {
+  const skills = new ScriptedSkills();
+  const result = await fillAnswers(skills, group(), [0, 1], [], context, false);
+  assert.equal(result.after.question.children[0].grading.rubric.length, 3);
+  assert.equal(result.after.question.children[1].answer, null);
+  assert.equal(skills.calls.length, 1);
+});

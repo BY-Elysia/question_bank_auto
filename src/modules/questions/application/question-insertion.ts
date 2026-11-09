@@ -1,3 +1,4 @@
+import { fillAnswers } from '../../review/application/answer-workflow.js';
 import { independentQuestions } from '../../textbooks/domain/question-categories.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -84,6 +85,31 @@ export class QuestionInsertion implements JobHandler {
       { ...context, bookId: source.id },
     );
     const questions = independentQuestions(result.questions);
+    const answerIssues: typeof book.document.issues = [];
+    const mode = book.extractionContext?.metadata.answerHandlingMode;
+    for (const [index, question] of questions.entries()) {
+      const content: Content = {
+        id: `insert_${index}`,
+        key: `insert_${index}`,
+        kind: 'question',
+        sectionId: null,
+        sources: [{ page: 1, box: [0, 0, 1, 1] }],
+        text: '',
+        question,
+        table: null,
+        caption: null,
+      };
+      const completed = await fillAnswers(
+        this.skills,
+        content,
+        question.children.length ? question.children.map((_, i) => i) : [null],
+        [],
+        { ...context, bookId: source.id },
+        mode === 'generate_brief',
+      );
+      if (completed.after?.question) questions[index] = completed.after.question;
+      answerIssues.push(...completed.issues);
+    }
     for (const q of questions) {
       const problems = questionProblems(q);
       if (problems.length) throw new Error(problems.join('; '));
@@ -122,7 +148,11 @@ export class QuestionInsertion implements JobHandler {
           ...added,
         );
         numberComprehensiveExercises(current.document);
-        current.jobs.find((j) => j.id === context.jobId)!.processedIds = added.map((c) => c.id);
+        const saved = current.jobs.find((j) => j.id === context.jobId)!;
+        saved.processedIds = added.map((c) => c.id);
+        saved.issues.push(
+          ...answerIssues.map((issue) => ({ ...issue, page: number, contentId: null })),
+        );
       },
       true,
     );

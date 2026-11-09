@@ -65,6 +65,10 @@ test('PDF upload, extraction, source navigation, answers, editing, repair, verif
   await page.getByRole('button', { name: '定位第 2 页' }).click();
   await expect(page.getByRole('img', { name: '教材第 2 页原图' })).toBeVisible();
   await page.getByRole('button', { name: '上一页' }).click();
+  await page.getByRole('button', {name:/^完整题目/}).click();
+  await page.getByRole('button', {name:'补全本题答案',exact:true}).first().click();
+  await page.getByRole('button', {name:/待审候选/}).click();
+  await page.getByRole('button', {name:'接受',exact:true}).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'JSON', exact: true }).click();
   const exported = await download;

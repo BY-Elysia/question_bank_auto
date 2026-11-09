@@ -1,3 +1,4 @@
+import { scoringFor } from '../../test/helpers.mjs';
 // Isolated test server: real HTTP, repositories and PDF rendering; deterministic model outputs.
 import fs from 'node:fs/promises';
 import { assistantRuntime, bindKnowledge } from './assistant-runtime.mjs';
@@ -103,6 +104,7 @@ const skills = {
         answers: input.targets.map((childIndex) => ({
           childIndex,
           text: '11',
+          scoring: scoringFor(input.target?.type),
           explanation: '将 $x=4$ 代入，得 $2\\times4+3=11$。',
         })),
         issues: [],

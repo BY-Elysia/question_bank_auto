@@ -1,3 +1,4 @@
+import { currentGrading } from '../../textbooks/domain/grading.js';
 import { checkpointAnswer } from './answer-checkpoint.js';
 import { auditTranscription } from './transcription-audit.js';
 import { fillAnswers } from './answer-workflow.js';
@@ -121,8 +122,10 @@ export class ReviewWorkflow {
         const question = answerBase.question!;
         const targets: (number | null)[] =
           question.type === 'group'
-            ? question.children.flatMap((c, i) => (missingAnswer(c) ? [i] : []))
-            : missingAnswer(question)
+            ? question.children.flatMap((c, i) =>
+                missingAnswer(c) || !currentGrading(c, question.prompt) ? [i] : [],
+              )
+            : missingAnswer(question) || !currentGrading(question)
               ? [null]
               : [];
         if (targets.length) {
