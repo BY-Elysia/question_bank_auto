@@ -1,4 +1,4 @@
-import { scoringReadiness } from '../domain/grading.js';
+import { scoringReadiness, requiresRubric } from '../domain/grading.js';
 import { fail } from '../../../shared/errors.js';
 import { exportIdentities } from './export-identities.js';
 import type { Book } from '../domain/book.js';
@@ -37,8 +37,8 @@ export function questionBankExport(book: Book) {
       questionType: types[q.type] ?? q.type.toUpperCase(),
       title,
       prompt: media(q.prompt),
-      defaultScore: q.grading!.defaultScore,
-      rubric: q.grading!.rubric,
+      defaultScore: q.grading?.defaultScore ?? 10,
+      rubric: requiresRubric(q) ? q.grading!.rubric : [],
       standardAnswer: q.answer
         ? {
             ...media(q.answer.text),

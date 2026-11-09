@@ -9,16 +9,23 @@ export const RubricItem = z.strictObject({
 export const Scoring = z
   .strictObject({
     defaultScore: z.number().int().positive(),
-    rubric: z.array(RubricItem).min(1).max(12),
+    rubric: z.array(RubricItem).max(12),
   })
   .refine(
-    (s) => s.rubric.reduce((n, r) => n + r.maxScore, 0) === s.defaultScore,
+    (s) => s.rubric.length === 0 || s.rubric.reduce((n, r) => n + r.maxScore, 0) === s.defaultScore,
     'Rubric scores must sum to defaultScore',
   )
   .refine(
     (s) => new Set(s.rubric.map((r) => r.rubricItemKey)).size === s.rubric.length,
     'Rubric keys must be unique',
   );
+export const SubjectiveScoring = Scoring.refine(
+  (s) => s.rubric.length === 3,
+  'Exactly three scoring criteria are required',
+);
+export function requiresRubric(leaf: Pick<Leaf, 'type'>) {
+  return !['single_choice', 'multiple_choice', 'fill_blank'].includes(leaf.type);
+}
 export const Grading = Scoring.safeExtend({ basis: z.string().regex(/^[a-f0-9]{64}$/) });
 export function gradingBasis(leaf: Leaf, sharedPrompt = '') {
   return createHash('sha256')
@@ -37,9 +44,11 @@ export function gradingBasis(leaf: Leaf, sharedPrompt = '') {
 }
 export function currentGrading(leaf: Leaf, sharedPrompt = '') {
   return (
-    !!leaf.grading &&
-    Grading.safeParse(leaf.grading).success &&
-    leaf.grading.basis === gradingBasis(leaf, sharedPrompt)
+    !requiresRubric(leaf) ||
+    (!!leaf.grading &&
+      leaf.grading.rubric.length === 3 &&
+      Grading.safeParse(leaf.grading).success &&
+      leaf.grading.basis === gradingBasis(leaf, sharedPrompt))
   );
 }
 export interface ScoringTarget {

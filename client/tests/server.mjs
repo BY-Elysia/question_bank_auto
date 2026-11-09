@@ -18,8 +18,9 @@ const skills = {
       return schema.parse({
         defaultScore: 10,
         rubric: [
-          { rubricItemKey: 'key_1', maxScore: 4, criteria: '将题目给定的自变量代入函数表达式' },
-          { rubricItemKey: 'key_2', maxScore: 6, criteria: '完成乘法与加法运算并写出函数值' },
+          { rubricItemKey: 'key_1', maxScore: 3, criteria: '根据本题已知条件写出计算表达式' },
+          { rubricItemKey: 'key_2', maxScore: 4, criteria: '代入给定数据完成关键计算步骤' },
+          { rubricItemKey: 'key_3', maxScore: 3, criteria: '写出本题计算结果并验证成立' },
         ],
       });
     if (id === 'question-insert')

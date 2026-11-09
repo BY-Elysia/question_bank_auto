@@ -49,7 +49,11 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   const downloaded = await downloading;
   const result = JSON.parse(await readFile((await downloaded.path())!, 'utf8'));
   for (const question of result.questions) {
-    expect(question.rubric.length).toBeGreaterThan(0);
+    if (question.questionType === 'SHORT_ANSWER') {
+      expect(question.rubric).toEqual([]);
+      continue;
+    }
+    expect(question.rubric).toHaveLength(3);
     expect(question.rubric.reduce((n: number, r: { maxScore: number }) => n + r.maxScore, 0)).toBe(
       question.defaultScore,
     );

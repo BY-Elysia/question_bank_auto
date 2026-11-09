@@ -13,11 +13,11 @@ import { questionBankExport } from '../dist/app/modules/textbooks/application/qu
 test('rubric text protocol preserves formulas and separates semantic issues from format failures', () => {
   const contract = rubricOutput(10);
   const scoring = contract.parseText(
-    "<<<RUBRIC>>>\n4 | 写出导数 $f'(x)=2x$ 并令其等于零\n6 | 解得驻点 $x=0$ 并完成极值判定\n<<<END>>>",
+    "<<<RUBRIC>>>\n3 | 写出导数 $f'(x)=2x$ 并令其等于零\n4 | 解得驻点 $x=0$ 并完成极值判定\n3 | 写出本题极值并验证成立\n<<<END>>>",
   );
-  assert.equal(scoring.rubric.length, 2);
+  assert.equal(scoring.rubric.length, 3);
   assert.equal(scoring.rubric[1].rubricItemKey, 'key_2');
-  assert.equal(contract.parseText('<<<RUBRIC>>>\n4 | 写出导数并求出正确驻点\n<<<END>>>').rubric[0].maxScore, 10);
+  assert.throws(() => contract.parseText('<<<RUBRIC>>>\n4 | 写出导数并求出正确驻点\n<<<END>>>'));
   assert.deepEqual(
     contract.decode(contract.parseText('<<<ISSUE>>>\n题设条件与给定答案矛盾\n<<<END>>>')),
     { issue: '题设条件与给定答案矛盾' },
@@ -125,5 +125,28 @@ test('score allocation reconciles model arithmetic without losing criteria or ch
       10,
     );
     assert.ok(r.every((x) => x >= 1 && Number.isInteger(x)));
+  }
+});
+test('objective questions export empty rubrics without model calls, including grouped children', async (t) => {
+  const s = await fixture(t);
+  await run(s);
+  await s.store.update('book', (b) => {
+    for (const c of b.document.contents) {
+      if (!c.question) continue;
+      c.question.type = 'fill_blank';
+    }
+  });
+  const calls = s.skills.calls.length;
+  assert.equal((await s.exportPreparation.prepare('book')).ready, true);
+  assert.equal(s.skills.calls.length, calls);
+  const book = await s.store.read('book');
+  for (const q of questionBankExport(book).questions) assert.deepEqual(q.rubric, []);
+  const q = book.document.contents.find((c) => c.question).question;
+  const { children, ...leaf } = q;
+  for (const type of ['single_choice', 'multiple_choice', 'fill_blank']) {
+    q.children = [{ ...leaf, type, grading: undefined }];
+    q.type = 'group';
+    assert.equal(scoringReadiness(book.document).missing, 0);
+    assert.deepEqual(questionBankExport(book).questions[0].children[0].rubric, []);
   }
 });
