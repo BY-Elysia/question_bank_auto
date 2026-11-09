@@ -20,10 +20,9 @@ export const Restore = z.strictObject({
 
 const BankText = z.object({ text: z.string(), media: z.array(z.never()) });
 const BankAnswer = BankText.extend({ explanation: z.string().optional() }).nullable();
-const BankLeaf = Scoring.safeExtend({
+const BankScorable = Scoring.safeExtend({
   questionId: z.string(),
   chapterId: z.string().nullable(),
-  nodeType: z.literal('LEAF'),
   questionType: z.string(),
   title: z.string(),
   prompt: BankText,
@@ -32,6 +31,7 @@ const BankLeaf = Scoring.safeExtend({
   correctOptionIds: z.array(z.string()).optional(),
   allowPartial: z.boolean().optional(),
 });
+const BankLeaf = BankScorable.safeExtend({ nodeType: z.literal('LEAF') });
 export const QuestionBankExport = z.object({
   version: z.literal('v1.1'),
   courseId: z.string(),
@@ -63,7 +63,7 @@ export const QuestionBankExport = z.object({
         title: z.string(),
         stem: BankText,
         standardAnswer: BankAnswer.optional(),
-        children: z.array(BankLeaf.safeExtend({ orderNo: z.number().int() })),
+        children: z.array(BankScorable.safeExtend({ orderNo: z.number().int() })),
       }),
     ]),
   ),

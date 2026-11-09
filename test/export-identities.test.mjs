@@ -59,6 +59,7 @@ test('Reference export uses chapter/section ordinals, sequential questions and c
   );
   assert.equal(out.questions[0].children[0].questionId, 'q_3_1_1_1');
   assert.equal(out.questions[0].children[0].chapterId, 'ch_3_1');
+  assert.equal('nodeType' in out.questions[0].children[0], false);
   assert.deepEqual(b, before);
   assert.deepEqual(questionBankExport(b), out);
 });

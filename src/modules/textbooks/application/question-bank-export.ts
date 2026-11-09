@@ -70,10 +70,15 @@ export function questionBankExport(book: Book) {
       ...(q.answer
         ? { standardAnswer: { ...media(q.answer.text), explanation: q.answer.explanation } }
         : {}),
-      children: q.children.map((c, i) => ({
-        ...leaf(c, `${id}_${i + 1}`, chapterId, `${title} 第${i + 1}小题`),
-        orderNo: i + 1,
-      })),
+      children: q.children.map((c, i) => {
+        const { nodeType, ...child } = leaf(
+          c,
+          `${id}_${i + 1}`,
+          chapterId,
+          `${title} 第${i + 1}小题`,
+        );
+        return { ...child, orderNo: i + 1 };
+      }),
     };
   }
   return {
