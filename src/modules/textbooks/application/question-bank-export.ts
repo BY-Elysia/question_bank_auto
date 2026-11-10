@@ -4,8 +4,12 @@ import { exportIdentities } from './export-identities.js';
 import type { Book } from '../domain/book.js';
 import type { Leaf, Question } from '../domain/content.js';
 import { numberComprehensiveExercises } from '../domain/exercise-numbering.js';
-const media = (text: string) => ({ text, media: [] });
-const types: Record<string, string> = { fill_blank: 'FILL_BLANK', group: 'SHORT_ANSWER' };
+import { exportText, exportTextBlock as media, exportAnswer } from './export-text.js';
+const types: Record<string, string> = {
+  fill_blank: 'FILL_BLANK',
+  multiple_choice: 'MULTI_CHOICE',
+  group: 'SHORT_ANSWER',
+};
 /** Reference projection accepts only complete, current scoring data. */
 export function questionBankExport(book: Book) {
   const readiness = scoringReadiness(book.document);
@@ -38,18 +42,14 @@ export function questionBankExport(book: Book) {
       title,
       prompt: media(q.prompt),
       defaultScore: q.grading?.defaultScore ?? 10,
-      rubric: requiresRubric(q) ? q.grading!.rubric : [],
-      standardAnswer: q.answer
-        ? {
-            ...media(q.answer.text),
-            ...(q.answer.explanation ? { explanation: q.answer.explanation } : {}),
-          }
-        : null,
+      rubric: requiresRubric(q)
+        ? q.grading!.rubric.map((item) => ({ ...item, criteria: exportText(item.criteria) }))
+        : [],
+      standardAnswer: q.answer ? exportAnswer(q.answer) : media(''),
       ...(choice
         ? {
-            options: q.options,
+            options: q.options.map((option) => ({ ...option, text: exportText(option.text) })),
             correctOptionIds: validIds ? [...new Set(compactIds)] : [],
-            allowPartial: false,
           }
         : {}),
     };
@@ -67,9 +67,6 @@ export function questionBankExport(book: Book) {
           : 'SHORT_ANSWER',
       title,
       stem: media(q.prompt),
-      ...(q.answer
-        ? { standardAnswer: { ...media(q.answer.text), explanation: q.answer.explanation } }
-        : {}),
       children: q.children.map((c, i) => {
         const { nodeType, ...child } = leaf(
           c,
@@ -83,15 +80,12 @@ export function questionBankExport(book: Book) {
   }
   return {
     version: 'v1.1',
-    courseId: metadata?.courseId ?? '',
-    documentType: 'textbook',
+    ...(metadata?.courseId?.trim() ? { courseId: metadata.courseId.trim() } : {}),
     textbook: {
       textbookId: metadata?.textbookId?.trim() || book.id,
       title: metadata?.title ?? book.title,
       publisher: metadata?.publisher ?? '',
       subject: metadata?.subject ?? '',
-      hasAnswer: metadata?.hasAnswer ?? false,
-      ...(metadata?.answerHandlingMode ? { answerHandlingMode: metadata.answerHandlingMode } : {}),
     },
     chapters: identities.chapters,
     questions: document.contents

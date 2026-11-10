@@ -10,7 +10,7 @@ JSON 下载与 ZIP 内的题库文件使用同一个 `questionBankExport` 投影
 - 尚未分节的题目归入 `ch_0`。直接挂在非末级章节的题目使用保留的 `0` 段，如 `q_3_0_1`，防止其子题 ID 与节内题目冲突。
 - 同一文档重复导出得到相同编号；插入、删除或调整题目顺序后重新编号。导出编号是当前快照中的位置，不替代工作区内部身份。
 
-题干、公式、选项、答案、解析与 GROUP/LEAF 结构不因 ID 转换改变。下载接口保持只读；选择题、填空题的 `rubric` 固定为空数组，不调用评分模型；其他题目必须有三条简洁的得分点，各项 `maxScore` 之和等于 `defaultScore`。课程 ID、教材 ID、出版社等来自用户教材基础信息，未填写的值不会从参考文件复制。
+ID 转换保留 GROUP/LEAF 结构；文本通过独立接收端适配层转换，内部题目原文保持不变。下载接口保持只读；选择题、填空题的 `rubric` 固定为空数组，不调用评分模型；其他题目必须有三条简洁的得分点，各项 `maxScore` 之和等于 `defaultScore`。课程 ID、教材 ID、出版社等来自用户教材基础信息，未填写的值不会从参考文件复制。
 
 ## 评分细则分层与生命周期
 
@@ -26,4 +26,8 @@ JSON 下载与 ZIP 内的题库文件使用同一个 `questionBankExport` 投影
 
 ## 接收端兼容
 
-填空题导出为 `FILL_BLANK`，简答和作图题保留 `SHORT_ANSWER`。教材 ID 未填写或只有空白时使用工作区稳定 ID；下载前统一检查教材名称、学科和出版社，缺少时返回 422 并提示修改教材基础信息，不伪造出版社。JSON、ZIP、导出准备共用同一校验。解析保留在 `standardAnswer.explanation`，接收端应持久化并单独展示该字段，不能仅读取 `text`。
+填空题导出为 `FILL_BLANK`，简答和作图题保留 `SHORT_ANSWER`。教材 ID 未填写或只有空白时使用工作区稳定 ID；下载前统一检查教材名称、学科和出版社，缺少时返回 422 并提示修改教材基础信息，不伪造出版社。JSON、ZIP、导出准备共用同一校验。完整答案和解析合并输出到模板已有的 `standardAnswer.text`，不依赖接收端持久化或展示扩展字段。公式内的 `<`、`>` 输出为等价的 `\lt`、`\gt`；正文比较符作为独立公式输出，防止接收端先处理 HTML 时误删数学内容。该适配覆盖题干、共享题干、选项、答案及评分标准，由 `export-text.ts` 统一实现，不改写内部数据。
+
+## ai-homework 导入契约
+
+导出只包含 `version`、可选的非空 `courseId`、`textbook`、`chapters` 和 `questions`。教材字段限定为 `textbookId/title/subject/publisher`，不输出本系统的 `documentType/hasAnswer/answerHandlingMode`。选择题的 `options/correctOptionIds` 是接收端实际读取的导入字段；不输出其忽略的顶层 `allowPartial`。多选题使用接收端的 `MULTI_CHOICE`。GROUP 只输出共享题干和子题，不附加接收端不会导入的组级答案。叶子答案始终为 `text/media` 对象，未作答时 `text` 为空，完整解析与答案合为正文，不另加 `explanation`。内部答案来源、模型配置和工作流状态继续留在本系统，不进入题库文件。

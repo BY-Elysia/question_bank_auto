@@ -96,7 +96,7 @@ test('Reference-style export keeps choices separate, blanks as FILL_BLANK and ge
   assert.deepEqual(out.questions[0].correctOptionIds, ['B']);
   assert.equal(out.questions[0].options[0].text, '$\\frac{1}{x}$');
   assert.equal(out.questions[1].questionType, 'FILL_BLANK');
-  assert.equal(out.questions[1].standardAnswer, null);
+  assert.deepEqual(out.questions[1].standardAnswer, { text: '', media: [] });
   assert.ok(out.questions[8].title.endsWith('第9题'));
   assert.equal(out.questions[9].nodeType, 'GROUP');
   assert.equal(out.questions[9].children.length, 2);

@@ -18,31 +18,38 @@ export const Restore = z.strictObject({
   revision: z.number().int().nonnegative(),
 });
 
-const BankText = z.object({ text: z.string(), media: z.array(z.never()) });
-const BankAnswer = BankText.extend({ explanation: z.string().optional() }).nullable();
+const BankQuestionType = z.enum([
+  'SINGLE_CHOICE',
+  'MULTI_CHOICE',
+  'FILL_BLANK',
+  'SHORT_ANSWER',
+  'CALCULATION',
+  'PROOF',
+  'ESSAY',
+  'JUDGE',
+  'CODE',
+]);
+const BankText = z.strictObject({ text: z.string(), media: z.array(z.never()) });
+const BankAnswer = BankText;
 const BankScorable = Scoring.safeExtend({
   questionId: z.string(),
   chapterId: z.string().nullable(),
-  questionType: z.string(),
+  questionType: BankQuestionType,
   title: z.string(),
   prompt: BankText,
   standardAnswer: BankAnswer,
   options: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
   correctOptionIds: z.array(z.string()).optional(),
-  allowPartial: z.boolean().optional(),
 });
 const BankLeaf = BankScorable.safeExtend({ nodeType: z.literal('LEAF') });
-export const QuestionBankExport = z.object({
+export const QuestionBankExport = z.strictObject({
   version: z.literal('v1.1'),
-  courseId: z.string(),
-  documentType: z.literal('textbook'),
-  textbook: z.object({
+  courseId: z.string().min(1).optional(),
+  textbook: z.strictObject({
     textbookId: z.string(),
     title: z.string(),
     publisher: z.string(),
     subject: z.string(),
-    hasAnswer: z.boolean(),
-    answerHandlingMode: z.string().optional(),
   }),
   chapters: z.array(
     z.object({
@@ -55,14 +62,13 @@ export const QuestionBankExport = z.object({
   questions: z.array(
     z.union([
       BankLeaf,
-      z.object({
+      z.strictObject({
         questionId: z.string(),
         chapterId: z.string().nullable(),
         nodeType: z.literal('GROUP'),
-        questionType: z.string(),
+        questionType: BankQuestionType,
         title: z.string(),
         stem: BankText,
-        standardAnswer: BankAnswer.optional(),
         children: z.array(BankScorable.safeExtend({ orderNo: z.number().int() })),
       }),
     ]),
