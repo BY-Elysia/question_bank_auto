@@ -1,10 +1,10 @@
 const fields = [
   ['title', '教材名称', '例如：数学 必修第一册'],
   ['subject', '学科', '例如：数学'],
-  ['publisher', '出版社', '选填'],
+  ['publisher', '出版社', '导出到题库前需填写'],
   ['version', '数据版本', 'v1.1'],
   ['courseId', '课程 ID', '选填'],
-  ['textbookId', '教材 ID', '选填'],
+  ['textbookId', '教材 ID', '留空时使用工作区 ID'],
 ] as const;
 type Field = (typeof fields)[number][0];
 export function MetadataFields({

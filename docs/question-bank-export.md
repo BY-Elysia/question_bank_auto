@@ -23,3 +23,7 @@ JSON 下载与 ZIP 内的题库文件使用同一个 `questionBankExport` 投影
 `ExportPreparation` 仅校验已保存的数据。`POST /api/textbooks/{id}/export/prepare` 成功返回 `{ready:true, jobId:null, total, missing:0}`；缺失或过期评分返回 422，不启动模型或任务。JSON 与 ZIP 使用相同投影。旧教材通过答案处理任务补齐，下载不承担数据生成职责。独立 `rubrics` 任务保留为已有数据的批量维护接口，不进入常规提取和导出流程。
 
 题干、选项、答案或解析修改后，对应评分指纹失效；题号和审核状态变化不触发重新生成。原始模型输出、用量和错误记录保留在任务中。关闭页面不会终止答案处理任务。
+
+## 接收端兼容
+
+填空题导出为 `FILL_BLANK`，简答和作图题保留 `SHORT_ANSWER`。教材 ID 未填写或只有空白时使用工作区稳定 ID；下载前统一检查教材名称、学科和出版社，缺少时返回 422 并提示修改教材基础信息，不伪造出版社。JSON、ZIP、导出准备共用同一校验。解析保留在 `standardAnswer.explanation`，接收端应持久化并单独展示该字段，不能仅读取 `text`。

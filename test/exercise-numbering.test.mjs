@@ -67,7 +67,7 @@ test('Category headings split into independent exercises, numbered without losin
   assert.equal(ordinary.question.label, '1');
   assert.equal(ordinary.question.sourceLabel, '7');
 });
-test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and genuine groups', () => {
+test('Reference-style export keeps choices separate, blanks as FILL_BLANK and genuine groups', () => {
   const d = doc();
   d.contents[0].question = {
     ...leaf('(1)', 'single_choice'),
@@ -95,7 +95,7 @@ test('Reference-style export keeps choices separate, blanks as SHORT_ANSWER and 
   assert.equal(out.questions[0].nodeType, 'LEAF');
   assert.deepEqual(out.questions[0].correctOptionIds, ['B']);
   assert.equal(out.questions[0].options[0].text, '$\\frac{1}{x}$');
-  assert.equal(out.questions[1].questionType, 'SHORT_ANSWER');
+  assert.equal(out.questions[1].questionType, 'FILL_BLANK');
   assert.equal(out.questions[1].standardAnswer, null);
   assert.ok(out.questions[8].title.endsWith('第9题'));
   assert.equal(out.questions[9].nodeType, 'GROUP');

@@ -23,11 +23,12 @@ const question = (id, sectionId, children = []) => ({
     children,
   },
 });
-const book = (sections, contents) => withGrading({
-  id: 'internal-book',
-  title: '教材',
-  document: { sections, contents },
-});
+const book = (sections, contents) =>
+  withGrading({
+    id: 'internal-book',
+    title: '教材',
+    document: { sections, contents },
+  });
 test('Reference export uses chapter/section ordinals, sequential questions and child IDs without changing stored identities', () => {
   const b = book(
     [
@@ -108,4 +109,20 @@ test('Export rejects dangling or cyclic chapter references rather than emitting 
       () => questionBankExport(book(sections, [])),
       (e) => e.status === 422,
     );
+});
+
+test('Receiving bank keeps fill blanks distinct and derives stable missing textbook identity', () => {
+  const b = book([section('s', null, '第一章')], [question('a', 's'), question('b', 's')]);
+  b.extractionContext = {
+    metadata: { textbookId: '  ', title: '教材', subject: '数学', publisher: '出版社' },
+  };
+  b.document.contents[0].question.type = 'fill_blank';
+  b.document.contents[1].question.type = 'short_answer';
+  // Type is part of the grading fingerprint; regenerate the test fixture accordingly.
+  const out = questionBankExport(withGrading(b));
+  assert.equal(out.textbook.textbookId, b.id);
+  assert.equal(out.questions[0].questionType, 'FILL_BLANK');
+  assert.deepEqual(out.questions[0].rubric, []);
+  assert.equal(out.questions[1].questionType, 'SHORT_ANSWER');
+  assert.equal(out.questions[1].rubric.length, 3);
 });

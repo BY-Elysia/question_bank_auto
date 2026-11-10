@@ -1,3 +1,4 @@
+import { validateExportMetadata } from './export-metadata.js';
 import { questionBankExport } from './question-bank-export.js';
 import { transcriptionIssues } from '../domain/transcription-quality.js';
 import { sourceAnswerCoverageIssues } from '../domain/content-quality.js';
@@ -12,7 +13,9 @@ export class ExportService {
     private archives: ArchivePort,
   ) {}
   async questionBank(id: string) {
-    return questionBankExport(await this.store.read(id));
+    const book = await this.store.read(id);
+    validateExportMetadata(book);
+    return questionBankExport(book);
   }
   async json(id: string) {
     const book = await this.store.read(id);
@@ -37,6 +40,7 @@ export class ExportService {
   }
   async zip(id: string) {
     const book = await this.store.read(id);
+    validateExportMetadata(book);
     for (const page of book.pages) await this.images.ensure(id, page.number);
     const document = await this.questionBank(id);
     return this.archives.create(

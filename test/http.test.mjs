@@ -94,6 +94,21 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
     'ai_generated',
   );
   assert.equal(exported.pendingProposalCount, 0);
+  assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status, 422);
+  await system.store.update(book.id, (stored) => {
+    stored.extractionContext = {
+      metadata: {
+        title: 'Physics',
+        subject: 'Physics',
+        publisher: 'Example Press',
+        textbookId: '',
+        courseId: '',
+        version: 'v1.1',
+        hasAnswer: false,
+      },
+      instructions: '',
+    };
+  });
   assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status, 200);
   const prepared = await (
     await fetch(`${base}/api/textbooks/${book.id}/export/prepare`, { method: 'POST' })

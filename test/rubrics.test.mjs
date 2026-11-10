@@ -32,6 +32,12 @@ test('rubric text protocol preserves formulas and separates semantic issues from
 });
 test('export validation never starts models; persisted scoring invalidates only with changed evidence', async (t) => {
   const s = await fixture(t);
+  await s.store.update('book', (b) => {
+    b.extractionContext = {
+      metadata: { title: b.title, subject: '数学', publisher: 'Example Press', hasAnswer: true },
+      instructions: '',
+    };
+  });
   await run(s);
   assert.throws(() => questionBankExport({}), /./);
   const calls = s.skills.calls.length;
@@ -87,6 +93,12 @@ test('failed rubric work keeps checkpoints, resumes without regenerating complet
 });
 test('shared stems invalidate child scoring without scoring the group twice', async (t) => {
   const s = await fixture(t);
+  await s.store.update('book', (b) => {
+    b.extractionContext = {
+      metadata: { title: b.title, subject: '数学', publisher: 'Example Press', hasAnswer: true },
+      instructions: '',
+    };
+  });
   await run(s);
   await s.store.update('book', (book) => {
     const q = book.document.contents.find((c) => c.question).question;
@@ -131,6 +143,12 @@ test('score allocation reconciles model arithmetic without losing criteria or ch
 });
 test('objective questions export empty rubrics without model calls, including grouped children', async (t) => {
   const s = await fixture(t);
+  await s.store.update('book', (b) => {
+    b.extractionContext = {
+      metadata: { title: b.title, subject: '数学', publisher: 'Example Press', hasAnswer: true },
+      instructions: '',
+    };
+  });
   await run(s);
   await s.store.update('book', (b) => {
     for (const c of b.document.contents) {

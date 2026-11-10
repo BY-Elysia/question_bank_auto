@@ -5,7 +5,7 @@ import type { Book } from '../domain/book.js';
 import type { Leaf, Question } from '../domain/content.js';
 import { numberComprehensiveExercises } from '../domain/exercise-numbering.js';
 const media = (text: string) => ({ text, media: [] });
-const types: Record<string, string> = { fill_blank: 'SHORT_ANSWER', group: 'SHORT_ANSWER' };
+const types: Record<string, string> = { fill_blank: 'FILL_BLANK', group: 'SHORT_ANSWER' };
 /** Reference projection accepts only complete, current scoring data. */
 export function questionBankExport(book: Book) {
   const readiness = scoringReadiness(book.document);
@@ -86,7 +86,7 @@ export function questionBankExport(book: Book) {
     courseId: metadata?.courseId ?? '',
     documentType: 'textbook',
     textbook: {
-      textbookId: metadata?.textbookId ?? book.id,
+      textbookId: metadata?.textbookId?.trim() || book.id,
       title: metadata?.title ?? book.title,
       publisher: metadata?.publisher ?? '',
       subject: metadata?.subject ?? '',
