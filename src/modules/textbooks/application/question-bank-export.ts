@@ -91,13 +91,16 @@ export function questionBankExport(book: Book) {
     questions: document.contents
       .filter((c) => c.question)
       .map((c) => {
-        const section = document.sections.find((s) => s.id === c.sectionId);
         const identity = identities.questions.get(c.id)!;
+        const chapter =
+          identity.chapterId === 'ch_0'
+            ? undefined
+            : identities.chapters.find((ch) => ch.chapterId === identity.chapterId);
         return question(
           c.question!,
           identity.id,
           identity.chapterId,
-          `${section?.title ?? book.title} 第${identity.number}题`,
+          `${chapter?.title ?? book.title} 第${identity.number}题`,
         );
       }),
   };

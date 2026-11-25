@@ -81,6 +81,10 @@ test('Category headings share the section sequence while unlabeled and duplicate
     out.questions.slice(0, 2).map((q) => q.questionId),
     ['q_12_1_1', 'q_12_1_2'],
   );
+  assert.deepEqual(
+    out.questions.slice(0, 2).map((q) => q.title),
+    ['第一节 第1题', '第一节 第2题'],
+  );
   assert.equal(new Set(out.chapters.map((s) => s.chapterId)).size, out.chapters.length);
   assert.ok(out.questions.every((q) => out.chapters.some((s) => s.chapterId === q.chapterId)));
   assert.deepEqual(

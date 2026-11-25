@@ -26,6 +26,7 @@ export function numberComprehensiveExercises(document: Document) {
   const numbered = new Set<string>();
   for (const c of document.contents) {
     if (
+      c.kind === 'question' &&
       c.question &&
       (['single_choice', 'multiple_choice', 'fill_blank'].includes(c.question.type) ||
         /综合(?:练习|习题|测试)/u.test(sections.get(scope(c.sectionId))?.title ?? ''))
