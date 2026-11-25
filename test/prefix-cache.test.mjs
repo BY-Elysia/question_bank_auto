@@ -21,7 +21,9 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
   const seen = [];
   let seeds = 0,
     expire = false,
-    fail = false;
+    expireByDetail = false,
+    fail = false,
+    onSeed = null;
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -30,12 +32,23 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
     res.setHeader('content-type', 'application/json');
     if (body.caching?.prefix) {
       await delay(15);
+      onSeed?.();
       res.end(JSON.stringify({ id: `seed_${++seeds}` }));
       return;
     }
     if (fail) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: { code: 'InvalidModel', message: 'sensitive value' } }));
+      return;
+    }
+    if (expireByDetail) {
+      expireByDetail = false;
+      res.writeHead(400);
+      res.end(
+        JSON.stringify({
+          error: { code: 'InvalidParameter', message: 'previous_response_id has expired' },
+        }),
+      );
       return;
     }
     if (expire) {
@@ -134,4 +147,33 @@ test('Explicit prefix cache shares only stable prompts, persists seeds, isolates
     seen.at(-1).messages,
     'Unsupported explicit caching falls back to a normal chat request',
   );
+
+  // Prefix isolation on abort + reasoning role preserves thinking + detail-only expired response refresh.
+  process.env.MODEL_PROTOCOL = 'responses';
+  const isolated = new HttpModelClient(new FilePrefixCache(root));
+  const c1 = new AbortController();
+  const c2 = new AbortController();
+  const rReq = {
+    ...request,
+    system: 'Reasoning stable prompt',
+    images: [],
+    role: 'reasoning',
+    cacheScope: 'workspace_reasoning',
+  };
+  const seedsBefore = seeds;
+  onSeed = () => {
+    onSeed = null;
+    c1.abort(new Error('caller 1 aborted'));
+  };
+  const p1 = isolated.complete({ ...rReq, signal: c1.signal });
+  const p2 = isolated.complete({ ...rReq, input: { page: 2 }, signal: c2.signal });
+  await assert.rejects(p1, /caller 1 aborted/);
+  const r2 = await p2;
+  assert.equal(seeds, seedsBefore + 1);
+  assert.equal(r2.text, '{"ok":true}');
+  const reasoningBodies = seen.slice(-3);
+  assert.ok(reasoningBodies.every((b) => b.thinking === undefined));
+  expireByDetail = true;
+  const afterDetailExpire = await isolated.complete(rReq);
+  assert.equal(afterDetailExpire.cache.seedSource, 'refreshed');
 });

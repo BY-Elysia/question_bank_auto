@@ -70,6 +70,7 @@ export class HttpModelClient implements ModelClient {
         request.signal,
         maxOutputTokens,
         request.outputMode ?? 'json_object',
+        request.role,
       );
       data = completed.result;
       cache = completed.cache;
@@ -82,7 +83,7 @@ export class HttpModelClient implements ModelClient {
               model,
               max_output_tokens: maxOutputTokens,
               text: { format },
-              ...(request.structuredOutput && config.prefixCache
+              ...(request.structuredOutput && config.prefixCache && request.role !== 'reasoning'
                 ? { thinking: { type: 'disabled' } }
                 : {}),
               input: [

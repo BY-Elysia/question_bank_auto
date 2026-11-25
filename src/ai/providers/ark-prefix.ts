@@ -1,8 +1,32 @@
 import { createHash } from 'node:crypto';
 import type { PrefixCache } from '../ports/prefix-cache.js';
 import { postModel, ProviderError } from './http-transport.js';
+interface PendingSeed {
+  promise: Promise<{ id: string; usage: unknown }>;
+  controller: AbortController;
+  waiters: Set<object>;
+}
+
+function raceSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export class ArkPrefix {
-  private pending = new Map<string, Promise<{ id: string; usage: unknown }>>();
+  private pending = new Map<string, PendingSeed>();
   constructor(private cache: PrefixCache) {}
   async complete(
     url: string,
@@ -14,19 +38,24 @@ export class ArkPrefix {
     signal: AbortSignal,
     maxOutputTokens: number,
     outputMode: 'text' | 'json_object',
+    role: 'vision' | 'reasoning' = 'vision',
   ) {
+    const thinking = role === 'reasoning' ? {} : { thinking: { type: 'disabled' } };
     const key = createHash('sha256')
-      .update(JSON.stringify([url, apiKey, model, scope, system]))
+      .update(JSON.stringify([url, apiKey, model, scope, role, system]))
       .digest('hex');
     const seedUsage: unknown[] = [];
     const seed = async () => {
       const existing = await this.cache.get(key);
       if (existing && existing.expiresAt > Date.now() + 30000)
         return { id: existing.responseId, source: 'reused' };
-      let pending = this.pending.get(key);
-      const ownsSeed = !pending;
-      if (!pending) {
-        pending = (async () => {
+      signal.throwIfAborted();
+      let entry = this.pending.get(key);
+      const ownsSeed = !entry;
+      if (!entry) {
+        const controller = new AbortController();
+        const waiters = new Set<object>();
+        const promise = (async () => {
           const expiresAt = Math.floor(Date.now() / 1000) + 3600;
           const result = await postModel(
             url,
@@ -36,19 +65,33 @@ export class ArkPrefix {
               input: [{ role: 'system', content: [{ type: 'input_text', text: system }] }],
               store: true,
               caching: { type: 'enabled', prefix: true },
-              thinking: { type: 'disabled' },
+              ...thinking,
               expire_at: expiresAt,
             },
-            signal,
+            controller.signal,
           );
           if (typeof result.id !== 'string' || !result.id)
             throw new Error('Prefix seed response contains no ID');
           await this.cache.set(key, { responseId: result.id, expiresAt: expiresAt * 1000 });
           return { id: result.id, usage: result.usage ?? null };
         })().finally(() => this.pending.delete(key));
-        this.pending.set(key, pending);
+        entry = { promise, controller, waiters };
+        this.pending.set(key, entry);
       }
-      const result = await pending;
+      const waiter = {};
+      entry.waiters.add(waiter);
+      const onAbort = () => {
+        entry!.waiters.delete(waiter);
+        if (!entry!.waiters.size) entry!.controller.abort(signal.reason);
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      let result;
+      try {
+        result = await raceSignal(entry.promise, signal);
+      } finally {
+        signal.removeEventListener('abort', onAbort);
+        entry.waiters.delete(waiter);
+      }
       if (ownsSeed) seedUsage.push(result.usage);
       return { id: result.id, source: ownsSeed ? 'created' : 'reused' };
     };
@@ -64,7 +107,7 @@ export class ArkPrefix {
           text: { format: { type: outputMode } },
           input,
           caching: { type: 'enabled' },
-          thinking: { type: 'disabled' },
+          ...thinking,
           store: true,
           expire_at: Math.floor(Date.now() / 1000) + 3600,
         },
@@ -81,6 +124,9 @@ export class ArkPrefix {
           error.param === 'previous_response_id' ||
           /Response.*(Expired|NotFound|Invalid)|(Expired|NotFound|Invalid).*Response/i.test(
             error.code,
+          ) ||
+          /previous_response_id|Response.*(expired|not found|invalid)|(expired|not found|invalid).*response/i.test(
+            error.detail,
           )
         )
       )
