@@ -6,8 +6,33 @@ import { PageImageVariants } from './page-image-variants.js';
 import { FileAssets } from './file-assets.js';
 import { createReadStream } from 'node:fs';
 import { fail } from '../../../shared/errors.js';
+interface PendingRender {
+  promise: Promise<string>;
+  controller: AbortController;
+  waiters: Set<object>;
+}
+
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export class PageImages implements PageImagePort {
-  private running = new Map<string, Promise<string>>();
+  private running = new Map<string, PendingRender>();
   private variants = new PageImageVariants();
   constructor(
     private store: BookRepository,
@@ -15,15 +40,30 @@ export class PageImages implements PageImagePort {
     private assets: FileAssets,
   ) {}
   private async file(id: string, number: number, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted();
     const key = `${id}:${number}`;
-    const existing = this.running.get(key);
-    if (existing) return existing;
-    const run = this.render(id, number, signal);
-    this.running.set(key, run);
+    let entry = this.running.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      const waiters = new Set<object>();
+      const promise = this.render(id, number, controller.signal).finally(() => {
+        if (this.running.get(key) === entry) this.running.delete(key);
+      });
+      entry = { promise, controller, waiters };
+      this.running.set(key, entry);
+    }
+    const waiter = {};
+    entry.waiters.add(waiter);
+    const onAbort = () => {
+      entry!.waiters.delete(waiter);
+      if (!entry!.waiters.size) entry!.controller.abort(signal?.reason);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      return await run;
+      return await raceAbort(entry.promise, signal);
     } finally {
-      this.running.delete(key);
+      signal?.removeEventListener('abort', onAbort);
+      entry.waiters.delete(waiter);
     }
   }
   async ensure(id: string, page: number, signal?: AbortSignal) {
@@ -46,7 +86,8 @@ export class PageImages implements PageImagePort {
     };
   }
   async dataUrl(id: string, page: number, signal?: AbortSignal) {
-    return `data:image/png;base64,${(await fs.readFile(await this.file(id, page, signal))).toString('base64')}`;
+    const file = await this.file(id, page, signal);
+    return `data:image/png;base64,${(await fs.readFile(file, signal ? { signal } : undefined)).toString('base64')}`;
   }
   private async render(id: string, number: number, signal?: AbortSignal) {
     const book = await this.store.read(id),
