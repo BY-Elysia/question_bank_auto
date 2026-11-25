@@ -26,8 +26,10 @@ export async function checkpointAnswer(
         p.contentId === before.id &&
         JSON.stringify(p.before) === JSON.stringify(before),
     );
-    if (proposal) proposal.after = structuredClone(after);
-    else
+    if (proposal) {
+      proposal.jobId = jobId;
+      proposal.after = structuredClone(after);
+    } else
       book.proposals.push({
         id: randomUUID(),
         jobId,

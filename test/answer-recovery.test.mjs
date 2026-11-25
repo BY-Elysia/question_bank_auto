@@ -1,3 +1,4 @@
+import { QuestionOperationService } from '../dist/app/modules/review/application/question-operation-service.js';
 import { scoringFor } from './helpers.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -228,5 +229,47 @@ test('combined answer envelope requires three scoring points, while objective an
     objective.decode(objective.parseText(raw.replace(/3 \|[\s\S]*?<<<END>>>/, 'NONE\n<<<END>>>')))
       .answers[0].scoring.rubric,
     [],
+  );
+});
+test('New answers job adopting a partial pending proposal updates proposal.jobId for settle and status', async (t) => {
+  const s = await fixture(t);
+  await run(s);
+  const b = await s.store.read('book');
+  const c = structuredClone(b.document.contents.find((x) => x.question));
+  c.question = {
+    ...question('1'),
+    type: 'group',
+    children: [0, 1].map((i) => {
+      const { children, ...leaf } = question(String(i + 1));
+      return leaf;
+    }),
+  };
+  await s.review.edit('book', b.revision, c.id, c);
+  const original = s.skills.run.bind(s.skills);
+  let failSecond = true;
+  s.skills.run = async (id, input, ...rest) => {
+    if (id === 'answer-generate' && failSecond && input.targets[0] === 1)
+      throw new Error('Simulated partial interruption');
+    return original(id, input, ...rest);
+  };
+  const first = await run(s, { kind: 'answers', contentIds: [c.id] });
+  assert.equal(first.job.status, 'failed');
+  failSecond = false;
+
+  const ops = new QuestionOperationService(s.jobs, s.store, s.review, s.changes);
+  const ctx = {
+    runId: 'run-adopt',
+    principalId: 'local-account',
+    target: { workspaceId: 'book', contentId: c.id, childIndex: null },
+  };
+  const task = await ops.start(ctx, 'answers', '');
+  const settled = await ops.settle(ctx, task, new AbortController().signal, async () => {});
+  assert.equal(settled.status, 'applied');
+  assert.equal(settled.changes.length, 1);
+  const after = await s.store.read('book');
+  assert.equal((await s.jobs.get('book', task.jobId)).status, 'needs_review');
+  assert.equal(after.proposals.find((p) => p.contentId === c.id).jobId, task.jobId);
+  assert.ok(
+    after.document.contents.find((x) => x.id === c.id).question.children.every((q) => q.answer),
   );
 });
