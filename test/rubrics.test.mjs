@@ -12,6 +12,11 @@ import { rubricOutput } from '../dist/app/modules/review/application/rubric-outp
 import { questionBankExport } from '../dist/app/modules/textbooks/application/question-bank-export.js';
 test('rubric text protocol preserves formulas and separates semantic issues from format failures', () => {
   const contract = rubricOutput(10);
+  const example = contract.instructions
+    .match(/<<<RUBRIC>>>\n([\s\S]+?)\n<<<END>>>/)?.[1]
+    .replaceAll('分数 |', '3 |')
+    .replace('3 | 本题的关键解题思路与依据', '4 | 本题的关键解题思路与依据');
+  assert.equal(contract.parseText(`<<<RUBRIC>>> \r\n${example}\r\n<<<END>>>`).rubric.length, 3);
   const scoring = contract.parseText(
     "<<<RUBRIC>>>\n3 | 写出导数 $f'(x)=2x$ 并令其等于零\n4 | 解得驻点 $x=0$ 并完成极值判定\n3 | 写出本题极值并验证成立\n<<<END>>>",
   );

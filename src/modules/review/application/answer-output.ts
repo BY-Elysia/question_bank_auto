@@ -29,14 +29,14 @@ export function answerOutput(
 输出前核对导数符号位置、正负号、区间和题目目标；不得将相减变相加、凭空添加边界条件。` +
       (scoring
         ? `
-答案与得分点必须在同一次输出中完成：在 ANSWER 后、END 前增加 RUBRIC 标记。${scoring.required ? `RUBRIC 内容严格三行，每行“分数 | 一句简洁具体的评分标准”，合计 ${scoring.defaultScore} 分，不展开完整解题过程。` : '这是选填题，RUBRIC 内容只写 NONE。'}
+答案与得分点必须在同一次输出中完成：在 ANSWER 后、END 前增加 RUBRIC 标记。${scoring.required ? `RUBRIC 内容严格三行，每行“分数 | 一句简洁具体的评分标准”，合计 ${scoring.defaultScore} 分，每条标准不少于8个字且不展开完整解题过程。` : '这是选填题，RUBRIC 内容只写 NONE。'}
 <<<RUBRIC>>>
-${scoring.required ? '3 | 关键思路标准\n4 | 主要推导标准\n3 | 最终结论标准' : 'NONE'}
+${scoring.required ? '3 | 给出关键解题思路与已知条件判断\n4 | 完成主要推导计算与核心步骤\n3 | 得出正确最终结论或严格证明' : 'NONE'}
 <<<END>>>`
         : ''),
     parseText(raw) {
       if (scoring && !raw.trim().startsWith('<<<ISSUE>>>')) {
-        const match = raw.trim().match(/\n<<<RUBRIC>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/);
+        const match = raw.trim().match(/\r?\n<<<RUBRIC>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<END>>>$/);
         if (!match) throw new Error('Missing scoring section');
         const answer = Result.parse(
           answerOutput(childIndex).parseText!(raw.trim().slice(0, match.index) + '\n<<<END>>>'),
@@ -58,19 +58,19 @@ ${scoring.required ? '3 | 关键思路标准\n4 | 主要推导标准\n3 | 最终
       const text = raw.trim();
       if ((text.match(/不对|等下|我之前|重新来/gu)?.length ?? 0) >= 3)
         throw new Error('Unresolved self-correction draft');
-      const markers = text.match(/^<<<[A-Z]+>>>\r?$/gm) ?? [];
-      const issue = text.match(/^<<<ISSUE>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/);
+      const markers = text.match(/^<<<[A-Z]+>>>[ \t]*\r?$/gm) ?? [];
+      const issue = text.match(/^<<<ISSUE>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<END>>>$/);
       if (issue && markers.length === 2)
         return { text: '', explanation: '', issue: issue[1]!.trim() };
       // Read legacy records as well; new requests derive first to avoid anchoring
       // the model on a guessed answer before it has completed the calculation.
       const derived = text.match(
-        /^<<<EXPLANATION>>>\r?\n([\s\S]+?)\r?\n<<<ANSWER>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
+        /^<<<EXPLANATION>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<ANSWER>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
       );
       if (derived && markers.length === 3 && derived[1]!.trim() && derived[2]!.trim())
         return { text: derived[2]!.trim(), explanation: derived[1]!.trim(), issue: '' };
       const answer = text.match(
-        /^<<<ANSWER>>>\r?\n([\s\S]+?)\r?\n<<<EXPLANATION>>>\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
+        /^<<<ANSWER>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<EXPLANATION>>>[ \t]*\r?\n([\s\S]+?)\r?\n<<<END>>>$/,
       );
       if (!answer || markers.length !== 3 || !answer[1]!.trim() || !answer[2]!.trim())
         throw new Error('Missing answer sections');

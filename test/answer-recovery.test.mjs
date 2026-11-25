@@ -230,3 +230,12 @@ test('combined answer envelope requires three scoring points, while objective an
     [],
   );
 });
+test('answerOutput prompt rubric example satisfies RubricItem length constraint and tolerates marker whitespace', () => {
+  const c = answerOutput(null, { required: true, defaultScore: 10 });
+  const example = c.instructions.match(/<<<RUBRIC>>>\n([\s\S]+?)\n<<<END>>>/)?.[1];
+  assert.ok(example);
+  const raw = `<<<EXPLANATION>>>  \r\n根据条件完成推导。\r\n<<<ANSWER>>> \r\n2\r\n<<<RUBRIC>>>   \r\n${example}\r\n<<<END>>>`;
+  const decoded = c.decode(c.parseText(raw));
+  assert.equal(decoded.answers[0].scoring.rubric.length, 3);
+  assert.ok(decoded.answers[0].scoring.rubric.every((r) => r.criteria.length >= 8));
+});
