@@ -35,6 +35,14 @@ export async function fillAnswers(
 ) {
   const after = structuredClone(content),
     issues: z.infer<typeof Issue>[] = [];
+  let saved = JSON.stringify(content);
+  const save = async () => {
+    if (!checkpoint) return;
+    const next = JSON.stringify(after);
+    if (next === saved) return;
+    await checkpoint(after);
+    saved = next;
+  };
   const remaining = new Set(
       targets.filter((i) => {
         const q = i === null ? after.question! : after.question!.children[i]!;
@@ -87,6 +95,7 @@ export async function fillAnswers(
       };
       remaining.delete(answer.childIndex);
     }
+    if (result.answers.length) await save();
   }
   // The backend owns target identity. One call per leaf avoids large nested JSON,
   // and every accepted leaf is durably checkpointed before moving forward.
@@ -97,8 +106,7 @@ export async function fillAnswers(
       const existingAnswer = leaf.answer;
       const sharedPrompt = childIndex === null ? '' : after.question!.prompt;
       if (existingAnswer && currentGrading(leaf, sharedPrompt)) {
-        if (checkpoint && JSON.stringify(after) !== JSON.stringify(content))
-          await checkpoint(after);
+        await save();
         continue;
       }
       if (!existingAnswer && !generate) continue;
@@ -201,7 +209,7 @@ export async function fillAnswers(
       }
       Object.assign(after, candidate);
       remaining.delete(childIndex);
-      if (checkpoint) await checkpoint(after);
+      await save();
     }
   }
   return { after: JSON.stringify(after) === JSON.stringify(content) ? null : after, issues };

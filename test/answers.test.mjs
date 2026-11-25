@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { StructuredOutputError } from '../dist/app/ai/ports/skills.js';
 import { fillAnswers } from '../dist/app/modules/review/application/answer-workflow.js';
-import { payload, question, answer, source, ScriptedSkills } from './helpers.mjs';
+import { payload, question, answer, source, ScriptedSkills, fixture, run } from './helpers.mjs';
 const context = { bookId: 'book', jobId: 'answer-test', signal: new AbortController().signal };
 const leaf = (label, a) => {
   const { children, ...value } = question(label, a);
@@ -112,4 +113,93 @@ test('extract-visible mode completes grading for source answers but never invent
   assert.equal(result.after.question.children[0].grading.rubric.length, 3);
   assert.equal(result.after.question.children[1].answer, null);
   assert.equal(skills.calls.length, 1);
+});
+test('Extracted source answers are checkpointed even when issues exist or rubric generation fails', async (t) => {
+  const block = {
+    ...payload('Appendix answer'),
+    id: 'appendix',
+    key: 'appendix',
+    kind: 'answer',
+    sectionId: null,
+    sources: [source(3)],
+  };
+  const skills = new ScriptedSkills(),
+    checkpoints = [];
+  skills.output = (id, input) => {
+    if (id === 'source-verify' && input.mode === 'answer_lookup')
+      return { sourceIds: [block.id], issues: [] };
+    if (id === 'source-verify' && input.mode === 'answer_extract')
+      return {
+        answers: [
+          {
+            childIndex: 1,
+            text: '6',
+            explanation: 'Printed appendix proof',
+            sourceIds: [block.id],
+          },
+        ],
+        issues: [
+          {
+            code: 'CHECK_TAIL',
+            message: 'Check minor notation',
+            page: 3,
+            contentId: null,
+            severity: 'warning',
+          },
+        ],
+      };
+    throw new Error(`Unexpected call: ${id}`);
+  };
+  const filled = await fillAnswers(skills, group(), [1], [block], context, true, async (c) =>
+    checkpoints.push(structuredClone(c)),
+  );
+  assert.equal(checkpoints.length, 1);
+  assert.equal(checkpoints[0].question.children[1].answer.text, '6');
+  assert.equal(filled.after.question.children[1].answer.origin, 'source');
+
+  const s = await fixture(t);
+  await run(s);
+  const current = await s.store.read('book');
+  const qContent = current.document.contents.find((c) => c.question && !c.question.answer);
+  await s.store.update(
+    'book',
+    (b) => {
+      b.document.contents.push({
+        ...payload('Printed answer'),
+        id: 'ans-block',
+        key: 'ans-block',
+        kind: 'answer',
+        sectionId: null,
+        sources: [source(2)],
+      });
+    },
+    true,
+  );
+  const original = s.skills.run.bind(s.skills);
+  s.skills.run = async (id, input, ...rest) => {
+    if (id === 'source-verify' && input.mode === 'answer_lookup')
+      return { sourceIds: ['ans-block'], issues: [] };
+    if (id === 'source-verify' && input.mode === 'answer_extract')
+      return {
+        answers: [
+          {
+            childIndex: null,
+            text: '9',
+            explanation: 'Printed solution',
+            sourceIds: ['ans-block'],
+          },
+        ],
+        issues: [],
+      };
+    if (id === 'answer-generate') throw new StructuredOutputError('rubric formatting failed');
+    return original(id, input, ...rest);
+  };
+  const { job } = await run(s, { kind: 'answers', contentIds: [qContent.id] });
+  assert.equal(job.status, 'needs_review');
+  const proposal = (await s.store.read('book')).proposals.find(
+    (p) => p.contentId === qContent.id && p.status === 'pending',
+  );
+  assert.ok(proposal);
+  assert.equal(proposal.after.question.answer.text, '9');
+  assert.equal(proposal.after.question.answer.origin, 'source');
 });
