@@ -19,6 +19,7 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   const { id } = await upload.json();
   await page.goto(`/#/workspace/${id}`);
   await page.getByLabel('学科').fill('数学');
+  await page.getByLabel('出版社').fill('高等教育出版社');
   await page.getByRole('button', {name:'不包含答案',exact:true}).click();
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.getByRole('button', { name: '下方添加题目' })).toBeVisible();
@@ -53,7 +54,7 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
   const downloaded = await downloading;
   const result = JSON.parse(await readFile((await downloaded.path())!, 'utf8'));
   for (const question of result.questions) {
-    if (question.questionType === 'SHORT_ANSWER') {
+    if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'FILL_BLANK'].includes(question.questionType)) {
       expect(question.rubric).toEqual([]);
       continue;
     }
@@ -63,6 +64,10 @@ test('Complete-question UI supports insertion, metadata editing, per-question to
     );
   }
   expect(result.textbook.title).toBe('重新命名的教材');
+  expect(result.textbook.publisher).toBe('高等教育出版社');
+  expect(result.questions.some((q: { questionType: string }) => q.questionType === 'FILL_BLANK')).toBe(
+    true,
+  );
   expect(result.questions).toHaveLength(2);
   await page.request.delete(`/api/workspaces/${id}`);
 });

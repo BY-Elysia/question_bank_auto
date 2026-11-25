@@ -23,6 +23,7 @@ async function upload(page: Page, title: string, pdf = true) {
     timeout: 60000,
   });
   await page.getByLabel('学科').fill('数学');
+  await page.getByLabel('出版社').fill('高等教育出版社');
 }
 async function complete(page: Page) {
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
