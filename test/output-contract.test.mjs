@@ -115,3 +115,15 @@ test('Named integer coordinates round-trip without guessing invalid rectangles',
     /top < bottom/,
   );
 });
+
+test('Skill prompt instructions stay aligned with wire schemas and spatial coordinate contracts', async () => {
+  const { readFileSync } = await import('node:fs');
+  const extract = readFileSync('dist/app/ai/skills/page-content-extract/SKILL.md', 'utf8');
+  assert.ok(!/origin=source|review=pending/.test(extract));
+  for (const id of ['textbook-structure-detect', 'cross-page-reconcile']) {
+    const text = readFileSync(`dist/app/ai/skills/${id}/SKILL.md`, 'utf8');
+    assert.ok(text.includes('{left, top, right, bottom}'));
+    assert.ok(!text.includes('[left, top, right, bottom]'));
+    assert.ok(!/0<=left<right<=1(?!000)/.test(text));
+  }
+});
