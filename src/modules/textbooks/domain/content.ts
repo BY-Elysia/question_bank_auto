@@ -107,3 +107,23 @@ export const Range = z.strictObject({
 });
 
 export type Range = z.infer<typeof Range>;
+
+export function parseChoiceOptionIds(
+  text: string,
+  options: readonly { id: string }[],
+  type: 'single_choice' | 'multiple_choice',
+): string[] {
+  const answerIds = text
+    .trim()
+    .toUpperCase()
+    .split(/[\s,，、;；]+/)
+    .filter(Boolean);
+  const known = new Set(options.map((o) => o.id.toUpperCase()));
+  const compactIds =
+    answerIds.length === 1 && !known.has(answerIds[0]!) ? [...answerIds[0]!] : answerIds;
+  const valid =
+    compactIds.length > 0 &&
+    compactIds.every((id) => known.has(id)) &&
+    (type !== 'single_choice' || compactIds.length === 1);
+  return valid ? [...new Set(compactIds)] : [];
+}

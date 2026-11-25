@@ -2,7 +2,7 @@ import { scoringReadiness, requiresRubric } from '../domain/grading.js';
 import { fail } from '../../../shared/errors.js';
 import { exportIdentities } from './export-identities.js';
 import type { Book } from '../domain/book.js';
-import type { Leaf, Question } from '../domain/content.js';
+import { parseChoiceOptionIds, type Leaf, type Question } from '../domain/content.js';
 import { numberComprehensiveExercises } from '../domain/exercise-numbering.js';
 import { exportText, exportTextBlock as media, exportAnswer } from './export-text.js';
 const types: Record<string, string> = {
@@ -20,20 +20,7 @@ export function questionBankExport(book: Book) {
   const identities = exportIdentities(document);
   const metadata = book.extractionContext?.metadata;
   function leaf(q: Leaf, id: string, chapterId: string | null, title: string) {
-    const choice = ['single_choice', 'multiple_choice'].includes(q.type);
-    const answerIds =
-      q.answer?.text
-        .trim()
-        .toUpperCase()
-        .split(/[\s,，、;；]+/)
-        .filter(Boolean) ?? [];
-    const known = new Set(q.options.map((o) => o.id.toUpperCase()));
-    const compactIds =
-      answerIds.length === 1 && !known.has(answerIds[0]!) ? [...answerIds[0]!] : answerIds;
-    const validIds =
-      compactIds.length > 0 &&
-      compactIds.every((id) => known.has(id)) &&
-      (q.type !== 'single_choice' || compactIds.length === 1);
+    const choice = q.type === 'single_choice' || q.type === 'multiple_choice';
     return {
       questionId: id,
       chapterId,
@@ -49,7 +36,11 @@ export function questionBankExport(book: Book) {
       ...(choice
         ? {
             options: q.options.map((option) => ({ ...option, text: exportText(option.text) })),
-            correctOptionIds: validIds ? [...new Set(compactIds)] : [],
+            correctOptionIds: parseChoiceOptionIds(
+              q.answer?.text ?? '',
+              q.options,
+              q.type as 'single_choice' | 'multiple_choice',
+            ),
           }
         : {}),
     };
