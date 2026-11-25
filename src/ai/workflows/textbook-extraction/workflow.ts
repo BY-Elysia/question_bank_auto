@@ -89,17 +89,43 @@ export class TextbookWorkflow {
                 }
               }
           }
-          stage.contents = stage.contents.filter(
-            (c) => !c.sources.some((s) => s.page >= page + 1 && s.page <= end),
+          const droppedIds = new Set(
+            stage.contents
+              .filter((c) => c.sources.some((s) => s.page >= page + 1 && s.page <= end))
+              .map((c) => c.id),
           );
+          stage.contents = stage.contents.filter((c) => !droppedIds.has(c.id));
           stage.processedPages = stage.processedPages.filter((p) => p < page + 1 || p > end);
+          stage.issues = stage.issues.filter(
+            (i) =>
+              (!i.contentId || !droppedIds.has(i.contentId)) &&
+              (i.page === null || i.page < page + 1 || i.page > end),
+          );
+          const sectionsById = new Map(stage.sections.map((s) => [s.id, s]));
+          const keepSections = new Set<string>();
+          const keepSectionChain = (id: string | null) => {
+            let cur = id;
+            while (cur && !keepSections.has(cur)) {
+              keepSections.add(cur);
+              cur = sectionsById.get(cur)?.parentId ?? null;
+            }
+          };
+          for (const content of stage.contents) keepSectionChain(content.sectionId);
+          for (const section of stage.sections)
+            if (section.source.page < page + 1 || section.source.page > end)
+              keepSectionChain(section.id);
+          stage.sections = stage.sections.filter((s) => keepSections.has(s.id));
           saved.endPage = end;
         }
         saved.stage = stage;
         saved.pagePlan = null;
         saved.pending = boundary!.pending;
         saved.cursor = page + 1;
-        saved.activeSectionId = structure.activeSectionId;
+        saved.activeSectionId =
+          structure.activeSectionId &&
+          stage.sections.some((s) => s.id === structure.activeSectionId)
+            ? structure.activeSectionId
+            : null;
         addEvent(
           saved,
           `Checkpoint page ${page}: ${boundary!.complete.length} complete, ${boundary!.pending.length} pending`,

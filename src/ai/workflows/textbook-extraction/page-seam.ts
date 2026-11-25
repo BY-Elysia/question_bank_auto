@@ -10,6 +10,10 @@ const Seam = z.strictObject({
   sources: z.array(Source),
   reason: z.string().min(1),
 });
+function lastSourceOn(sources: Range['sources'], page: number) {
+  return sources.filter((s) => s.page === page).at(-1);
+}
+
 /** Reconsider a previously closed question before committing the next page. No published document is edited. */
 export async function reconcileSeam(
   skills: Skills,
@@ -20,7 +24,12 @@ export async function reconcileSeam(
 ) {
   const prior = stage.contents
     .filter((c) => c.sources.some((s) => s.page === page - 1))
-    .sort(readingOrder)
+    .sort((a, b) => {
+      const sa = lastSourceOn(a.sources, page - 1);
+      const sb = lastSourceOn(b.sources, page - 1);
+      if (sa && sb) return sa.box[1]! - sb.box[1]! || sa.box[0]! - sb.box[0]!;
+      return readingOrder(a, b);
+    })
     .at(-1);
   if (page === 1 || pending.length || !prior?.question || prior.sources.some((s) => s.page >= page))
     return pending;

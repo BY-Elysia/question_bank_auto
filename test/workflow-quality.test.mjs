@@ -263,3 +263,48 @@ test('Reopened question evidence cannot also become a detached paragraph or form
     assert.doesNotThrow(() => checkBoundary(boundary, [1, 2], [awaiting], stage));
   }
 });
+
+test('reconcileSeam selects the last item ending on previous page even when it began earlier', async () => {
+  const stage = {
+    sections: [],
+    processedPages: [1, 2],
+    issues: [],
+    contents: [
+      {
+        ...content(),
+        id: 'c_q_multi',
+        key: 'q_multi',
+        sources: [source(1, 0.7, 1), source(2, 0.2, 0.9)],
+      },
+      {
+        ...payload('Section Note'),
+        id: 'c_h_top',
+        key: 'h_top',
+        kind: 'paragraph',
+        sectionId: null,
+        sources: [source(2, 0, 0.1)],
+      },
+    ],
+  };
+  let seenPrevious = null;
+  const pending = await reconcileSeam(
+    {
+      async run(_id, input, schema) {
+        seenPrevious = input.previous.key;
+        return schema.parse({
+          targetKey: 'q_multi',
+          decision: 'continues',
+          sources: [source(3, 0, 0.1)],
+          reason: 'Continuation from bottom of page 2',
+        });
+      },
+    },
+    stage,
+    [],
+    3,
+    context,
+  );
+  assert.equal(seenPrevious, 'q_multi');
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].key, 'q_multi');
+});
