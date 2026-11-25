@@ -141,3 +141,92 @@ test('PDF pages expose preview and lossless detail without changing their origin
   const detail = Buffer.from(await (await fetch(url + '?variant=detail')).arrayBuffer());
   assert.deepEqual(await sharp(png).raw().toBuffer(), await sharp(detail).raw().toBuffer());
 });
+
+test('PageImages isolates caller abort signals while still aborting when all waiters cancel', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'page-image-signal-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const { BookStore } = await import('../dist/app/modules/textbooks/infrastructure/book-store.js');
+  const { FileAssets } =
+    await import('../dist/app/modules/textbooks/infrastructure/file-assets.js');
+  const { PageImages } =
+    await import('../dist/app/modules/textbooks/infrastructure/page-images.js');
+  const store = new BookStore(root);
+  await store.init();
+  const assets = new FileAssets(root);
+  const now = new Date().toISOString();
+  await store.create({
+    schemaVersion: '1.0',
+    id: 'b1',
+    workspaceId: null,
+    workspaceCommit: null,
+    workflowLock: null,
+    extractionContext: null,
+    title: 't',
+    sourceKind: 'pdf',
+    revision: 0,
+    pages: [{ number: 1, status: 'uploaded', width: null, height: null, blank: false }],
+    document: { sections: [], contents: [], issues: [], processedPages: [] },
+    proposals: [],
+    jobs: [],
+    changes: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const samplePng = await sharp({
+    create: { width: 40, height: 40, channels: 3, background: 'white' },
+  })
+    .png()
+    .toBuffer();
+  let abortedSignals = 0;
+  let release;
+  const images = new PageImages(
+    store,
+    {
+      async count() {
+        return 1;
+      },
+      async page(_src, dir, number, signal) {
+        await new Promise((resolve, reject) => {
+          release = resolve;
+          signal?.addEventListener(
+            'abort',
+            () => {
+              abortedSignals++;
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, `${number}.png`), samplePng);
+        return { width: 40, height: 40 };
+      },
+    },
+    assets,
+  );
+
+  const c1 = new AbortController();
+  const c2 = new AbortController();
+  const p1 = images.ensure('b1', 1, c1.signal);
+  const p2 = images.dataUrl('b1', 1, c2.signal);
+  while (!release) await new Promise((r) => setTimeout(r, 2));
+  c1.abort(new Error('first caller cancelled'));
+  await assert.rejects(p1, /first caller cancelled/);
+  assert.equal(abortedSignals, 0);
+  release();
+  assert.ok((await p2).startsWith('data:image/png;base64,'));
+
+  // Reset page to unrendered and verify sole waiter abort still cancels underlying PDF render.
+  await store.update('b1', (b) => {
+    b.pages[0].width = null;
+    b.pages[0].height = null;
+  });
+  release = null;
+  const c3 = new AbortController();
+  const p3 = images.ensure('b1', 1, c3.signal);
+  while (!release) await new Promise((r) => setTimeout(r, 2));
+  c3.abort(new Error('sole caller cancelled'));
+  await assert.rejects(p3, /sole caller cancelled/);
+  assert.equal(abortedSignals, 1);
+});
