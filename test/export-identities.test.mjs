@@ -126,3 +126,32 @@ test('Receiving bank keeps fill blanks distinct and derives stable missing textb
   assert.equal(out.questions[1].questionType, 'SHORT_ANSWER');
   assert.equal(out.questions[1].rubric.length, 3);
 });
+
+test('FileArchive defers finalize and surfaces missing-entry warnings as stream errors cleanly', async (t) => {
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { FileAssets } =
+    await import('../dist/app/modules/textbooks/infrastructure/file-assets.js');
+  const { FileArchive } =
+    await import('../dist/app/modules/textbooks/infrastructure/zip-archive.js');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'zip-archive-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const assets = new FileAssets(root);
+  const archives = new FileArchive(assets);
+
+  await fs.mkdir(path.join(assets.dir('ok'), 'pages'), { recursive: true });
+  await fs.writeFile(path.join(assets.dir('ok'), 'pages', '1.png'), Buffer.from('png'));
+  const ok = await archives.create('ok', { hello: 1 }, [1]);
+  const chunks = [];
+  for await (const chunk of ok.body) chunks.push(chunk);
+  assert.ok(Buffer.concat(chunks).length > 0);
+
+  await fs.mkdir(path.join(assets.dir('bad'), 'pages'), { recursive: true });
+  const bad = await archives.create('bad', { hello: 1 }, [1]);
+  await assert.rejects(async () => {
+    for await (const _ of bad.body) {
+      // Drain stream until missing page failure propagates.
+    }
+  });
+});
