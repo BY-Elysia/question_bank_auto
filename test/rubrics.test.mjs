@@ -87,6 +87,7 @@ test('failed rubric work keeps checkpoints, resumes without regenerating complet
   await s.jobs.wait(resumed.jobId);
   const finished = await s.store.read('book');
   assert.equal(finished.jobs.at(-1).status, 'completed');
+  assert.equal(finished.jobs.at(-1).processedIds.length, 2);
   assert.equal(count, 3);
   assert.equal(finished.revision, initial.revision + 1);
   assert.equal(scoringReadiness(finished.document).missing, 0);
@@ -169,4 +170,18 @@ test('objective questions export empty rubrics without model calls, including gr
     assert.equal(scoringReadiness(book.document).missing, 0);
     assert.deepEqual(questionBankExport(book).questions[0].children[0].rubric, []);
   }
+});
+test('rubrics job with contentIds records only requested processed IDs', async (t) => {
+  const s = await fixture(t);
+  await run(s);
+  const before = await s.store.read('book');
+  const ids = before.document.contents.filter((c) => c.question).map((c) => c.id);
+  assert.equal(ids.length, 2);
+  const job = await s.jobs.start('book', { kind: 'rubrics', contentIds: [ids[0]] });
+  await s.jobs.wait(job.id);
+  const after = await s.store.read('book');
+  const saved = after.jobs.find((j) => j.id === job.id);
+  assert.equal(saved.status, 'completed');
+  assert.deepEqual(saved.processedIds, [ids[0]]);
+  assert.deepEqual(scoringReadiness(after.document), { total: 2, missing: 1 });
 });

@@ -72,6 +72,8 @@ export class RubricWorkflow {
           target.leaf.grading = grading;
           const saved = current.jobs.find((j) => j.id === job.id)!;
           saved.stage = structuredClone(stage);
+          if (!saved.processedIds.includes(target.contentId))
+            saved.processedIds.push(target.contentId);
           addEvent(saved, `Rubric checkpoint: ${target.contentId}:${target.childIndex ?? 'root'}`);
         });
       }
@@ -95,7 +97,9 @@ export class RubricWorkflow {
         const saved = current.jobs.find((j) => j.id === job.id)!;
         current.document = stage;
         saved.stage = null;
-        saved.processedIds = [...new Set(all.map((t) => t.contentId))];
+        saved.processedIds = [
+          ...new Set([...saved.processedIds, ...targets.map((t) => t.contentId)]),
+        ];
         addEvent(saved, committed);
       },
       JSON.stringify(stage) !== JSON.stringify(book.document),
