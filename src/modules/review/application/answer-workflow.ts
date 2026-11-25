@@ -9,7 +9,7 @@ import { answerOutput } from './answer-output.js';
 import { transcriptionProblems } from '../../textbooks/domain/transcription-quality.js';
 import { StructuredOutputError } from '../../../ai/ports/skills.js';
 import { z } from 'zod';
-import { Issue, Id, type Content } from '../../textbooks/domain/content.js';
+import { Issue, Id, parseChoiceOptionIds, type Content } from '../../textbooks/domain/content.js';
 import type { Skills, SkillContext } from '../../../ai/ports/skills.js';
 import { AnswerResult } from '../../../ai/workflows/textbook-extraction/contracts.js';
 const Lookup = z.strictObject({ sourceIds: z.array(Id), issues: z.array(Issue) });
@@ -175,9 +175,8 @@ export async function fillAnswers(
         throw new Error('Unexpected objective scoring');
       target.grading = { ...scoring, basis: gradingBasis(target, sharedPrompt) };
       if (
-        ['single_choice', 'multiple_choice'].includes(target.type) &&
-        !target.options.some((o) => o.id === answer.text.trim()) &&
-        target.type === 'single_choice'
+        (target.type === 'single_choice' || target.type === 'multiple_choice') &&
+        !parseChoiceOptionIds(target.answer.text, target.options, target.type).length
       ) {
         issues.push({
           code: 'ANSWER_INVALID_OPTION',

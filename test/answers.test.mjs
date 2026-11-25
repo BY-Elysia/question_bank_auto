@@ -113,3 +113,66 @@ test('extract-visible mode completes grading for source answers but never invent
   assert.equal(result.after.question.children[1].answer, null);
   assert.equal(skills.calls.length, 1);
 });
+test('Choice answer validation rejects invalid options for both single_choice and multiple_choice', async () => {
+  const makeChoice = (type) => ({
+    ...payload(''),
+    id: `choice-${type}`,
+    key: `choice-${type}`,
+    kind: 'question',
+    sectionId: null,
+    sources: [source(1)],
+    question: {
+      ...question('1'),
+      type,
+      options: [
+        { id: 'A', text: 'Option A' },
+        { id: 'B', text: 'Option B' },
+        { id: 'C', text: 'Option C' },
+      ],
+    },
+  });
+  const skillsWith = (text) => ({
+    async run() {
+      return {
+        answers: [
+          {
+            childIndex: null,
+            text,
+            explanation: 'Choice reasoning',
+            scoring: { defaultScore: 10, rubric: [] },
+          },
+        ],
+        issues: [],
+      };
+    },
+  });
+  const invalidMulti = await fillAnswers(
+    skillsWith('A, D'),
+    makeChoice('multiple_choice'),
+    [null],
+    [],
+    context,
+  );
+  assert.equal(invalidMulti.after, null);
+  assert.equal(invalidMulti.issues[0].code, 'ANSWER_INVALID_OPTION');
+
+  const invalidSingle = await fillAnswers(
+    skillsWith('AB'),
+    makeChoice('single_choice'),
+    [null],
+    [],
+    context,
+  );
+  assert.equal(invalidSingle.after, null);
+  assert.equal(invalidSingle.issues[0].code, 'ANSWER_INVALID_OPTION');
+
+  const validMulti = await fillAnswers(
+    skillsWith('A、C'),
+    makeChoice('multiple_choice'),
+    [null],
+    [],
+    context,
+  );
+  assert.equal(validMulti.after.question.answer.text, 'A、C');
+  assert.equal(validMulti.issues.length, 0);
+});
