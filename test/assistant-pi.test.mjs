@@ -182,3 +182,75 @@ test('Pi tool image reaches the provider and deferred task is returned to the ha
  tools.tools=()=>[{name:'page',label:'page',description:'start job',parameters:{type:'object',properties:{}},execute:async()=>({text:'queued',deferred:{workspaceId:'book',jobId:'job'},pause:false})}];
  const c=await runtime.step(input(runtime,'start job'));assert.deepEqual(c.deferred,[{workspaceId:'book',jobId:'job'}]);assert.equal(c.stop,'continue');
 });
+
+test('PiRuntime strips multiple invalid assistant tails and ignores prior turns if current step emits none', async (t) => {
+  const seen = [];
+  let dropAfterHeaders = false;
+  const { runtime } = await provider(t, (body, res) => {
+    seen.push(body.messages);
+    if (dropAfterHeaders) {
+      res.socket?.destroy();
+      return;
+    }
+    chunk(res, { content: 'fresh' });
+    chunk(res, {}, 'stop');
+    done(res);
+  });
+  const badCheckpoint = [
+    ...runtime.history([
+      { role: 'user', content: 'q1' },
+      { role: 'assistant', content: 'old-ok' },
+      { role: 'user', content: 'q2' },
+    ]),
+    {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'stale-err' }],
+      api: 'openai-completions',
+      provider: 'xiye',
+      model: 'test',
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: 'error',
+      timestamp: Date.now(),
+    },
+    {
+      role: 'assistant',
+      content: [],
+      api: 'openai-completions',
+      provider: 'xiye',
+      model: 'test',
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: 'aborted',
+      timestamp: Date.now(),
+    },
+  ];
+  const ok = await runtime.step({ ...input(runtime, ''), checkpoint: badCheckpoint });
+  assert.equal(ok.text, 'fresh');
+  assert.equal(seen[0].at(-1).content, 'q2');
+
+  dropAfterHeaders = true;
+  const failed = await runtime
+    .step({
+      ...input(runtime, ''),
+      inputs: ['follow'],
+      checkpoint: ok.checkpoint,
+    })
+    .catch((e) => e);
+  if (!(failed instanceof Error)) {
+    assert.notEqual(failed.text, 'fresh');
+    assert.equal(failed.stop, 'error');
+  }
+});
