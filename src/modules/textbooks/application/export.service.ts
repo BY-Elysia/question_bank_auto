@@ -41,12 +41,21 @@ export class ExportService {
   async zip(id: string) {
     const book = await this.store.read(id);
     validateExportMetadata(book);
-    for (const page of book.pages) await this.images.ensure(id, page.number);
-    const document = await this.questionBank(id);
+    questionBankExport(book);
+    const ensured = new Set<number>();
+    for (const page of book.pages) {
+      await this.images.ensure(id, page.number);
+      ensured.add(page.number);
+    }
+    const fresh = await this.store.read(id);
+    for (const page of fresh.pages)
+      if (!ensured.has(page.number)) await this.images.ensure(id, page.number);
+    validateExportMetadata(fresh);
+    const document = questionBankExport(fresh);
     return this.archives.create(
       id,
       document,
-      book.pages.map((p) => p.number),
+      fresh.pages.map((p) => p.number),
     );
   }
 }

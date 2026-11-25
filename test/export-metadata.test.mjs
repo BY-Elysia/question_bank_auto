@@ -22,4 +22,7 @@ test('All question bank export entry points reject incomplete publication metada
   await assert.rejects(service.zip('stable'), /出版社/);
   book.extractionContext.metadata.publisher = '真实出版社';
   assert.doesNotThrow(() => validateExportMetadata(book));
+  book.pages = [{ number: 1, status: 'uploaded', width: null, height: null, blank: false }];
+  book.document = { sections: [], contents: [], issues: [], processedPages: [] };
+  await assert.rejects(service.zip('stable'), /./);
 });
