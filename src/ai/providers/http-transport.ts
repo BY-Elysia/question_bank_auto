@@ -4,6 +4,7 @@ export class ProviderError extends Error {
     readonly status: number,
     readonly code = '',
     readonly param = '',
+    readonly detail = '',
   ) {
     super(`Model provider HTTP ${status}`);
   }
@@ -30,17 +31,21 @@ export async function postModel(
       });
       if (!response.ok) {
         let code = '',
-          param = '';
+          param = '',
+          detail = '';
         try {
-          const data = (await response.json()) as { error?: { code?: string; param?: string } };
+          const data = (await response.json()) as {
+            error?: { code?: string; param?: string; message?: string };
+          };
           code = data.error?.code ?? '';
           param = data.error?.param ?? '';
+          detail = data.error?.message ?? '';
         } catch {}
         if ((response.status === 429 || response.status >= 500) && attempt < 2) {
           await sleep(1000 * (attempt + 1), undefined, { signal });
           continue;
         }
-        throw new ProviderError(response.status, code, param);
+        throw new ProviderError(response.status, code, param, detail);
       }
       return await response.json();
     } catch (error) {
