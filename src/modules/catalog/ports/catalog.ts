@@ -6,6 +6,8 @@ export interface CatalogReader {
 }
 export interface QuestionIndex {
   sync(workspaceId: string, version: string, questions: CatalogQuestion[]): void;
+  remove(workspaceId: string): void;
+  retain(activeWorkspaceIds: string[]): void;
   search(
     workspaceIds: string[],
     query: QuestionSearch,

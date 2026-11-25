@@ -3,6 +3,22 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { QuestionIndex } from '../ports/catalog.js';
 import type { CatalogQuestion, QuestionSearch } from '../domain/catalog.js';
+function normalizeText(value: string) {
+  return value.normalize('NFKC').toLowerCase();
+}
+
+function isStaleVersion(next: string, current: string) {
+  if (next === current) return true;
+  const iNext = next.indexOf(':'),
+    iCur = current.indexOf(':');
+  if (iNext < 0 || iCur < 0) return false;
+  const rNext = Number(next.slice(0, iNext)),
+    rCur = Number(current.slice(0, iCur));
+  if (!Number.isInteger(rNext) || !Number.isInteger(rCur)) return false;
+  if (rNext !== rCur) return rNext < rCur;
+  return next.slice(iNext + 1) <= current.slice(iCur + 1);
+}
+
 export class SqliteQuestionIndex implements QuestionIndex {
   private constructor(private db: DatabaseSync) {}
   static async open(root: string) {
@@ -15,39 +31,45 @@ export class SqliteQuestionIndex implements QuestionIndex {
  CREATE TABLE IF NOT EXISTS versions(workspace TEXT PRIMARY KEY,version TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS questions(workspace TEXT NOT NULL,position INTEGER NOT NULL,type TEXT NOT NULL,answer TEXT NOT NULL,section TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS question_scope ON questions(workspace,type,answer);`);
+    if (Number(db.prepare('PRAGMA user_version').get()?.user_version ?? 0) < 1)
+      db.exec('DELETE FROM questions; DELETE FROM versions; PRAGMA user_version = 1;');
     return new SqliteQuestionIndex(db);
   }
   sync(id: string, version: string, items: CatalogQuestion[]) {
-    if (
-      this.db.prepare('SELECT version FROM versions WHERE workspace=?').get(id)?.version === version
-    )
-      return;
+    const current = this.db.prepare('SELECT version FROM versions WHERE workspace=?').get(id)
+      ?.version as string | undefined;
+    if (current && isStaleVersion(version, current)) return;
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      const locked = this.db.prepare('SELECT version FROM versions WHERE workspace=?').get(id)
+        ?.version as string | undefined;
+      if (locked && isStaleVersion(version, locked)) {
+        this.db.exec('COMMIT');
+        return;
+      }
       this.db.prepare('DELETE FROM questions WHERE workspace=?').run(id);
       const insert = this.db.prepare('INSERT INTO questions VALUES(?,?,?,?,?,?,?)');
       items
         .filter((q) => q.searchable)
         .forEach((q, i) => {
           const a = q.question.answer;
-          const search = [
-            q.title,
-            q.section,
-            q.parentPrompt,
-            q.question.prompt,
-            ...q.question.options.map((o) => o.text),
-            a?.text ?? '',
-            a?.explanation ?? '',
-          ]
-            .join('\n')
-            .normalize('NFKC')
-            .toLowerCase();
+          const search = normalizeText(
+            [
+              q.title,
+              q.section,
+              q.parentPrompt,
+              q.question.prompt,
+              ...q.question.options.map((o) => o.text),
+              a?.text ?? '',
+              a?.explanation ?? '',
+            ].join('\n'),
+          );
           insert.run(
             id,
             i,
             q.question.type,
             a ? (a.review === 'pending' ? 'pending' : 'present') : 'missing',
-            q.section,
+            normalizeText(q.section),
             search,
             JSON.stringify(q),
           );
@@ -57,6 +79,37 @@ export class SqliteQuestionIndex implements QuestionIndex {
           'INSERT INTO versions VALUES(?,?) ON CONFLICT(workspace) DO UPDATE SET version=excluded.version',
         )
         .run(id, version);
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+  remove(id: string) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM questions WHERE workspace=?').run(id);
+      this.db.prepare('DELETE FROM versions WHERE workspace=?').run(id);
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+  retain(activeIds: string[]) {
+    const active = new Set(activeIds);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const indexed = new Set<string>();
+      for (const row of this.db.prepare('SELECT workspace FROM versions').all())
+        indexed.add(row.workspace as string);
+      for (const row of this.db.prepare('SELECT DISTINCT workspace FROM questions').all())
+        indexed.add(row.workspace as string);
+      for (const id of indexed) {
+        if (active.has(id)) continue;
+        this.db.prepare('DELETE FROM questions WHERE workspace=?').run(id);
+        this.db.prepare('DELETE FROM versions WHERE workspace=?').run(id);
+      }
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
@@ -78,9 +131,9 @@ export class SqliteQuestionIndex implements QuestionIndex {
     }
     if (q.section) {
       conditions.push("section LIKE ? ESCAPE '\\'");
-      args.push(like(q.section));
+      args.push(like(normalizeText(q.section)));
     }
-    for (const term of q.query.normalize('NFKC').toLowerCase().split(/\s+/).filter(Boolean)) {
+    for (const term of normalizeText(q.query).split(/\s+/).filter(Boolean)) {
       conditions.push("search LIKE ? ESCAPE '\\'");
       args.push(like(term));
     }

@@ -10,8 +10,10 @@ export class CatalogQuery implements CatalogQueries {
     private access: AccessPolicy,
   ) {}
   async list(principal: string) {
+    const all = await this.reader.list();
+    this.index.retain(all.map((w) => w.id));
     const result = [];
-    for (const w of await this.reader.list()) {
+    for (const w of all) {
       try {
         await this.access.assertWorkspace(principal, w.id);
         result.push(w);
@@ -27,7 +29,12 @@ export class CatalogQuery implements CatalogQueries {
   async read(principal: string, scope: string[], id: string) {
     if (!scope.includes(id)) fail(403, '工作区不在本次对话资料范围内');
     await this.access.assertWorkspace(principal, id);
-    return this.reader.read(id);
+    try {
+      return await this.reader.read(id);
+    } catch (error) {
+      if (error instanceof DomainError && error.status === 404) this.index.remove(id);
+      throw error;
+    }
   }
   async outline(principal: string, scope: string[], id: string) {
     const { workspace, book } = await this.read(principal, scope, id);
