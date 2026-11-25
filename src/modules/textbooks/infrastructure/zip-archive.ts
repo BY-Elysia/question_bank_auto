@@ -13,10 +13,19 @@ export class FileArchive implements ArchivePort {
       zip.file(path.join(this.assets.dir(id), 'pages', `${page}.png`), {
         name: `pages/${page}.png`,
       });
+    let closed = false;
     zip.once('close', () => {
+      closed = true;
       if (!zip.readableEnded) zip.abort();
     });
-    void zip.finalize().catch((error) => zip.destroy(error));
+    zip.on('warning', (error) => {
+      zip.destroy(error);
+    });
+    // Defer finalize until the caller attaches stream/error listeners to the returned readable.
+    setImmediate(() => {
+      if (closed || zip.destroyed) return;
+      void zip.finalize().catch((error) => zip.destroy(error));
+    });
     return { body: zip, contentType: 'application/zip', filename: `${id}.zip` };
   }
 }
