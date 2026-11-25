@@ -1,6 +1,6 @@
 import { environmentModelSettings, type ModelSettingsSource } from '../ports/model-settings.js';
 import { anthropicComplete } from './anthropic.js';
-import { providerSchema } from './structured-format.js';
+import { providerSchema, stripNullOptionals } from './structured-format.js';
 import type { ModelClient, ModelRequest } from '../ports/model-client.js';
 import { MemoryPrefixCache, type PrefixCache } from '../ports/prefix-cache.js';
 import { ArkPrefix } from './ark-prefix.js';
@@ -127,8 +127,16 @@ export class HttpModelClient implements ModelClient {
         ? Boolean((data.status && data.status !== 'completed') || data.incomplete_details)
         : Boolean(data.choices?.[0]?.finish_reason && data.choices[0].finish_reason !== 'stop');
     if (!text && !incomplete) throw new Error('Model response contains no text');
+    let normalized = text ?? '';
+    if (request.structuredOutput && !incomplete && normalized) {
+      try {
+        normalized = JSON.stringify(
+          stripNullOptionals(JSON.parse(normalized), request.structuredOutput.schema),
+        );
+      } catch {}
+    }
     return {
-      text: text ?? '',
+      text: normalized,
       usage: data.usage ?? null,
       model,
       cache,
