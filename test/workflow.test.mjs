@@ -180,6 +180,47 @@ test('A newly discovered continuation extends a requested page range before comm
   assert.ok(book.document.contents.some((c) => c.key === 'q1'));
   assert.ok(book.document.issues.some((i) => i.code === 'UNPROCESSED_PAGE' && i.page === 3));
 });
+test('Extending endPage clears stale issues and unreferenced sections from rolled-back pages while preserving referenced ones', async (t) => {
+  const system = await fixture(t);
+  await run(system);
+  await system.store.update('book', (b) => {
+    const q1 = b.document.contents.find((c) => c.key === 'q1');
+    q1.sources = [source(1, 0.5, 0.9)];
+    const p2 = b.document.contents.find(
+      (c) => c.key === 'p2' || c.sources.some((s) => s.page === 2),
+    );
+    const p3 = b.document.contents.find((c) => c.key === 'p3');
+    b.document.sections.push(
+      {
+        id: 'sec_2_stale',
+        parentId: null,
+        title: 'Stale section',
+        level: 1,
+        source: source(2, 0, 0.1),
+      },
+      {
+        id: 'sec_2_kept',
+        parentId: null,
+        title: 'Kept section for page 3',
+        level: 1,
+        source: source(2, 0.2, 0.3),
+      },
+    );
+    p3.sectionId = 'sec_2_kept';
+    b.document.issues.push({
+      code: 'TRANSCRIPTION_DEFECT',
+      severity: 'warning',
+      page: 2,
+      contentId: p2?.id ?? null,
+      message: 'stale issue on rolled-back page 2',
+    });
+  });
+  const { book, job } = await run(system, { kind: 'parse', startPage: 1, endPage: 1 });
+  assert.equal(job.endPage, 2);
+  assert.ok(!book.document.issues.some((i) => i.message === 'stale issue on rolled-back page 2'));
+  assert.ok(!book.document.sections.some((s) => s.id === 'sec_2_stale'));
+  assert.ok(book.document.sections.some((s) => s.id === 'sec_2_kept'));
+});
 test('Cancellation aborts model work, preserves checkpoint, and active tasks block duplicate work and edits', async (t) => {
   const skills = new ScriptedSkills();
   const original = skills.run.bind(skills);
