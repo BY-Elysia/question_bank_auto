@@ -230,3 +230,33 @@ test('combined answer envelope requires three scoring points, while objective an
     [],
   );
 });
+test('JobsService.cancel re-checks job status and committed state under lock', async (t) => {
+  const s = await fixture(t);
+  const { job } = await run(s);
+  const completed = await s.store.read('book');
+  assert.equal(job.status, 'completed');
+  // Snapshot returned 'running' right before another writer marked the job completed.
+  const stale = structuredClone(completed);
+  stale.jobs[0].status = 'running';
+  const { JobsService } = await import('../dist/app/modules/jobs/application/jobs.service.js');
+  let reads = 0;
+  const racingStore = {
+    read: async (id) => (++reads === 1 ? stale : s.store.read(id)),
+    update: (id, fn, c) => s.store.update(id, fn, c),
+    readRevision: (id, r) => s.store.readRevision(id, r),
+    list: () => s.store.list(),
+    create: (b) => s.store.create(b),
+    remove: (id, chk) => s.store.remove(id, chk),
+    exclusive: (id, fn) => s.store.exclusive(id, fn),
+  };
+  const service = new JobsService(racingStore, new Map());
+  const result = await service.cancel('book', job.id);
+  assert.equal(result.status, 'completed');
+  assert.equal((await s.store.read('book')).jobs[0].status, 'completed');
+
+  // Offline interrupted job transitions cleanly to cancelled.
+  await s.store.update('book', (b) => {
+    b.jobs[0].status = 'interrupted';
+  });
+  assert.equal((await service.cancel('book', job.id)).status, 'cancelled');
+});
