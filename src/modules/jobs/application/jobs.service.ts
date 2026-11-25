@@ -52,7 +52,7 @@ export class JobsService {
     let reused = false;
     const book = await this.store.update(id, (book) => {
       if (action) {
-        const existing = book.jobs.find((j) => j.action?.key === action.key);
+        const existing = book.jobs.find((j) => !j.supersededBy && j.action?.key === action.key);
         if (existing) {
           jobId = existing.id;
           reused = true;
@@ -237,6 +237,7 @@ export class JobsService {
       if (book.revision !== snapshot.revision) fail(409, 'Document changed; retry resume');
       if (upgrade) {
         actualId = randomUUID();
+        const now = new Date().toISOString();
         const replacement: Job = {
           ...structuredClone(job),
           id: actualId,
@@ -247,7 +248,8 @@ export class JobsService {
           error: null,
           issues: [],
           events: [],
-          createdAt: new Date().toISOString(),
+          createdAt: now,
+          updatedAt: now,
           processedIds: job.processedIds.filter((contentId) => {
             if (previous.answerWorkflowVersion < 3) return false;
             const old = oldDocument!.contents.find((c) => c.id === contentId);

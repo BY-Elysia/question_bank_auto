@@ -133,7 +133,16 @@ test('Repeating answer job reuses pending candidates instead of paying to regene
 test('Old answer task upgrades to a new pinned run while retaining unchanged progress', async (t) => {
   const s = await fixture(t);
   await run(s);
-  const job = await s.jobs.start('book', { kind: 'answers' });
+  const initialBook = await s.store.read('book');
+  const contentId = initialBook.document.contents.find((c) => c.question).id;
+  const action = {
+    key: 'run1:cmd1:answers',
+    principalId: 'local',
+    runId: 'run1',
+    contentId,
+    expectedRevision: initialBook.revision,
+  };
+  const job = await s.jobs.start('book', { kind: 'answers' }, 'run:run1', action);
   await s.jobs.wait(job.id);
   await s.store.update('book', (b) => {
     const j = b.jobs.find((x) => x.id === job.id);
@@ -148,6 +157,9 @@ test('Old answer task upgrades to a new pinned run while retaining unchanged pro
   assert.equal(b.jobs.find((j) => j.id === job.id).supersededBy, resumed.id);
   assert.deepEqual(b.proposals, before.proposals);
   assert.equal(resumed.answerWorkflowVersion, 3);
+  const replayed = await s.jobs.start('book', { kind: 'answers' }, 'run:run1', action);
+  assert.equal(replayed.id, resumed.id);
+  assert.equal((await s.store.read('book')).jobs.length, b.jobs.length);
 });
 test('Editing a failed task input invalidates only that checkpoint on resume', async (t) => {
   const s = await fixture(t);
