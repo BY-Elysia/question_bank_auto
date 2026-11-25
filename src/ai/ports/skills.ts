@@ -4,6 +4,7 @@ export interface SkillContext {
   bookId: string;
   jobId: string;
   signal: AbortSignal;
+  imageBookId?: string;
 }
 export interface OutputContract {
   schema: z.ZodType;

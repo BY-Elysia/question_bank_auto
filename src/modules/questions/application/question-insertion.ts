@@ -82,15 +82,17 @@ export class QuestionInsertion implements JobHandler {
       { pages: [1], instruction: '提取这张补充图片中的独立题目' },
       Output,
       [1],
-      { ...context, bookId: source.id },
+      { ...context, imageBookId: source.id },
     );
     const questions = independentQuestions(result.questions);
-    const answerIssues: typeof book.document.issues = [];
-    const mode = book.extractionContext?.metadata.answerHandlingMode;
-    for (const [index, question] of questions.entries()) {
+    const answerIssues: Array<{ index: number; issue: (typeof book.document.issues)[number] }> = [];
+    const meta = book.extractionContext?.metadata;
+    const answerMode =
+      meta?.answerHandlingMode ?? (meta && !meta.hasAnswer ? 'generate_brief' : 'extract_visible');
+    for (const [qIndex, question] of questions.entries()) {
       const content: Content = {
-        id: `insert_${index}`,
-        key: `insert_${index}`,
+        id: `insert_${qIndex}`,
+        key: `insert_${qIndex}`,
         kind: 'question',
         sectionId: null,
         sources: [{ page: 1, box: [0, 0, 1, 1] }],
@@ -104,11 +106,11 @@ export class QuestionInsertion implements JobHandler {
         content,
         question.children.length ? question.children.map((_, i) => i) : [null],
         [],
-        { ...context, bookId: source.id },
-        mode === 'generate_brief',
+        { ...context, imageBookId: source.id },
+        answerMode === 'generate_brief',
       );
-      if (completed.after?.question) questions[index] = completed.after.question;
-      answerIssues.push(...completed.issues);
+      if (completed.after?.question) questions[qIndex] = completed.after.question;
+      for (const issue of completed.issues) answerIssues.push({ index: qIndex, issue });
     }
     for (const q of questions) {
       const problems = questionProblems(q);
@@ -150,11 +152,17 @@ export class QuestionInsertion implements JobHandler {
         numberComprehensiveExercises(current.document);
         const saved = current.jobs.find((j) => j.id === context.jobId)!;
         saved.processedIds = added.map((c) => c.id);
+        saved.baseRevision = current.revision + 1;
         saved.issues.push(
-          ...answerIssues.map((issue) => ({ ...issue, page: number, contentId: null })),
+          ...answerIssues.map(({ index: qIndex, issue }) => ({
+            ...issue,
+            page: number,
+            contentId: added[qIndex]!.id,
+          })),
         );
       },
       true,
     );
+    await this.books.remove(source.id, book.id).catch(() => {});
   }
 }

@@ -38,13 +38,14 @@ export class SkillRunner implements Skills {
       version: definition.version,
     });
     const book = await this.store.read(context.bookId);
+    const imageBook = context.imageBookId ? await this.store.read(context.imageBookId) : book;
     const images = await Promise.all(
       [...new Set(pages)].map(async (page) => {
-        if (!book.pages.some((p) => p.number === page))
+        if (!imageBook.pages.some((p) => p.number === page))
           throw new Error('Skill requested an unknown page');
         return {
           page,
-          url: await this.images.dataUrl(book.id, page, signal),
+          url: await this.images.dataUrl(imageBook.id, page, signal),
         };
       }),
     );

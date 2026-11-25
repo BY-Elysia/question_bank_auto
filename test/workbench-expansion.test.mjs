@@ -399,3 +399,61 @@ test('Assistant configuration is isolated from textbook credentials, persists an
   assert.equal((await app.assistantConfiguration.test({ ...config, apiKey: '' })).ok, true);
   assert.equal(requests.at(-1).authorization, 'Bearer assistant-test-key');
 });
+
+test('Question insertion uses cache=off under target book, honors hasAnswer=false fallback, preserves issue contentId and cleans up source book', async (t) => {
+  const calls = [];
+  const app = await fixture(t, {
+    model: {
+      async complete(req) {
+        calls.push({ role: req.role, cache: req.cache, imageUrl: req.images[0]?.url });
+        if (req.role === 'vision')
+          return {
+            text: JSON.stringify({
+              questions: [{ ...question('7'), type: 'calculation', prompt: '求导数。' }],
+            }),
+            model: 'test',
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          };
+        return {
+          text: '<<<ISSUE>>>\n缺少函数表达式，无法给出结论\n<<<END>>>',
+          model: 'test',
+          usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 },
+        };
+      },
+    },
+  });
+  const w = await seed(app);
+  await app.store.update(w.id, (b) => {
+    b.extractionContext = {
+      metadata: { title: '教材', subject: '数学', publisher: '高教社', hasAnswer: false },
+      instructions: '',
+    };
+  });
+  const distinctPng = await sharp({
+    create: { width: 200, height: 300, channels: 3, background: 'black' },
+  })
+    .png()
+    .toBuffer();
+  const job = await app.insertion.upload(w.id, 'q1', 'after', distinctPng, 1, app.jobs);
+  await app.jobs.wait(job.id);
+  const after = await app.store.read(w.id);
+  const saved = after.jobs.find((j) => j.id === job.id);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((c) => ({ role: c.role, cache: c.cache })),
+    [
+      { role: 'vision', cache: 'off' },
+      { role: 'reasoning', cache: 'off' },
+    ],
+  );
+  assert.ok(calls[0].imageUrl);
+  assert.equal(calls[1].imageUrl, calls[0].imageUrl);
+  assert.equal(saved.processedIds.length, 1);
+  assert.equal(saved.baseRevision, after.revision);
+  assert.equal(saved.issues.length, 1);
+  assert.equal(saved.issues[0].contentId, saved.processedIds[0]);
+  const usage = await app.profile.usageSummary();
+  assert.equal(usage.workspaces.find((ws) => ws.id === w.id).total, 25);
+  await fs.access(path.join(app.root, 'books', w.id, 'runs', job.id));
+  await assert.rejects(app.store.read(job.request.insertion.sourceBookId));
+});
