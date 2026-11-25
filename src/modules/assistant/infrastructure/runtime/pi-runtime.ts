@@ -68,11 +68,18 @@ export class PiRuntime implements AgentRuntime {
               text: JSON.stringify({ status: answer.status, answer: answer.answer }),
             },
           ];
-    // A provider cannot continue from an aborted/error assistant tail. The durable
-    // UI transcript retains that partial text; replay starts from the last input.
-    const tail = checkpoint.at(-1);
-    if (tail?.role === 'assistant' && ['aborted', 'error', 'length'].includes(tail.stopReason))
-      checkpoint.pop();
+    // A provider cannot continue from aborted/error/dangling toolUse assistant tails.
+    // The durable UI transcript retains partial text; replay starts from the last input.
+    while (checkpoint.length) {
+      const tail = checkpoint.at(-1);
+      if (
+        tail?.role === 'assistant' &&
+        ['aborted', 'error', 'length', 'toolUse'].includes(tail.stopReason)
+      )
+        checkpoint.pop();
+      else break;
+    }
+    const priorCount = checkpoint.length;
     const questions: Interaction[] = [];
     const deferred: import('../../ports/deferred-tasks.js').DeferredTask[] = [];
     const stream: StreamFn = (m, c, o) => {
@@ -127,7 +134,9 @@ export class PiRuntime implements AgentRuntime {
           })),
         );
       else await agent.continue();
-      const last = [...agent.state.messages].reverse().find((m) => m.role === 'assistant');
+      const last = [...agent.state.messages.slice(priorCount)]
+        .reverse()
+        .find((m) => m.role === 'assistant');
       if (!last || last.role !== 'assistant') throw Error('模型未返回助手消息');
       const usage = {
         input_tokens: last.usage.input + last.usage.cacheRead + last.usage.cacheWrite,
