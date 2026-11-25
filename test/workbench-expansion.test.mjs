@@ -399,3 +399,32 @@ test('Assistant configuration is isolated from textbook credentials, persists an
   assert.equal((await app.assistantConfiguration.test({ ...config, apiKey: '' })).ok, true);
   assert.equal(requests.at(-1).authorization, 'Bearer assistant-test-key');
 });
+
+test('FileUsage and summarize-model-runs skip non-directory entries like .DS_Store without ENOTDIR', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-dsstore-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const jobDir = path.join(root, 'books', 'b1', 'runs', 'job1');
+  await fs.mkdir(jobDir, { recursive: true });
+  await fs.writeFile(path.join(root, 'books', '.DS_Store'), '');
+  await fs.writeFile(path.join(root, 'books', 'b1', 'runs', '.DS_Store'), '');
+  await fs.mkdir(path.join(jobDir, 'subdir.json'));
+  await fs.writeFile(
+    path.join(jobDir, 'call1.json'),
+    JSON.stringify({
+      id: 'call1',
+      at: '2026-01-01T00:00:00.000Z',
+      skill: 'page-content-extract',
+      usage: { input_tokens: 4, output_tokens: 6, total_tokens: 10 },
+    }),
+  );
+  const { FileUsage } = await import('../dist/app/modules/profile/infrastructure/file-usage.js');
+  const summary = await new FileUsage(root).summarize(['b1']);
+  assert.equal(summary.calls, 1);
+  assert.equal(summary.total, 10);
+
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await promisify(execFile)('node', ['scripts/summarize-model-runs.mjs', root]);
+  const indexed = JSON.parse(await fs.readFile(path.join(root, 'trace-index.json'), 'utf8'));
+  assert.equal(indexed.calls, 1);
+});

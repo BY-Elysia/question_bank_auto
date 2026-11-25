@@ -28,17 +28,22 @@ export class FileUsage implements UsageRepository {
     for (const id of ids) {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new Error('Invalid usage scope');
       const directory = path.join(this.root, 'books', id, 'runs');
-      let jobs: string[];
+      let entries;
       try {
-        jobs = await fs.readdir(directory);
+        entries = await fs.readdir(directory, { withFileTypes: true });
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw e;
       }
-      for (const job of jobs) {
-        for (const file of await fs.readdir(path.join(directory, job))) {
-          if (!file.endsWith('.json')) continue;
-          const record = JSON.parse(await fs.readFile(path.join(directory, job, file), 'utf8'));
+      for (const job of entries) {
+        if (!job.isDirectory()) continue;
+        for (const file of await fs.readdir(path.join(directory, job.name), {
+          withFileTypes: true,
+        })) {
+          if (!file.isFile() || !file.name.endsWith('.json')) continue;
+          const record = JSON.parse(
+            await fs.readFile(path.join(directory, job.name, file.name), 'utf8'),
+          );
           if (!record.id || !('usage' in record)) continue;
           value.calls++;
           if (!record.usage) value.unreported++;

@@ -3,19 +3,27 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 const root = path.resolve(process.argv[2] ?? process.env.LIVE_WORKSPACE_ROOT ?? 'workspace');
 const records = [];
-for (const book of await fs.readdir(path.join(root, 'books'))) {
-  const runs = path.join(root, 'books', book, 'runs');
+let bookEntries = [];
+try {
+  bookEntries = await fs.readdir(path.join(root, 'books'), { withFileTypes: true });
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
+for (const book of bookEntries) {
+  if (!book.isDirectory()) continue;
+  const runs = path.join(root, 'books', book.name, 'runs');
   let jobs;
   try {
-    jobs = await fs.readdir(runs);
+    jobs = await fs.readdir(runs, { withFileTypes: true });
   } catch (error) {
     if (error.code === 'ENOENT') continue;
     throw error;
   }
-  for (const job of jobs)
-    for (const name of await fs.readdir(path.join(runs, job))) {
-      if (!name.endsWith('.json')) continue;
-      const file = path.join(runs, job, name),
+  for (const job of jobs) {
+    if (!job.isDirectory()) continue;
+    for (const fileEntry of await fs.readdir(path.join(runs, job.name), { withFileTypes: true })) {
+      if (!fileEntry.isFile() || !fileEntry.name.endsWith('.json')) continue;
+      const file = path.join(runs, job.name, fileEntry.name),
         record = JSON.parse(await fs.readFile(file, 'utf8'));
       if (!record.at) continue;
       records.push({
@@ -38,6 +46,7 @@ for (const book of await fs.readdir(path.join(root, 'books'))) {
         outputTokens: record.usage?.output_tokens ?? null,
       });
     }
+  }
 }
 records.sort((a, b) => a.at.localeCompare(b.at));
 const report = {
