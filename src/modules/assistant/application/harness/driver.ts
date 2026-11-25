@@ -50,6 +50,7 @@ export class HarnessDriver {
     try {
       for (let turn = 0; turn < 64; turn++) {
         const pendingRun = this.store.get(sessionId).runs.find((r) => r.id === id)!;
+        if (!['queued', 'running'].includes(pendingRun.status)) return;
         if (pendingRun.deferred?.length && pendingRun.execution && this.tasks) {
           for (const task of pendingRun.deferred) {
             const result = await this.tasks.settle(pendingRun.execution, task, handle.abort.signal);
@@ -90,6 +91,7 @@ export class HarnessDriver {
             ...this.runtime.history(selected.map((x) => ({ role: 'user', content: x.text }))),
           );
           r.status = 'running';
+          r.error = null;
           r.attempt++;
           r.messageId = messageId = randomUUID();
           s.conversation.messages.push({
@@ -162,21 +164,32 @@ export class HarnessDriver {
               ? '模型生成失败，请重试'
               : null;
           r.interactions.push(...result.interactions);
+          const interrupting =
+            handle.reason === 'interrupt' ||
+            r.inputs.some((x) => x.status === 'queued' && x.mode === 'interrupt');
           if (handle.reason === 'shutdown') r.status = 'interrupted';
           else if (handle.reason === 'cancel') r.status = 'cancelled';
-          else if (result.stop === 'error') {
+          else if (interrupting) {
+            r.status = 'running';
+            r.error = null;
+          } else if (result.stop === 'error') {
             r.status = 'failed';
             r.error = '模型生成失败，请检查模型配置或重试';
-          } else if (r.interactions.some((q) => q.status === 'pending')) r.status = 'waiting_input';
-          else if (
-            handle.reason === 'interrupt' ||
+          } else if (r.interactions.some((q) => q.status === 'pending')) {
+            r.status = 'waiting_input';
+            r.error = null;
+          } else if (
             r.inputs.some((x) => x.status === 'queued') ||
             r.deferred.length ||
             result.stop === 'continue'
-          )
+          ) {
             r.status = 'running';
-          else r.status = aborted ? 'interrupted' : 'completed';
-          if (r.status === 'cancelled')
+            r.error = null;
+          } else {
+            r.status = aborted ? 'interrupted' : 'completed';
+            if (!aborted) r.error = null;
+          }
+          if (r.status === 'cancelled' || interrupting)
             for (const q of r.interactions) if (q.status === 'pending') q.status = 'cancelled';
           emit(id, 'run_state', { status: r.status });
           return r.status;
@@ -210,6 +223,36 @@ export class HarnessDriver {
     } catch (error) {
       const execution = this.store.get(sessionId).runs.find((r) => r.id === id)?.execution;
       if (handle.abort.signal.aborted && execution) await this.tasks?.cancel(execution);
+      // An immediate steer can abort a provider before its first event. Persisted
+      // user input remains queued and can be resumed without losing the request.
+      if (handle.reason === 'interrupt') {
+        this.store.update(sessionId, (s, emit) => {
+          const r = s.runs.find((x) => x.id === id)!;
+          const hadTask = !!r.deferred?.length;
+          r.status = 'queued';
+          r.error = null;
+          r.deferred = [];
+          for (const m of s.conversation.messages)
+            if (m.status === 'pending') {
+              m.status = 'failed';
+              m.error = '生成已中断，已保留输出';
+            }
+          if (hadTask)
+            r.checkpoint.push(
+              ...this.runtime.history([
+                {
+                  role: 'user',
+                  content: '系统：先前后台操作已打断，尚未提交的候选未应用。请按用户新要求继续。',
+                },
+              ]),
+            );
+          emit(id, 'run_state', { status: 'queued' });
+        });
+        handle.abort = new AbortController();
+        handle.reason = '';
+        await this.execute(id, handle);
+        return;
+      }
       this.store.update(sessionId, (s, emit) => {
         const r = s.runs.find((x) => x.id === id)!;
         r.status =
@@ -226,29 +269,6 @@ export class HarnessDriver {
           }
         emit(id, 'run_state', { status: r.status });
       });
-      // An immediate steer can abort a provider before its first event. Persisted
-      // user input remains queued and can be resumed without losing the request.
-      if (handle.reason === 'interrupt') {
-        this.store.update(sessionId, (s, e) => {
-          const r = s.runs.find((x) => x.id === id)!;
-          r.status = 'queued';
-          const hadTask = !!r.deferred?.length;
-          r.deferred = [];
-          if (hadTask)
-            r.checkpoint.push(
-              ...this.runtime.history([
-                {
-                  role: 'user',
-                  content: '系统：先前后台操作已打断，尚未提交的候选未应用。请按用户新要求继续。',
-                },
-              ]),
-            );
-          e(id, 'run_state', { status: 'queued' });
-        });
-        handle.abort = new AbortController();
-        handle.reason = '';
-        await this.execute(id, handle);
-      }
     }
   }
 }

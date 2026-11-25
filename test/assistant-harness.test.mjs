@@ -116,6 +116,12 @@ test('Interrupt aborts the old step and applies queued steering before follow-up
   assert.deepEqual(seen[1], ['first', 'new direction']);
   assert.deepEqual(seen[2], ['first', 'new direction', 'later']);
   assert.equal(f.service.run(r.id).status, 'completed');
+  assert.equal(f.service.run(r.id).error, null);
+  const states = f.service
+    .events(r.id, 0)
+    .filter((e) => e.type === 'run_state')
+    .map((e) => e.data.status);
+  assert.ok(!states.includes('failed'));
   const messages = (await f.service.get(c.id)).messages;
   assert.equal(messages.filter((x) => x.content === 'new direction').length, 1);
   assert.equal(messages.find((x) => x.content === 'partial').status, 'failed');
@@ -164,6 +170,7 @@ test('Concurrent start idempotency, checkpoint recovery and message pagination',
   await f.service.resume(a.id);
   await f.service.wait(c.id);
   assert.equal(f.service.run(a.id).status, 'completed');
+  assert.equal(f.service.run(a.id).error, null);
   await assert.rejects(f.service.start(c.id, 'different', 'same'), (e) => e.status === 409);
   assert.equal((await f.service.get(c.id)).messages.filter((x) => x.role === 'user').length, 1);
   const p = f.service.messages(c.id, undefined, 1);
@@ -270,4 +277,40 @@ test('Text history excludes empty tool-only steps while preserving the following
  const {conversationContext}=await import('../dist/app/modules/assistant/domain/conversation-context.js');
  const messages=[['user','修复'],['assistant',''],['assistant','  '],['assistant','已修改'],['user','撤销']].map(([role,content],i)=>({id:String(i),role,content,status:'complete',error:null}));
  assert.deepEqual(conversationContext({id:'x',title:'x',updatedAt:'now',messages}),[{role:'user',content:'修复'},{role:'assistant',content:'已修改'},{role:'user',content:'撤销'}]);
+});
+
+test('Simultaneous interrupt when a step returns a pending interaction cancels the prompt and runs the redirect', async (t) => {
+  let calls = 0;
+  let redirect;
+  const f = await fixture(t, async (i) => {
+    calls++;
+    if (calls === 1) {
+      await redirect();
+      return result(i, '确认吗？', {
+        stop: 'continue',
+        interactions: [
+          {
+            id: 'q1',
+            toolCallId: 'call_1',
+            question: '确认吗？',
+            options: ['是'],
+            kind: 'confirmation',
+            status: 'pending',
+            answer: null,
+          },
+        ],
+      });
+    }
+    return result(i, '已按新方向完成');
+  });
+  const c = await f.service.create();
+  const r = await f.service.start(c.id, '原请求', 'init');
+  redirect = () => f.service.input(r.id, '改新方向', 'redir', 'interrupt');
+  await f.service.wait(c.id);
+  assert.equal(calls, 2);
+  const done = f.service.run(r.id);
+  assert.equal(done.status, 'completed');
+  assert.equal(done.error, null);
+  assert.equal(done.interactions[0].status, 'cancelled');
+  assert.equal((await f.service.get(c.id)).messages.at(-1).content, '已按新方向完成');
 });
