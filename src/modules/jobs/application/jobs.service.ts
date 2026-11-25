@@ -208,14 +208,32 @@ export class JobsService {
     return job;
   }
   async cancel(id: string, jobId: string) {
-    const job = this.find(await this.store.read(id), jobId);
+    const initial = this.find(await this.store.read(id), jobId);
     if (this.running.has(jobId)) {
       await this.running.cancel(jobId);
-    } else if (['queued', 'running', 'interrupted', 'failed'].includes(job.status))
-      await this.store.update(id, (book) => {
-        this.find(book, jobId).status = 'cancelled';
-      });
-    return this.find(await this.store.read(id), jobId);
+      return this.find(await this.store.read(id), jobId);
+    }
+    if (!['queued', 'running', 'interrupted', 'failed'].includes(initial.status)) return initial;
+    let cancelRunning = false;
+    const updated = await this.store.update(id, (book) => {
+      const current = this.find(book, jobId);
+      if (this.running.has(jobId)) {
+        cancelRunning = true;
+        return;
+      }
+      if (
+        ['queued', 'running', 'interrupted', 'failed'].includes(current.status) &&
+        !this.handlers.get(current.kind)?.isCommitted?.(current)
+      ) {
+        current.status = 'cancelled';
+        addEvent(current, 'Cancelled');
+      }
+    });
+    if (cancelRunning) {
+      await this.running.cancel(jobId);
+      return this.find(await this.store.read(id), jobId);
+    }
+    return this.find(updated, jobId);
   }
   async resume(id: string, jobId: string, owner?: string) {
     const snapshot = await this.store.read(id);
