@@ -120,4 +120,14 @@ test('Ordinary exercise categories share their parent sequence and inserted ques
     ['1', '2', '3', '4'],
   );
   assert.equal(inserted.question.sourceLabel, '99');
+
+  // An example choice in an ordinary proof section must not trigger question renumbering.
+  const mixed = doc();
+  mixed.sections = [{ ...mixed.sections[0], id: 'proofs', title: '第二节 证明题' }];
+  mixed.contents = [
+    { ...item('例1', 1, 'proofs'), kind: 'example', question: leaf('例1', 'single_choice') },
+    { ...item('习题1', 2, 'proofs'), question: leaf('习题1', 'proof') },
+  ];
+  numberComprehensiveExercises(mixed);
+  assert.equal(mixed.contents[1].question.label, '习题1');
 });
