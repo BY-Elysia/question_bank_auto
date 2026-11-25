@@ -449,3 +449,37 @@ test('Change endpoints authorize the workspace without relying on an assistant c
  assert.equal((await fetch(`${f.base}/api/workspaces/${id}/changes/unknown/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:1})})).status,403);
  assert.equal((await f.store.read(id)).revision,1);
 });
+
+test('Catalog index normalizes section queries, rejects stale revisions, and prunes deleted workspaces', async (t) => {
+  const f = await fixture(t),
+    id = await seed(f),
+    query = f.knowledge.query,
+    p = f.knowledge.principalId;
+  await f.store.update(
+    id,
+    (b) => {
+      b.document.sections[0].title = '第３章 ＡＢＣ 导数';
+    },
+    true,
+  );
+  const fullwidth = await query.search(p, [id], QuestionSearch.parse({ section: '第3章 abc' }));
+  assert.equal(fullwidth.total, 2);
+  const halfwidthQuery = await query.search(p, [id], QuestionSearch.parse({ section: '第３章 Ａ' }));
+  assert.equal(halfwidthQuery.total, 2);
+
+  // Older revision sync cannot downgrade newer SQLite index state.
+  const { SqliteQuestionIndex } = await import('../dist/app/modules/catalog/infrastructure/sqlite-index.js');
+  const { DatabaseSync } = await import('node:sqlite');
+  const index = await SqliteQuestionIndex.open(f.root);
+  t.after(() => index.close());
+  index.sync(id, '1:2026-01-01T00:00:00.000Z', []);
+  assert.equal(index.search([id], QuestionSearch.parse({})).total, 2);
+
+  // Deleted workspace is pruned when listing workspaces or reading missing workspace.
+  await f.workspaces.remove(id);
+  await query.list(p);
+  const db = new DatabaseSync(path.join(f.root, 'catalog', 'questions.sqlite'));
+  t.after(() => db.close());
+  assert.equal(db.prepare('SELECT count(*) AS n FROM questions WHERE workspace=?').get(id).n, 0);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM versions WHERE workspace=?').get(id).n, 0);
+});
