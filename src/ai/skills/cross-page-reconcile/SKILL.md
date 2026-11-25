@@ -9,7 +9,7 @@ description: 判定内容和题目跨页边界
 - 正式队列 queue 由未完成内容的来源页和当前页组成。pending 是必须保留、补完或继续等待的范围；processed 是已提取内容，不得重复返回。
 - 识别所有未处理正文、标题、公式、图、表、例题、习题和答案，按阅读顺序分成 complete 与 pending。仅识别范围，不填写完整内容。
 - key 使用 r_起始页_起始区域序号，例如 r_12_3，长度不超过 80；pending 的 key 必须保持不变。不同栏目出现相同题号仍是不同范围。
-- 每个范围必须给出 kind、sectionId、sources、label。sources.page 必须来自正式队列。box 为归一化 [left, top, right, bottom]。
+- 每个范围必须给出 kind、sectionId、sources、label。sources.page 必须来自正式队列；box 为千分位整数对象 {left, top, right, bottom}（0..1000）。
 - 多页题须保留全部来源页；缺尾题、未闭合表格或段落进入 pending。宁可等待，不能把部分子题当成完整顶层题。
 - “一、选择题”等栏目是 heading，不是 group 题目；栏目内每道编号题分别成一个 question 范围。只有共享同一题干的子问才归入同一道顶层题。
 - 同题紧随的“解/证明”和全部小问答案必须与题干放在同一个 question/example 范围；只有与题目分离的集中答案区才使用独立 answer 范围。不能把同页原题放 complete、其续页解答另起 key 放 pending。
@@ -49,7 +49,7 @@ description: 判定内容和题目跨页边界
 
 ## 格式与坐标检查
 - 输出紧凑 JSON，不使用制表符填充字段；label 只写简短题号或内容类型，不转录公式。
-- box 是 [left, top, right, bottom]，不是 [x,y,width,height]；必须 0<=left<right<=1、0<=top<bottom<=1。纵坐标从图像顶部向下增加，不将 0.088 写成 0.88。
+- box 是千分位整数对象 {left, top, right, bottom}，不是数组或 [x,y,width,height]；必须为整数且满足 0<=left<right<=1000、0<=top<bottom<=1000。纵坐标从图像顶部向下增加，不将 88 写成 880。
 
 ## 综合练习与题型栏目
 - “1.填空选择题”“一、选择题”“二、填空题”仅为题型栏目，下面的 (1)、(2)… 若各有独立条件，应逐题分成独立 question 范围，不能当作一个 group 的 children。选择和填空混排也如此。

@@ -7,7 +7,7 @@ description: 识别课本章节结构
 
 - 只从当前页识别章、节、标题及层级。sections 返回本页新出现的节点；已有章节沿用输入 ID，不重复创建或更改。
 - 新节点 ID 使用 sec_页码_顺序号，例如 sec_12_1；parentId 必须是已有节点或本次返回节点。level 从 1 开始。
-- source.page 为当前 PDF 页码；box 是归一化的 [left, top, right, bottom]，标记标题所在区域。
+- source.page 为当前 PDF 页码；box 使用千分位整数对象 {left, top, right, bottom}（0..1000，左上角为 (0,0)、右下角为 (1000,1000)），标记标题所在区域。
 - activeSectionId 表示处理本页后所在章节；目录页条目不能当作正文中新章节切换。无标题时保留原 activeSectionId。
 - 同页跨章节时返回所有切换节点，具体内容归属由后续边界步骤依据位置确定。
 - 单个编号例题/习题及其共享题干（如“Exercise 1. Use the rectangle above.”）属于题目，不是章节节点；“习题/Exercises”这种统领多道题的栏目才可作为节。已有对应章节时，续页重复章名或“continued”页眉沿用原章节，不新建节点。

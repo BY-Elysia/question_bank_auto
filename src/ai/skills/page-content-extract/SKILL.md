@@ -13,7 +13,7 @@ description: 忠实提取课本内容及题目
 - question 包含 label、type、prompt、options、answer、children。顶层同题干子问才设为 group，公共题干放 prompt，每个小问放 children。栏目标题不构成 group。
 - 非 group 的 children=[]；子问不能再嵌套 group。保留所有小问，禁止只提取首尾而遗漏中间；小问序号写 label，不重复塞入 prompt。
 - single_choice/multiple_choice 的选项分开放 options，选项文字不能重复拼入 prompt；answer.text 写选项字母，解析放 explanation。
-- 仅提取指定页图可见的答案及原有推导。无答案时 answer=null；有答案时 origin=source、review=pending、sources 标明答案的真实页码坐标。不推导或猜测。
+- 仅提取指定页图可见的答案及原有推导。无答案时 answer=null；有答案时用 sources 标明答案的真实页码与归一化坐标 [left, top, right, bottom]，无需输出 origin/review（由后端统一标记为 source/pending）。不推导或猜测。
 - 课本集中答案页作为 answer 类型内容块完整保留，保留章节和题号，供后续答案关联；不能提前假定所有题无答案。
 - 图像通过所在范围的 sources 保留，caption 提取原图注，不编造图片 URL。表格按原行列放 table，跨页表格完整合并。
 - 不确定文字用【待校对】并在 issues 记录；完整题号和题干已存在时 items 不得为空。
