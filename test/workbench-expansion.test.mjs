@@ -188,6 +188,15 @@ test('Settings never expose keys and never reuse a secret for a different provid
   assert.equal(same.hasApiKey, true);
   const response = await fetch(app.base + '/api/profile/model');
   assert.ok(!(await response.text()).includes('secret-value'));
+
+  // Malformed stored/env baseUrl must not crash subsequent saves or leak previous secrets.
+  await fs.writeFile(
+    path.join(app.root, 'profile', 'model.json'),
+    JSON.stringify({ ...config, baseUrl: 'not-a-valid-url' }),
+  );
+  await assert.rejects(app.profile.save({ ...config, apiKey: '' }), (e) => e.status === 400);
+  const repaired = await app.profile.save({ ...config, apiKey: 'new-secret' });
+  assert.equal(repaired.hasApiKey, true);
 });
 test('Provider adapters preserve chat roles and support native Anthropic image messages', async (t) => {
   const requests = [];

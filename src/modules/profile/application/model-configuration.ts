@@ -3,6 +3,16 @@ import type { ModelSettingsInput } from '../domain/settings.js';
 import type { ModelSettings } from '../../../ai/ports/model-settings.js';
 import type { ModelClient } from '../../../ai/ports/model-client.js';
 import { fail } from '../../../shared/errors.js';
+function parseOrigin(url: string) {
+  if (!url) return '';
+  try {
+    const origin = new URL(url).origin;
+    return origin === 'null' ? '' : origin;
+  } catch {
+    return '';
+  }
+}
+
 /** Configuration and connectivity for exactly one model scope. */
 export class ModelConfiguration {
   constructor(
@@ -14,9 +24,10 @@ export class ModelConfiguration {
     return { ...value, hasApiKey: Boolean(apiKey) };
   }
   private async resolve(input: ModelSettingsInput) {
+    const nextOrigin = parseOrigin(input.baseUrl);
+    if (!nextOrigin) fail(400, '请输入有效的接口地址');
     const previous = await this.settings.get();
-    const sameOrigin =
-      new URL(input.baseUrl).origin === (previous.baseUrl ? new URL(previous.baseUrl).origin : '');
+    const sameOrigin = nextOrigin === parseOrigin(previous.baseUrl);
     // Never forward an old secret to a newly entered provider.
     const apiKey = input.apiKey || (sameOrigin ? previous.apiKey : '');
     if (!apiKey) fail(400, '请输入新服务的 API Key');
