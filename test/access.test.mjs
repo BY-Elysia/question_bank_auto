@@ -130,3 +130,38 @@ test('Persistent login survives application restarts; logout and credential chan
     401,
   );
 });
+
+test('Service principal aligns with gate default username when ACCESS_USERNAME is omitted', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'principal-align-'));
+  const priorHash = process.env.ACCESS_PASSWORD_HASH;
+  const priorUser = process.env.ACCESS_USERNAME;
+  const priorSecure = process.env.ACCESS_SECURE_COOKIE;
+  t.after(async () => {
+    if (priorHash === undefined) delete process.env.ACCESS_PASSWORD_HASH;
+    else process.env.ACCESS_PASSWORD_HASH = priorHash;
+    if (priorUser === undefined) delete process.env.ACCESS_USERNAME;
+    else process.env.ACCESS_USERNAME = priorUser;
+    if (priorSecure === undefined) delete process.env.ACCESS_SECURE_COOKIE;
+    else process.env.ACCESS_SECURE_COOKIE = priorSecure;
+    await rm(root, { recursive: true, force: true });
+  });
+  delete process.env.ACCESS_USERNAME;
+  delete process.env.ACCESS_PASSWORD_HASH;
+  const noAuth = await createApplication({ root });
+  t.after(() => noAuth.app.close());
+  assert.equal(noAuth.knowledge.principalId, 'local-account');
+
+  process.env.ACCESS_PASSWORD_HASH = hashPassword('secret-pass');
+  process.env.ACCESS_SECURE_COOKIE = '0';
+  const withHash = await createApplication({ root });
+  await withHash.app.listen(0, '127.0.0.1');
+  t.after(() => withHash.app.close());
+  assert.equal(withHash.knowledge.principalId, 'admin');
+  const base = await withHash.app.getUrl();
+  const login = await fetch(base + '/api/access/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: 'secret-pass' }),
+  });
+  assert.equal(login.status, 200);
+});

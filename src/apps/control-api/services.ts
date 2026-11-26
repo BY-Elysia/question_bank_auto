@@ -32,7 +32,7 @@ import { PiRuntime } from '../../modules/assistant/infrastructure/runtime/pi-run
 import { CompleteRuntime } from '../../modules/assistant/infrastructure/runtime/complete-runtime.js';
 import type { AgentRuntime } from '../../modules/assistant/ports/runtime.js';
 import { EmptyAssistantContext } from '../../modules/assistant/ports/context.js';
-import type { AccessConfig } from '../../shared/auth/gate.js';
+import { accessConfig, type AccessConfig } from '../../shared/auth/gate.js';
 import { WorkspaceStore } from '../../modules/workspaces/infrastructure/workspace-store.js';
 import type { WorkspaceRepository } from '../../modules/workspaces/ports/workspace.repository.js';
 import { WorkspacesService } from '../../modules/workspaces/application/workspaces.service.js';
@@ -122,7 +122,11 @@ export async function createServices(options: AppOptions = {}) {
   const workspaceStore = options.workspaceStore ?? new WorkspaceStore(root);
   await workspaceStore.init();
   const harnessStore = options.harnessStore ?? (await SqliteHarness.open(root));
-  const principal = options.access?.username ?? process.env.ACCESS_USERNAME ?? 'local-account';
+  const principal =
+    options.access?.username ??
+    accessConfig()?.username ??
+    process.env.ACCESS_USERNAME ??
+    'local-account';
   const catalogAccess =
     options.catalogAccess ?? new SingleAccountCatalogAccess(principal, workspaceStore);
   const workspaceAccess = {

@@ -106,7 +106,7 @@ export async function createApplication(options: AppOptions = {}) {
         access.passwordHash,
       )
     : undefined;
-  const services = await createServices({ ...options, root });
+  const services = await createServices({ ...options, access, root });
   const { books, review, exports, jobs, workspaces, workspaceView } = services;
   @Module({
     imports: [
