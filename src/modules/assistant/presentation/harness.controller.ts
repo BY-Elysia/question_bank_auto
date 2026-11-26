@@ -78,10 +78,13 @@ export class HarnessController {
     @Query('after') after: string | undefined,
     @Res() res: Response,
   ) {
-    let cursor = parse(
+    const afterCursor = parse(z.coerce.number().int().nonnegative().default(0), after);
+    const lastId = res.req.get('Last-Event-ID')?.trim();
+    const headerCursor = parse(
       z.coerce.number().int().nonnegative().default(0),
-      after ?? res.req.get('Last-Event-ID'),
+      lastId || undefined,
     );
+    let cursor = Math.max(afterCursor, headerCursor);
     this.service.run(id);
     res.set({
       'Content-Type': 'text/event-stream',
@@ -90,25 +93,36 @@ export class HarnessController {
     });
     res.flushHeaders();
     let closed = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(timer);
+      res.off('drain', pump);
+      res.end();
+    };
     const pump = () => {
       if (closed || res.writableNeedDrain) return;
       try {
+        const current = this.service.run(id);
         const events = this.service.events(id, cursor);
         for (const e of events) {
           const writable = res.write(`id: ${e.seq}\ndata: ${JSON.stringify(e)}\n\n`);
           cursor = e.seq;
-          if (!writable) break;
+          if (!writable) return;
+        }
+        if (events.length < 500 && ['completed', 'cancelled'].includes(current.status)) {
+          close();
+          return;
         }
         if (!events.length) res.write(': heartbeat\n\n');
       } catch {
-        res.end();
+        close();
       }
     };
-    const timer = setInterval(pump, 250);
-    res.on('close', () => {
-      closed = true;
-      clearInterval(timer);
-    });
+    timer = setInterval(pump, 250);
+    res.on('close', close);
+    res.on('drain', pump);
     pump();
   }
 }
