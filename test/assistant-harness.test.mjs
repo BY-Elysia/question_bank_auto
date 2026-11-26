@@ -271,3 +271,43 @@ test('Text history excludes empty tool-only steps while preserving the following
  const messages=[['user','修复'],['assistant',''],['assistant','  '],['assistant','已修改'],['user','撤销']].map(([role,content],i)=>({id:String(i),role,content,status:'complete',error:null}));
  assert.deepEqual(conversationContext({id:'x',title:'x',updatedAt:'now',messages}),[{role:'user',content:'修复'},{role:'assistant',content:'已修改'},{role:'user',content:'撤销'}]);
 });
+
+test('SqliteHarness persists reordered positions and deletes removed messages and runs', async (t) => {
+  const f = await fixture(t, async (i) => result(i));
+  const c = await f.service.create();
+  await f.service.start(c.id, 'first', 'r1');
+  await f.service.wait(c.id);
+  const msgIds = (await f.service.get(c.id)).messages.map((m) => m.id);
+  f.store.update(c.id, (s) => {
+    s.conversation.messages = [s.conversation.messages[1], s.conversation.messages[0]];
+    s.conversation.messages.pop();
+    s.runs = [];
+  });
+  await f.reopen();
+  const after = f.store.get(c.id);
+  assert.deepEqual(
+    after.conversation.messages.map((m) => m.id),
+    [msgIds[1]],
+  );
+  assert.equal(after.runs.length, 0);
+
+  // Add second message and swap positions without changing payloads.
+  const added = {
+    id: 'm_extra',
+    role: 'user',
+    content: 'second',
+    status: 'complete',
+    error: null,
+  };
+  f.store.update(c.id, (s) => {
+    s.conversation.messages.push(added);
+  });
+  f.store.update(c.id, (s) => {
+    s.conversation.messages = [s.conversation.messages[1], s.conversation.messages[0]];
+  });
+  await f.reopen();
+  assert.deepEqual(
+    f.store.get(c.id).conversation.messages.map((m) => m.id),
+    ['m_extra', msgIds[1]],
+  );
+});

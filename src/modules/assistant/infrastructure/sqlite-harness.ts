@@ -126,9 +126,11 @@ export class SqliteHarness implements HarnessStore {
       const s = this.get(id),
         before = JSON.stringify(s);
       const previousMessages = new Map(
-        s.conversation.messages.map((m) => [m.id, JSON.stringify(m)]),
+        s.conversation.messages.map((m, i) => [m.id, { position: i, payload: JSON.stringify(m) }]),
       );
-      const previousRuns = new Map(s.runs.map((r) => [r.id, JSON.stringify(r)]));
+      const previousRuns = new Map(
+        s.runs.map((r, i) => [r.id, { position: i, payload: JSON.stringify(r) }]),
+      );
       const events: { id: string; type: string; data: unknown }[] = [];
       const result = change(s, (id, type, data) => events.push({ id, type, data }));
       if (!events.length && before === JSON.stringify(s)) return result;
@@ -143,21 +145,30 @@ export class SqliteHarness implements HarnessStore {
           Number(s.runs.some((r) => ['queued', 'running', 'waiting_input'].includes(r.status))),
           id,
         );
+      const nextMessageIds = new Set(s.conversation.messages.map((m) => m.id));
+      for (const oldId of previousMessages.keys())
+        if (!nextMessageIds.has(oldId))
+          this.db.prepare('DELETE FROM messages WHERE session=? AND id=?').run(id, oldId);
       s.conversation.messages.forEach((m, i) => {
         const payload = JSON.stringify(m);
-        if (previousMessages.get(m.id) !== payload)
+        const prev = previousMessages.get(m.id);
+        if (!prev || prev.payload !== payload || prev.position !== i)
           this.db
             .prepare(
-              'INSERT INTO messages VALUES(?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET payload=excluded.payload',
+              'INSERT INTO messages VALUES(?,?,?,?) ON CONFLICT(session,id) DO UPDATE SET position=excluded.position,payload=excluded.payload',
             )
             .run(id, m.id, i, payload);
       });
+      const nextRunIds = new Set(s.runs.map((r) => r.id));
+      for (const oldId of previousRuns.keys())
+        if (!nextRunIds.has(oldId)) this.db.prepare('DELETE FROM runs WHERE id=?').run(oldId);
       s.runs.forEach((r, i) => {
         const payload = JSON.stringify(r);
-        if (previousRuns.get(r.id) !== payload)
+        const prev = previousRuns.get(r.id);
+        if (!prev || prev.payload !== payload || prev.position !== i)
           this.db
             .prepare(
-              'INSERT INTO runs VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
+              'INSERT INTO runs VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET position=excluded.position,payload=excluded.payload',
             )
             .run(r.id, id, i, payload);
       });
