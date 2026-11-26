@@ -37,7 +37,9 @@ test('Login and configuration do not download review code, math styles or fonts'
   await page.getByLabel('学科').fill('数学');
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.locator('.katex').first()).toBeVisible();
-  expect(urls.some((url) => /\/assets\/(Review|RichText|ContentBody)-.*\.css/.test(url))).toBe(true);
+  expect(urls.some((url) => /\/assets\/(Review|RichText|ContentBody)-.*\.css/.test(url))).toBe(
+    true,
+  );
   await expect(page.locator('.content-body > p')).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
@@ -228,5 +230,99 @@ test('Chapter preview data is requested only while the extraction preview is ope
   await page.getByRole('button', { name: '收起已提取内容预览' }).click();
   await expect.poll(() => modes.at(-1)).toBe('omit');
   await expect(page.getByText('阶段预览内容', { exact: true })).toHaveCount(0);
+  await page.request.delete(`/api/workspaces/${id}`);
+});
+
+test('Initial offline mount surfaces offline error immediately and recovers once back online', async ({
+  page,
+}) => {
+  const { id, view } = await seed(page);
+  await page.addInitScript(() => {
+    let online = false;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
+    (window as unknown as { __setOnline: (value: boolean) => void }).__setOnline = (value) => {
+      online = value;
+      window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+    };
+  });
+  let reads = 0;
+  await page.route(`**/api/workspaces/${id}*`, async (route) => {
+    reads++;
+    await route.fulfill({ json: view });
+  });
+  await page.goto(`/#/workspace/${id}`);
+  await expect(page.getByRole('alert')).toContainText('离线');
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toBeVisible();
+  expect(reads).toBe(0);
+  await page.evaluate(() =>
+    (window as unknown as { __setOnline: (value: boolean) => void }).__setOnline(true),
+  );
+  await expect(page.getByLabel('学科')).toBeVisible();
+  expect(reads).toBe(1);
+  await page.request.delete(`/api/workspaces/${id}`);
+});
+
+test('Superseded aborted resource load cannot overwrite newer load or clear running state', async ({
+  page,
+}) => {
+  const { id, view } = await seed(page);
+  await page.addInitScript(
+    ({ targetId, baseView }) => {
+      let online = true;
+      let calls = 0;
+      const origFetch = window.fetch.bind(window);
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
+      (window as unknown as { __setOnline: (value: boolean) => void }).__setOnline = (value) => {
+        online = value;
+        window.dispatchEvent(new Event(value ? 'online' : 'offline'));
+      };
+      window.fetch = (input, init) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes(`/api/workspaces/${targetId}`)) {
+          calls++;
+          if (calls === 1) {
+            return new Promise<Response>((resolve) => {
+              (window as unknown as { __finishStale: () => void }).__finishStale = () =>
+                resolve(
+                  new Response(
+                    JSON.stringify({
+                      ...baseView,
+                      workspace: { ...baseView.workspace, title: 'stale' },
+                    }),
+                    { status: 200, headers: { 'Content-Type': 'application/json' } },
+                  ),
+                );
+            });
+          }
+          if (calls === 2) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  ...baseView,
+                  workspace: { ...baseView.workspace, title: 'fresh' },
+                }),
+                { status: 200, headers: { 'Content-Type': 'application/json' } },
+              ),
+            );
+          }
+        }
+        return origFetch(input, init);
+      };
+    },
+    { targetId: id, baseView: view },
+  );
+  await page.goto(`/#/workspace/${id}`);
+  await page.waitForFunction(() =>
+    Boolean((window as unknown as { __finishStale?: unknown }).__finishStale),
+  );
+  await page.evaluate(() => {
+    const win = window as unknown as { __setOnline: (v: boolean) => void };
+    win.__setOnline(false);
+    win.__setOnline(true);
+  });
+  await expect(page.getByRole('heading', { name: 'fresh', exact: true })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __finishStale: () => void }).__finishStale());
+  await expect(page.getByRole('heading', { name: 'fresh', exact: true })).toBeVisible();
   await page.request.delete(`/api/workspaces/${id}`);
 });
