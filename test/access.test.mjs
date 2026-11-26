@@ -130,3 +130,41 @@ test('Persistent login survives application restarts; logout and credential chan
     401,
   );
 });
+
+test('Express body-parser errors return application/problem+json without leaking stack traces', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'body-error-test-'));
+  const system = await createApplication({
+    root,
+    access: {
+      username: 'admin',
+      passwordHash: hashPassword('test-secret-password'),
+      secure: false,
+    },
+  });
+  await system.app.listen(0, '127.0.0.1');
+  const base = await system.app.getUrl();
+  t.after(async () => {
+    await system.app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const malformed = await fetch(base + '/api/access/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"broken":',
+  });
+  assert.equal(malformed.status, 400);
+  assert.match(malformed.headers.get('content-type') ?? '', /application\/problem\+json/);
+  const malformedBody = await malformed.json();
+  assert.equal(malformedBody.status, 400);
+  assert.equal(malformedBody.detail, 'Malformed request body');
+
+  const tooLarge = await fetch(base + '/api/access/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: 'x'.repeat(4096) }),
+  });
+  assert.equal(tooLarge.status, 413);
+  assert.match(tooLarge.headers.get('content-type') ?? '', /application\/problem\+json/);
+  assert.equal((await tooLarge.json()).status, 413);
+});
