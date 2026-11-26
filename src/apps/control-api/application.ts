@@ -50,35 +50,44 @@ import { ZodError } from 'zod';
 import { createServices, type AppOptions } from './services.js';
 import { TextbooksModule } from '../../modules/textbooks/textbooks.module.js';
 import { JobsModule } from '../../modules/jobs/jobs.module.js';
+function writeErrorResponse(error: unknown, response: Response) {
+  if (response.headersSent) return;
+  const type = (error as { type?: string })?.type;
+  const status =
+    error instanceof HttpException
+      ? error.getStatus()
+      : error instanceof DomainError
+        ? error.status
+        : error instanceof ZodError
+          ? 422
+          : type === 'entity.too.large'
+            ? 413
+            : type === 'entity.parse.failed'
+              ? 400
+              : 500;
+  const detail =
+    error instanceof HttpException
+      ? error.getResponse()
+      : error instanceof DomainError
+        ? error.message
+        : status === 422
+          ? 'Stored or returned data failed schema validation'
+          : type === 'entity.too.large'
+            ? 'Request payload exceeds size limit'
+            : type === 'entity.parse.failed'
+              ? 'Malformed request body'
+              : 'Request failed; see server logs';
+  if (status >= 500) console.error(error);
+  response
+    .status(status)
+    .type('application/problem+json')
+    .json({ status, title: status >= 500 ? 'Internal error' : 'Invalid request', detail });
+}
+
 @Catch()
 class Errors implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
-    const response = host.switchToHttp().getResponse<Response>();
-    const status =
-      error instanceof HttpException
-        ? error.getStatus()
-        : error instanceof DomainError
-          ? error.status
-          : error instanceof ZodError
-            ? 422
-            : (error as { type?: string })?.type === 'entity.too.large'
-              ? 413
-              : (error as { type?: string })?.type === 'entity.parse.failed'
-                ? 400
-                : 500;
-    const detail =
-      error instanceof HttpException
-        ? error.getResponse()
-        : error instanceof DomainError
-          ? error.message
-          : status === 422
-            ? 'Stored or returned data failed schema validation'
-            : 'Request failed; see server logs';
-    if (status >= 500) console.error(error);
-    response
-      .status(status)
-      .type('application/problem+json')
-      .json({ status, title: status >= 500 ? 'Internal error' : 'Invalid request', detail });
+    writeErrorResponse(error, host.switchToHttp().getResponse<Response>());
   }
 }
 @Controller('api')
@@ -183,6 +192,10 @@ export async function createApplication(options: AppOptions = {}) {
       },
     }),
   );
+  app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(error);
+    writeErrorResponse(error, res);
+  });
   app.useGlobalFilters(new Errors());
   return { app, ...services };
 }
