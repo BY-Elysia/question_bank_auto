@@ -166,6 +166,27 @@ test('Assistant survives leaving the HTTP request, persists messages and records
   const persisted = await app.assistant.get(c.id);
   await fs.access(path.join(app.root, 'assistant', 'harness.sqlite'));
   assert.equal(persisted.messages[1].status, 'complete');
+  const state = await (await fetch(`${app.base}/api/assistant/conversations/${c.id}/state`)).json();
+  const runId = state.runs[0].id;
+  const allSse = await (
+    await fetch(`${app.base}/api/assistant/runs/${runId}/events?after=0`)
+  ).text();
+  const parsed = allSse
+    .split('\n\n')
+    .filter((block) => block.includes('data: '))
+    .map((block) => JSON.parse(block.split('data: ')[1]));
+  assert.ok(parsed.length >= 2);
+  const replayed = await (
+    await fetch(`${app.base}/api/assistant/runs/${runId}/events?after=0`, {
+      headers: { 'Last-Event-ID': String(parsed[0].seq) },
+    })
+  ).text();
+  const resumed = replayed
+    .split('\n\n')
+    .filter((block) => block.includes('data: '))
+    .map((block) => JSON.parse(block.split('data: ')[1]));
+  assert.ok(resumed.length >= 1);
+  assert.ok(resumed.every((e) => e.seq > parsed[0].seq));
 });
 test('Settings never expose keys and never reuse a secret for a different provider', async (t) => {
   const app = await fixture(t);
