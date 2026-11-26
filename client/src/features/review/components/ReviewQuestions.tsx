@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ContentBody } from '@/components/ContentBody';
 import { Empty } from '@/components/common';
 import type { ReviewController } from '../hooks/useReview';
@@ -7,25 +7,37 @@ import type { ReviewController } from '../hooks/useReview';
 export function ReviewQuestions({ model }: { model: ReviewController }) {
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(10);
+  const revealedRef = useRef<string | null>(null);
+  const scrolledRef = useRef<string | null>(null);
   const questions = model.questions;
   const matches = questions.filter((c) =>
     JSON.stringify(c.question).toLowerCase().includes(query.toLowerCase()),
   );
   useEffect(() => {
-    if (!model.selected) return;
+    if (!model.selected) {
+      revealedRef.current = null;
+      return;
+    }
+    if (revealedRef.current === model.selected) return;
     const index = questions.findIndex((c) => c.id === model.selected);
     if (index >= 0) {
+      revealedRef.current = model.selected;
       setQuery('');
       setLimit((n) => Math.max(n, index + 1));
     }
-  }, [model.selected, questions.length]);
+  }, [model.selected, questions]);
   // Source navigation can target a question beyond the first rendered batch.
   // Reveal it after the expanded list has actually committed to the DOM.
   useEffect(() => {
-    if (!model.selected) return;
+    if (!model.selected) {
+      scrolledRef.current = null;
+      return;
+    }
+    if (scrolledRef.current === model.selected) return;
     const element = document.getElementById(`content-${model.selected}`);
     const container = element?.closest('.result-scroll');
     if (element && container) {
+      scrolledRef.current = model.selected;
       const item = element.getBoundingClientRect(),
         bounds = container.getBoundingClientRect();
       if (item.top < bounds.top || item.bottom > bounds.bottom)
@@ -80,7 +92,9 @@ export function ReviewQuestions({ model }: { model: ReviewController }) {
           </div>
           <ContentBody content={c} />
           <footer className="question-actions">
-            <button onClick={() => model.askAssistant(c)}>向助手提问</button>
+            <button disabled={model.preview} onClick={() => model.askAssistant(c)}>
+              向助手提问
+            </button>
             <button
               disabled={!model.editable || model.action.busy}
               onClick={() => model.setEdit(c)}
