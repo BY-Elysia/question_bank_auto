@@ -1,6 +1,6 @@
 # 后端接口清单（v2 基线）
 
-整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。64 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
+整理日期：2026-11-07。来源：当前 OpenAPI 构建产物及认证中间件。65 个业务/健康端点，另有 3 个登录会话端点。下一版助手提案见 [架构与规划](planning/assistant-next.md)。
 
 新增 P1 资料范围与来源接口见 [教材查询与引用](assistant-knowledge.md#新增-http-接口)。
 
@@ -37,6 +37,7 @@
 | `POST /api/textbooks/{id}/validate` | `validateDocument` | — | 200 Validation |
 | `GET /api/textbooks/{id}/revisions` | `listRevisions` | — | 200 Revisions |
 | `POST /api/textbooks/{id}/restore` | `restoreRevision` | application/json: Restore | 200 Book |
+| `POST /api/textbooks/{id}/export/prepare` | `prepareExport` | — | 200 ExportPreparationResponse |
 | `GET /api/textbooks/{id}/export.json` | `exportJson` | — | 200 QuestionBankExport |
 | `GET /api/textbooks/{id}/content.json` | `exportContent` | — | 200 ExportDocument |
 | `GET /api/textbooks/{id}/export.zip` | `exportZip` | — | 200 inline/binary |
@@ -96,6 +97,11 @@
 | `POST /api/assistant/runs/{id}/retry` | `retryAssistantRun` | — | 202 AssistantRunView |
 | `POST /api/assistant/runs/{id}/interactions/{interactionId}/responses` | `answerAssistantInteraction` | InteractionAnswer | 202 AssistantRunView |
 | `GET /api/assistant/runs/{id}/events` | `streamAssistantEvents` | after / Last-Event-ID | 200 text/event-stream |
+| `GET /api/assistant/knowledge/workspaces` | `listAssistantWorkspaces` | — | 200 CatalogWorkspaceList |
+| `GET /api/assistant/conversations/{id}/scope` | `getAssistantScope` | — | 200 KnowledgeScope |
+| `PUT /api/assistant/conversations/{id}/scope` | `setAssistantScope` | application/json: ScopeInput | 200 KnowledgeScope |
+| `GET /api/assistant/conversations/{id}/citations/{citation}` | `getAssistantCitation` | — | 200 CitationView |
+| `GET /api/assistant/conversations/{id}/citations/{citation}/pages/{page}/image` | `getCitationImage` | — | 200 inline/binary |
 
 
 ## profile

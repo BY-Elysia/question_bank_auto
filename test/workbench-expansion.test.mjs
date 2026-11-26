@@ -399,3 +399,29 @@ test('Assistant configuration is isolated from textbook credentials, persists an
   assert.equal((await app.assistantConfiguration.test({ ...config, apiKey: '' })).ok, true);
   assert.equal(requests.at(-1).authorization, 'Bearer assistant-test-key');
 });
+
+test('POST /api/textbooks/:id/export/prepare returns HTTP 200 when ready and 422 when metadata incomplete', async (t) => {
+  const app = await fixture(t);
+  const w = await seed(app);
+  const incomplete = await fetch(`${app.base}/api/textbooks/${w.id}/export/prepare`, {
+    method: 'POST',
+  });
+  assert.equal(incomplete.status, 422);
+  await app.store.update(
+    w.id,
+    (b) => {
+      b.extractionContext = {
+        metadata: { ...metadata, publisher: '人民教育出版社' },
+        instructions: '',
+      };
+    },
+    'set export metadata',
+  );
+  const ready = await fetch(`${app.base}/api/textbooks/${w.id}/export/prepare`, {
+    method: 'POST',
+  });
+  assert.equal(ready.status, 200);
+  const body = await ready.json();
+  assert.equal(body.ready, true);
+  assert.equal(body.jobId, null);
+});

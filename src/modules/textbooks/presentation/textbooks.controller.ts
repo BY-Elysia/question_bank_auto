@@ -129,7 +129,7 @@ export class TextbooksController {
   @Get(':id/content.json') contentJson(@Param('id') id: string) {
     return this.exports.json(id);
   }
-  @Post(':id/export/prepare') @HttpCode(202) prepareExport(@Param('id') id: string) {
+  @Post(':id/export/prepare') @HttpCode(200) prepareExport(@Param('id') id: string) {
     return this.preparation.prepare(id);
   }
   @Get(':id/export.json') json(@Param('id') id: string) {

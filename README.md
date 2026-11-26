@@ -143,7 +143,7 @@ node --env-file=.env dist/app/apps/control-api/main.js
 | HTTP 接口 | NestJS、Express；65 个业务与健康端点，统一错误映射 |
 | 领域与应用 | 模块化单体、分层架构、端口与适配器；教材、工作区、任务、校对、个人配置及助手按职责组织 |
 | 运行时契约 | Zod 校验请求、领域对象及模型输出，并生成 OpenAPI 3.1 文档 |
-| 模型执行 | 10 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |
+| 模型执行 | 11 套版本化 SKILL.md、工作流编排、输出校验、检查点与用量记录 |
 | 助手 Harness | pi-agent-core、pi-ai；持久运行、工具注册、用户交互、SQLite WAL 与 SSE 回放 |
 | 文档与公式 | Poppler、Sharp、KaTeX；PDF 转图、预览图处理与数学公式渲染 |
 | 持久化与部署 | 原子文件写入、按实体加锁、后台任务生命周期管理；Docker Compose 与持久化数据卷 |
