@@ -37,7 +37,9 @@ test('Login and configuration do not download review code, math styles or fonts'
   await page.getByLabel('学科').fill('数学');
   await page.getByRole('button', { name: '开始提取', exact: true }).click();
   await expect(page.locator('.katex').first()).toBeVisible();
-  expect(urls.some((url) => /\/assets\/(Review|RichText|ContentBody)-.*\.css/.test(url))).toBe(true);
+  expect(urls.some((url) => /\/assets\/(Review|RichText|ContentBody)-.*\.css/.test(url))).toBe(
+    true,
+  );
   await expect(page.locator('.content-body > p')).toHaveCount(0);
   await page.request.delete(`/api/workspaces/${id}`);
 });
@@ -71,6 +73,19 @@ test('Polling slows when idle, stays fast for active work, pauses hidden/offline
   active = true;
   await page.clock.runFor(1000);
   await expect(page.getByRole('heading', { name: 'read-2', exact: true })).toBeVisible();
+  const trackColors = await page
+    .locator('.progress-track')
+    .first()
+    .evaluate((el) => {
+      const fill = el.querySelector('div');
+      return {
+        track: getComputedStyle(el).backgroundColor,
+        fill: fill ? getComputedStyle(fill).backgroundColor : '',
+      };
+    });
+  expect(trackColors.fill).not.toBe('');
+  expect(trackColors.fill).not.toBe('rgba(0, 0, 0, 0)');
+  expect(trackColors.fill).not.toBe(trackColors.track);
   await page.clock.runFor(2000);
   await expect(page.getByRole('heading', { name: 'read-3', exact: true })).toBeVisible();
   active = false;
