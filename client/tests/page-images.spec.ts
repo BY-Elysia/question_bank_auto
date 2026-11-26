@@ -75,6 +75,15 @@ test('Normal page images preload only the next page and never request detail, in
   await expect(page.getByRole('img', { name: '教材第 1 页原图' })).toBeVisible();
   expect(requests.some((u) => u.includes('variant=detail'))).toBe(false);
   await expect(page.getByText('正在加载高清图…')).toHaveCount(0);
+  const handleColors = await page.locator('.resize-handle').evaluate((el) => {
+    const grip = el.querySelector('i');
+    return {
+      handle: getComputedStyle(el).backgroundColor,
+      grip: grip ? getComputedStyle(grip).backgroundColor : '',
+    };
+  });
+  expect(handleColors.grip).not.toBe('');
+  expect(handleColors.grip).not.toBe(handleColors.handle);
   await page.request.delete(`/api/workspaces/${id}`);
 });
 test('Normal image failure retries in place and does not leak across pages', async ({ page }) => {

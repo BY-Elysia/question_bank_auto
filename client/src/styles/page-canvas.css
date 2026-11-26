@@ -161,11 +161,14 @@
   touch-action: none;
 }
 .resize-handle:hover {
-  background: var(--surface-soft);
+  background: var(--color-accent);
 }
 .resize-handle > i {
   height: 28px;
   width: 2px;
-  background: var(--surface-soft);
+  background: var(--muted);
   border-radius: 2px;
+}
+.resize-handle:hover > i {
+  background: var(--primary);
 }

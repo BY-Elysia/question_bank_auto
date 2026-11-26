@@ -121,7 +121,7 @@
   background: #24242e;
 }
 .progress-track > div {
-  background: #24242e;
+  background: #8b7bd4;
 }
 .process-flow .highlight {
   background: #292539;
@@ -173,10 +173,13 @@
   background: #24242e;
 }
 .resize-handle:hover {
-  background: #24242e;
+  background: #292637;
 }
 .resize-handle > i {
-  background: #24242e;
+  background: #777583;
+}
+.resize-handle:hover > i {
+  background: #aaa1de;
 }
 .result-tabs > button.selected {
   color: #aaa1de;
