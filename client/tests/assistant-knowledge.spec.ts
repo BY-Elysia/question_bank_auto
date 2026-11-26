@@ -21,11 +21,13 @@ test('Question entry selects scoped context, tools cite evidence, source image o
   page,
 }) => {
   const id = await book(page);
-  const c=await(await page.request.post('/api/assistant/conversations')).json();
-  await page.request.put(`/api/assistant/conversations/${c.id}/scope`,{data:{workspaceIds:[id]}});
-  await page.evaluate(id=>sessionStorage.setItem('assistant-conversation',id),c.id);
+  const c = await (await page.request.post('/api/assistant/conversations')).json();
+  await page.request.put(`/api/assistant/conversations/${c.id}/scope`, {
+    data: { workspaceIds: [id] },
+  });
+  await page.evaluate((id) => sessionStorage.setItem('assistant-conversation', id), c.id);
   await page.goto('/#/assistant');
-  await page.getByLabel('消息',{exact:true}).fill('查询题目并引用来源');
+  await page.getByLabel('消息', { exact: true }).fill('查询题目并引用来源');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.locator('.citation-links button')).toHaveCount(1);
   await expect(page.locator('.chat-message.assistant .katex')).toBeVisible();
@@ -52,6 +54,23 @@ test('New conversation can choose material and mobile citations stay within the 
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
   await page.getByLabel('消息', { exact: true }).fill('查询题目并引用来源');
   await page.getByRole('button', { name: '教材资料', exact: true }).click();
+  const tokenStyles = await page.evaluate(() => {
+    const label = document.querySelector('.knowledge-list label');
+    const hint = document.querySelector('.knowledge-list small');
+    const workbench = document.querySelector('.chat-workbench');
+    const bodyBg = getComputedStyle(document.documentElement).backgroundColor;
+    const fg = getComputedStyle(document.documentElement).color;
+    return {
+      borderColor: label ? getComputedStyle(label).borderTopColor : '',
+      hintColor: hint ? getComputedStyle(hint).color : '',
+      workbenchBg: workbench ? getComputedStyle(workbench).backgroundColor : '',
+      bodyBg,
+      fg,
+    };
+  });
+  expect(tokenStyles.borderColor).not.toBe(tokenStyles.fg);
+  expect(tokenStyles.hintColor).not.toBe(tokenStyles.fg);
+  expect(tokenStyles.workbenchBg).toBe(tokenStyles.bodyBg);
   await page.locator('.knowledge-list input').first().check();
   await page.getByRole('button', { name: '应用资料范围' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -65,5 +84,14 @@ test('New conversation can choose material and mobile citations stay within the 
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.keyboard.press('Escape');
+  const menuBtn = page.getByRole('button', { name: '打开导航菜单', exact: true });
+  await menuBtn.click();
+  await expect(page.getByRole('button', { name: '个人中心', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '个人中心', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '个人中心', exact: true })).toBeVisible();
+  await expect(menuBtn).toHaveAttribute('aria-expanded', 'false');
+  await menuBtn.click();
+  await page.getByRole('button', { name: '我的工作区' }).click();
+  await expect(page.getByRole('heading', { name: '教材库', exact: true })).toBeVisible();
   await page.request.delete('/api/workspaces/' + id);
 });
