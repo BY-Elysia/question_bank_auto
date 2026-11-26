@@ -55,9 +55,16 @@ test('The main composer can answer a waiting question without leaving a stranded
   page,
 }) => {
   await page.goto('/#/assistant');
+  await page.getByLabel('消息', { exact: true }).fill('慢速测试');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect(page.getByLabel('发送方式')).toBeVisible();
+  await page.getByLabel('发送方式').selectOption('follow_up');
+  await expect(page.locator('.run-status')).toContainText('已完成');
   await page.getByLabel('消息', { exact: true }).fill('询问测试');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.locator('.interaction-card')).toBeVisible();
+  await expect(page.getByLabel('发送方式').locator('option[value="follow_up"]')).toHaveCount(0);
+  await expect(page.getByLabel('发送方式')).toHaveValue('steer');
   await page.getByLabel('消息', { exact: true }).fill('英语，每周三次');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await expect(page.locator('.run-status')).toContainText('已完成');
@@ -111,4 +118,45 @@ test('Paged history remains visible when newer messages shift the initial window
   await expect(page.locator('.chat-message')).toHaveCount(102);
   await expect(page.getByText('历史消息编号51结束', { exact: true })).toHaveCount(1);
   expect(olderRequests).toBe(1);
+});
+
+test('Stop button stays enabled while send is in-flight and works without crypto.randomUUID', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const nativeCrypto = window.crypto;
+    Object.defineProperty(window, 'crypto', {
+      configurable: true,
+      value: {
+        getRandomValues: nativeCrypto.getRandomValues.bind(nativeCrypto),
+      },
+    });
+  });
+  let releaseInput!: () => void;
+  const inputGate = new Promise<void>((resolve) => {
+    releaseInput = resolve;
+  });
+  const eventRequests: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/api/assistant/runs/') && r.url().includes('/events'))
+      eventRequests.push(r.url());
+  });
+  await page.route('**/api/assistant/runs/*/inputs', async (route) => {
+    await inputGate;
+    await route.abort().catch(() => {});
+  });
+  await page.goto('/#/assistant');
+  await page.getByLabel('消息', { exact: true }).fill('慢速测试');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect(page.locator('.chat-message.assistant')).toContainText('正在逐步');
+  await page.getByLabel('消息', { exact: true }).fill('并发发送中');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  const stopBtn = page.getByRole('button', { name: '停止生成' });
+  await expect(stopBtn).toBeEnabled();
+  await stopBtn.click();
+  await expect(page.locator('.run-status')).toContainText('已停止');
+  releaseInput();
+  const countAtStop = eventRequests.length;
+  await page.waitForTimeout(400);
+  expect(eventRequests.length).toBe(countAtStop);
 });

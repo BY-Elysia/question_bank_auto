@@ -36,8 +36,12 @@ export const assistantApi = {
 export function subscribeRun(
   id: string,
   onEvent: (event: import('@/shared/contracts').RunEvent) => void,
+  onClosed?: () => void,
 ) {
   const source = new EventSource(`/api/assistant/runs/${encodeURIComponent(id)}/events`);
   source.onmessage = (e) => onEvent(JSON.parse(e.data));
+  source.onerror = () => {
+    if (source.readyState === EventSource.CLOSED) onClosed?.();
+  };
   return () => source.close();
 }
