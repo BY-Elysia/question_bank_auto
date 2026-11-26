@@ -75,7 +75,7 @@ AI 提交候选保留 `ai_generated/source/human` 的原始答案来源，并标
 | `list_question_changes` | 当前题目最近变更 |
 | `undo_question_change` | 撤销当前题目的指定变更 |
 
-已有 HTTP 接口保持兼容，Book 新增 changes 默认空数组；旧会话默认没有可执行修改权限。现有 OpenAPI 合计 64 个业务/健康端点，10 套版本化 Skill。
+已有 HTTP 接口保持兼容，Book 新增 changes 默认空数组；旧会话默认没有可执行修改权限。现有 OpenAPI 合计 65 个业务/健康端点，11 套版本化 Skill。
 
 ## 首期边界
 

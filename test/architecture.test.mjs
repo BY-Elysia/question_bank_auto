@@ -45,6 +45,7 @@ test('Workbench capabilities have shipped Skill packages and documented endpoint
     Object.values(spec.paths).reduce((n, p) => n + Object.keys(p).length, 0),
     65,
   );
+  assert.ok(spec.paths['/api/textbooks/{id}/export/prepare']?.post?.responses?.['200']);
   assert.ok(!JSON.stringify(spec.paths).includes('exam-compose'));
 });
 

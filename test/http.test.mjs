@@ -110,9 +110,11 @@ test('Real PDF → lazy PNG → model instructions → job → proposal → acce
     };
   });
   assert.equal((await fetch(`${base}/api/textbooks/${book.id}/export.json`)).status, 200);
-  const prepared = await (
-    await fetch(`${base}/api/textbooks/${book.id}/export/prepare`, { method: 'POST' })
-  ).json();
+  const prepareRes = await fetch(`${base}/api/textbooks/${book.id}/export/prepare`, {
+    method: 'POST',
+  });
+  assert.equal(prepareRes.status, 200);
+  const prepared = await prepareRes.json();
   assert.equal(prepared.ready, true);
   assert.equal(prepared.jobId, null);
   const zipped = await fetch(`${base}/api/textbooks/${book.id}/export.zip`);

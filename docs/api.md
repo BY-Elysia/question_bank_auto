@@ -1,6 +1,6 @@
 # HTTP 使用约定
 
-前缀 `/api`。PDF 上传使用 `application/pdf` 二进制请求体，图片上传使用 multipart/form-data；其他带参数的写操作使用 JSON。运行时校验拒绝未知字段。没有用户/权限接口。完整机器契约由 `npm run build` 生成至 `dist/contracts/openapi.json`。
+前缀 `/api`。PDF 上传使用 `application/pdf` 二进制请求体，图片上传使用 multipart/form-data；其他带参数的写操作使用 JSON。运行时校验拒绝未知字段。可选登录认证见 `/api/access/*`。完整机器契约由 `npm run build` 生成至 `dist/contracts/openapi.json`。
 
 ## 工作区入口（前端主流程）
 
@@ -84,7 +84,7 @@ metadata.title / subject 必填；version 默认 v1.1，courseId / textbookId / 
 | POST /textbooks/:id/validate | 结构、覆盖和已记录的语义问题 |
 | GET /textbooks/:id/revisions | 修订号列表 |
 | POST /textbooks/:id/restore | 恢复旧版为新修订 |
-| POST /textbooks/:id/export/prepare | 导出只读校验：检查答案评分是否完整，不调用模型；完整时返回 ready=true、jobId=null，否则 422 |
+| POST /textbooks/:id/export/prepare | 导出只读校验：检查答案评分是否完整，不调用模型；完整时 200 返回 ready=true、jobId=null，否则 422 |
 | GET /textbooks/:id/export.json | 导出正式 JSON，保留来源、审核状态和问题 |
 | GET /textbooks/:id/export.zip | JSON、所有页图及可用时的 source.pdf |
 
