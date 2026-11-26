@@ -113,3 +113,93 @@ test('Section selection scopes questions, includes descendants, preserves cross-
     await page.request.delete('/api/workspaces/' + workspace.id);
   }
 });
+
+test('Load more and search preserve user state, and preview mode disables asking assistant', async ({
+  page,
+}) => {
+  const buffer = await sharp({
+    create: { width: 600, height: 800, channels: 3, background: 'white' },
+  })
+    .png()
+    .toBuffer();
+  const form = new FormData();
+  form.append('images', new Blob([new Uint8Array(buffer)], { type: 'image/png' }), '1.png');
+  const response = await page.request.post('/api/workspaces/images?title=列表状态回归', {
+    multipart: form,
+  });
+  expect(response.status()).toBe(201);
+  const workspace = await response.json();
+  const template = fixtures.find((c: any) => c.question);
+  let questionCount = 12;
+  let previewMode = false;
+  await page.route(`**/api/workspaces/${workspace.id}*`, async (route) => {
+    const original = await route.fetch(),
+      view = await original.json();
+    const contents = Array.from({ length: questionCount }, (_, i) => ({
+      ...structuredClone(template),
+      id: `q${i}`,
+      sectionId: null,
+      sources: [{ page: 1, box: [0.1, 0.1, 0.9, 0.2] }],
+      question: {
+        ...structuredClone(template.question),
+        label: String(i + 1),
+        prompt: `回归题目 ${i + 1}`,
+        children: [],
+        answer: null,
+      },
+    }));
+    if (previewMode) {
+      view.workspace.status = 'interrupted';
+      view.revision = 0;
+      view.actions = { ...view.actions, configure: false, review: false, resume: true };
+      view.chapters = [
+        {
+          id: 'chapter_1',
+          pages: [1],
+          status: 'interrupted',
+          title: '预览章',
+          processedPages: 1,
+          preview: { ...view.document, contents: contents.slice(0, 2) },
+        },
+      ];
+    } else {
+      view.workspace.status = 'needs_review';
+      view.revision = 1;
+      view.nextStep = 'review';
+      view.actions = { ...view.actions, configure: false, review: true };
+      view.document.contents = contents;
+    }
+    await route.fulfill({ json: view });
+  });
+  try {
+    await page.goto('/#/workspace/' + workspace.id);
+    const cards = page.locator('.content-card');
+    await expect(cards).toHaveCount(10);
+    await page.getByRole('button', { name: '查看题目 1 第 1 页原图' }).click();
+    await expect(page.locator('#content-q0')).toHaveClass(/selected/);
+    const loadMoreBtn = page.getByRole('button', { name: /加载更多题目/ });
+    await loadMoreBtn.scrollIntoViewIfNeeded();
+    const beforeLoadMoreScroll = await page
+      .locator('.result-scroll')
+      .evaluate((el) => el.scrollTop);
+    expect(beforeLoadMoreScroll).toBeGreaterThan(50);
+    await loadMoreBtn.click();
+    await expect(cards).toHaveCount(12);
+    const afterLoadMoreScroll = await page.locator('.result-scroll').evaluate((el) => el.scrollTop);
+    expect(afterLoadMoreScroll).toBeGreaterThan(50);
+    const searchInput = page.getByLabel('搜索完整题目');
+    await searchInput.fill('回归题目 12');
+    await expect(cards).toHaveCount(1);
+    questionCount = 13;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(searchInput).toHaveValue('回归题目 12');
+    await expect(cards).toHaveCount(1);
+
+    previewMode = true;
+    await page.reload();
+    await page.getByRole('button', { name: '查看已提取内容预览' }).click();
+    await expect(page.getByRole('button', { name: '向助手提问' }).first()).toBeDisabled();
+  } finally {
+    await page.request.delete('/api/workspaces/' + workspace.id);
+  }
+});

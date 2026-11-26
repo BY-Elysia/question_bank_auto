@@ -113,12 +113,14 @@ export function useReview(view: WorkspaceView, onChange: () => void, preview: bo
       onChange();
     });
   return {
+    preview,
     activeSection,
     questions,
     selectSection,
     assistantOpen,
     setAssistantOpen,
     askAssistant: (c: Content) => {
+      if (preview) return;
       locate(c);
       setAssistantOpen(true);
     },
