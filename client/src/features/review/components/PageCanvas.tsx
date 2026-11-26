@@ -71,7 +71,7 @@ export function PageCanvas({
             variant="ghost"
             size="icon"
             aria-label="放大"
-            disabled={zoom >= 250}
+            disabled={visibleZoom >= 250}
             onClick={() => {
               setFit(false);
               setZoom(Math.min(250, visibleZoom + 25));
@@ -109,7 +109,12 @@ export function PageCanvas({
         ref={scroll}
         className="image-scroll"
         onPointerDown={(e) => {
-          if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+          if (
+            e.pointerType === 'touch' ||
+            e.button !== 0 ||
+            (e.target as HTMLElement).closest('button')
+          )
+            return;
           const el = e.currentTarget;
           drag.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
           el.setPointerCapture(e.pointerId);
