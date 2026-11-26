@@ -12,6 +12,8 @@ import {
   Wifi,
   WifiOff,
   Sparkles,
+  Menu,
+  X,
 } from 'lucide-react';
 import { ParticleField } from '@/components/effects/ParticleField';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,8 @@ export default function App() {
     setUpload,
     collapsed,
     setCollapsed,
+    mobileNav,
+    setMobileNav,
     health,
     effects,
     toggleEffects,
@@ -42,17 +46,41 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div
-        className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}
+        className={`app-shell ${collapsed && !mobileNav ? 'sidebar-collapsed' : ''} ${mobileNav ? 'mobile-nav-open' : ''}`}
         data-effects={effects ? 'on' : 'off'}
       >
+        {mobileNav && (
+          <div
+            className="mobile-nav-backdrop"
+            aria-hidden="true"
+            onClick={() => setMobileNav(false)}
+          />
+        )}
         <aside className="app-sidebar">
-          <button className="brand-button" onClick={() => navigate()} aria-label="析页首页">
+          <button
+            className="mobile-nav-close"
+            aria-label="关闭导航菜单"
+            onClick={() => setMobileNav(false)}
+          >
+            <X size={18} />
+          </button>
+          <button
+            className="brand-button"
+            onClick={() => {
+              navigate();
+              setMobileNav(false);
+            }}
+            aria-label="析页首页"
+          >
             <Logo />
           </button>
           <div className="sidebar-label">工作空间</div>
           <button
             className={`nav-item ${!id && section === 'workspaces' ? 'active' : ''}`}
-            onClick={() => navigate()}
+            onClick={() => {
+              navigate();
+              setMobileNav(false);
+            }}
           >
             <LayoutGrid size={18} />
             <span>我的工作区</span>
@@ -66,14 +94,20 @@ export default function App() {
           )}
           <button
             className={`nav-item ${section.startsWith('assistant') ? 'active' : ''}`}
-            onClick={() => (location.hash = '/assistant')}
+            onClick={() => {
+              location.hash = '/assistant';
+              setMobileNav(false);
+            }}
           >
             <MessageSquare size={18} />
             <span>AI 助手</span>
           </button>
           <button
             className={`nav-item ${section === 'profile' ? 'active' : ''}`}
-            onClick={() => (location.hash = '/profile')}
+            onClick={() => {
+              location.hash = '/profile';
+              setMobileNav(false);
+            }}
           >
             <UserRound size={18} />
             <span>个人中心</span>
@@ -100,10 +134,19 @@ export default function App() {
           <header className="app-topbar">
             <div>
               <button
+                className="desktop-nav-toggle"
                 aria-label={collapsed ? '展开导航' : '收起导航'}
                 onClick={() => setCollapsed((v) => !v)}
               >
                 {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              </button>
+              <button
+                className="mobile-nav-toggle"
+                aria-label={mobileNav ? '关闭导航菜单' : '打开导航菜单'}
+                aria-expanded={mobileNav}
+                onClick={() => setMobileNav((v) => !v)}
+              >
+                <Menu size={18} />
               </button>
               <span className="divider" />
               <span>工作空间</span>

@@ -200,3 +200,8 @@
 .sidebar-collapsed .local-profile {
   padding: 16px 8px 0;
 }
+.mobile-nav-toggle,
+.mobile-nav-close,
+.mobile-nav-backdrop {
+  display: none;
+}

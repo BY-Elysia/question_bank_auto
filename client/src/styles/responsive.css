@@ -49,6 +49,34 @@
   .app-sidebar {
     display: none;
   }
+  .app-shell.mobile-nav-open .app-sidebar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    height: 100dvh;
+    width: min(260px, 82vw);
+    z-index: 60;
+    overflow-y: auto;
+    box-shadow: 0 12px 40px #00000099;
+  }
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  .mobile-nav-close {
+    display: flex;
+    position: absolute;
+    top: 20px;
+    right: 14px;
+    color: #b2b1bf;
+    padding: 6px;
+    border-radius: 6px;
+  }
   .app-topbar {
     height: 56px;
     padding: 0 20px;
@@ -56,10 +84,13 @@
   .app-topbar > div {
     gap: 10px;
   }
-  .app-topbar > div:first-child > button,
+  .app-topbar .desktop-nav-toggle,
   .app-topbar .divider,
   .app-topbar .shortcut {
     display: none;
+  }
+  .mobile-nav-toggle {
+    display: flex;
   }
   .dashboard {
     padding: 28px 20px;
