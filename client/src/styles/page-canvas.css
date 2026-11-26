@@ -31,8 +31,16 @@
   color: var(--muted);
 }
 .canvas-toolbar [data-slot='button'] {
-  width: 28px;
+  min-width: 28px;
   height: 28px;
+}
+.canvas-toolbar [data-slot='button'][data-size='icon'] {
+  width: 28px;
+}
+.canvas-toolbar [data-slot='button'][data-size='sm'] {
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
 }
 .image-scroll {
   overflow: auto;

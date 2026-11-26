@@ -67,8 +67,24 @@ test('Normal page images preload only the next page and never request detail, in
   await expect(canvas).toHaveAttribute('aria-busy', 'false');
   await expect(page.locator('.source-box')).toHaveCount(1);
   await expect.poll(() => requests.some((u) => u.includes('/2/image?variant=preview'))).toBe(true);
-  await page.getByRole('button', { name: '放大', exact: true }).click();
+  const fitWidthBtn = page.getByRole('button', { name: '适应宽度', exact: true });
+  const fitWidthMetrics = await fitWidthBtn.evaluate((el) => ({
+    width: el.getBoundingClientRect().width,
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(fitWidthMetrics.width).toBeGreaterThan(32);
+  expect(fitWidthMetrics.scrollWidth).toBeLessThanOrEqual(fitWidthMetrics.clientWidth);
+  const zoomInBtn = page.getByRole('button', { name: '放大', exact: true });
+  await zoomInBtn.click();
   await expect(page.getByRole('img', { name: '教材第 1 页原图' })).toHaveCSS('opacity', '1');
+  while (await zoomInBtn.isEnabled()) {
+    await zoomInBtn.click();
+  }
+  await expect(zoomInBtn).toBeDisabled();
+  await page.getByRole('button', { name: '适应画布', exact: true }).click();
+  await expect(zoomInBtn).toBeEnabled();
+  await fitWidthBtn.click();
   await page.getByRole('button', { name: '下一页', exact: true }).click();
   await expect(page.getByRole('img', { name: '教材第 2 页原图' })).toHaveCSS('opacity', '1');
   await page.getByRole('button', { name: '上一页', exact: true }).click();
