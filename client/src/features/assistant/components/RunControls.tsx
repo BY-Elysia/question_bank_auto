@@ -42,11 +42,13 @@ function QuestionCard({
 export function RunControls({
   run,
   busy,
+  cancelling = false,
   onCommand,
   onAnswer,
 }: {
   run: AssistantRunView | undefined;
   busy: boolean;
+  cancelling?: boolean;
   onCommand: (name: 'cancel' | 'resume' | 'retry') => void;
   onAnswer: (id: string, value: string) => void;
 }) {
@@ -69,7 +71,12 @@ export function RunControls({
       <div className="run-status">
         <span>{labels[run.status]}</span>
         {active && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => onCommand('cancel')}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={cancelling}
+            onClick={() => onCommand('cancel')}
+          >
             停止生成
           </Button>
         )}

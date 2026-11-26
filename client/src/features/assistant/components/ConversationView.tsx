@@ -115,8 +115,16 @@ export function ConversationView({
                 : '已完成'}
           </p>
         )}
-        <RunControls run={m.run} busy={m.action.busy} onCommand={m.command} onAnswer={m.answer} />
-        <ErrorNote>{m.action.error || error || m.conversation.error || m.list.error}</ErrorNote>
+        <RunControls
+          run={m.run}
+          busy={m.action.busy}
+          cancelling={m.cancelling}
+          onCommand={m.command}
+          onAnswer={m.answer}
+        />
+        <ErrorNote>
+          {m.action.error || m.cancelError || error || m.conversation.error || m.list.error}
+        </ErrorNote>
         <form
           className="chat-composer"
           onSubmit={(e) => {
@@ -142,14 +150,20 @@ export function ConversationView({
             {m.activeRun ? (
               <select
                 aria-label="发送方式"
-                value={m.mode}
+                value={
+                  m.activeRun.status === 'waiting_input' && m.mode === 'follow_up'
+                    ? 'steer'
+                    : m.mode
+                }
                 onChange={(e) => m.setMode(e.target.value as typeof m.mode)}
               >
                 <option value="steer">
                   {m.activeRun.status === 'waiting_input' ? '回答当前问题' : '插话 · 优先处理'}
                 </option>
                 <option value="interrupt">打断并改向</option>
-                <option value="follow_up">完成后追加</option>
+                {m.activeRun.status !== 'waiting_input' && (
+                  <option value="follow_up">完成后追加</option>
+                )}
               </select>
             ) : (
               <span>Enter 发送 · Shift + Enter 换行</span>

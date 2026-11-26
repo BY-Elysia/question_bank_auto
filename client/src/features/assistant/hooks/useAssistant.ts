@@ -4,6 +4,19 @@ import { useAction, useResource } from '@/shared/hooks/useAsync';
 import { assistantApi, type Conversation } from '../api/assistant';
 const statePoll = (data: Awaited<ReturnType<typeof assistantApi.state>> | null | undefined) =>
   data?.runs.some((r) => ['queued', 'running'].includes(r.status)) ? 10000 : 0;
+
+function randomId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 export function useAssistant(
   options: {
     history?: boolean;
@@ -19,7 +32,8 @@ export function useAssistant(
     [historyEnabled],
   );
   const list = useResource(loadHistory, historyEnabled ? 5000 : 0),
-    action = useAction();
+    action = useAction(),
+    cancelAction = useAction();
   const [id, setId] = useState<string | null>(() =>
       !options.storageKey && sessionStorage.getItem('assistant-question')
         ? null
@@ -40,11 +54,20 @@ export function useAssistant(
   const activeRun =
     run && ['queued', 'running', 'waiting_input'].includes(run.status) ? run : undefined;
   const [mode, setMode] = useState<'steer' | 'interrupt' | 'follow_up'>('steer');
+  const [retainedFeed, setRetainedFeed] = useState<{ convId: string; runId: string }>();
+  useEffect(() => {
+    if (id && activeRun) setRetainedFeed({ convId: id, runId: activeRun.id });
+  }, [id, activeRun?.id]);
   const refreshAll = () => {
     state.refresh();
     list.refresh();
   };
-  const { stream, tool } = useRunFeed(activeRun?.id, refreshAll, options.onMutation);
+  const onSettled = useCallback((doneId: string) => {
+    setRetainedFeed((current) => (current?.runId === doneId ? undefined : current));
+  }, []);
+  const feedId =
+    activeRun?.id ?? (id && retainedFeed?.convId === id ? retainedFeed.runId : undefined);
+  const { stream, tool } = useRunFeed(feedId, refreshAll, options.onMutation, onSettled);
   const [older, setOlder] = useState<{
     id: string;
     messages: Conversation['messages'];
@@ -89,7 +112,7 @@ export function useAssistant(
     content: m.status === 'pending' ? (stream[m.id] ?? m.content) : m.content,
   }));
   const command = (name: 'cancel' | 'resume' | 'retry') =>
-    action.run(async () => {
+    (name === 'cancel' ? cancelAction : action).run(async () => {
       if (run) await assistantApi.command(run.id, name);
       refreshAll();
     });
@@ -130,12 +153,14 @@ export function useAssistant(
         select(current);
       }
       const pendingQuestion = activeRun?.interactions.find((q) => q.status === 'pending');
-      if (activeRun?.status === 'waiting_input' && mode === 'steer' && pendingQuestion)
-        await assistantApi.answer(activeRun.id, pendingQuestion.id, text);
-      else if (activeRun) await assistantApi.input(activeRun.id, text, mode, crypto.randomUUID());
+      if (activeRun?.status === 'waiting_input') {
+        if (mode !== 'interrupt' && pendingQuestion)
+          await assistantApi.answer(activeRun.id, pendingQuestion.id, text);
+        else await assistantApi.input(activeRun.id, text, 'interrupt', randomId());
+      } else if (activeRun) await assistantApi.input(activeRun.id, text, mode, randomId());
       else {
         await options.prepare?.(current);
-        await assistantApi.start(current, text, crypto.randomUUID());
+        await assistantApi.start(current, text, randomId());
       }
       state.refresh();
       setDrafts((d) => (d[draftKey] === text ? { ...d, [draftKey]: '' } : d));
@@ -157,6 +182,8 @@ export function useAssistant(
     remove,
     list,
     action,
+    cancelling: cancelAction.busy,
+    cancelError: cancelAction.error,
     id,
     select,
     adopt: (value: string) => {
